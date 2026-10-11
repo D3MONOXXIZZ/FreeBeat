@@ -147,3 +147,9 @@ com.freebeat.app://oauth2redirect
 ### Rule B3 — Cloud API Rate-Limit & Hi-Fi Seek Bottleneck Prevention
 - **Two-Pass Indexing**: Never fire unbounded parallel `Range` requests during library scans. Use bulk directory listing first, followed by a max-3-concurrent token-bucket queue with HTTP `429` exponential backoff for `bytes=0-65535` tag inspection.
 - **Mid-Stream Token Refresh**: `CloudStreamProxy` must transparently refresh expired OAuth2 tokens or re-sign S3 SigV4 URLs on incoming `Range` requests so paused streams never fail after 1 hour.
+
+
+### Rule U3 — Google Pixel Custom LRA Haptics & 120Hz Expressive Animations
+- All interactive controls MUST trigger `PixelHaptics` (`lib/services/haptics/pixel_haptics.dart`), which calls our native Kotlin `VibrationEffect.Composition` bridge (`PRIMITIVE_LOW_TICK`, `PRIMITIVE_TICK`, `PRIMITIVE_CLICK`, `PRIMITIVE_QUICK_RISE`, `PRIMITIVE_QUICK_FALL`, `PRIMITIVE_THUD`) on Pixel / Android 11+ devices and gracefully falls back on older devices.
+- Rotary knobs, 10-band EQ faders, and the Squiggly Seekbar MUST emit velocity/step-aware micro-ticks (`PRIMITIVE_LOW_TICK`) while dragging, a crisp mechanical notch click (`PRIMITIVE_CLICK`) when snapping to `0.0 dB` center detent, and a physical barrier thud (`PRIMITIVE_THUD`) at min/max rails.
+- All UI transitions MUST use 120Hz-ready physics springs and smooth `ColorScheme.lerp` transitions.

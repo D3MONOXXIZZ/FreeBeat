@@ -366,3 +366,29 @@ To guarantee flawless operation across **all Android devices (Android 7.0 API 24
    - **Pass 2 (Throttled 64 KB Range Tag Enrichment)**: Uses a concurrency-limited worker pool (max 3 simultaneous `Range: bytes=0-65535` requests with exponential backoff on HTTP `429`/`503`), prioritizing visible and queued tracks.
 2. **Persistent HTTP/2 Keep-Alive & Scrubbing Debounce**:
    - `CloudStreamProxy` reuses persistent upstream HTTP connections for `< 40 ms` byte-range seeking on 150 MB 24-bit/192kHz FLAC files and transparently refreshes expired OAuth2 / S3 SigV4 tokens mid-stream.
+
+
+---
+
+## 12. Google Pixel Custom LRA Haptics & 120Hz Expressive Physics Engine
+
+### 12.1 Native Pixel X-Axis LRA Haptic Composition Engine (`MainActivity.kt`)
+Google Pixel devices feature high-precision X-axis Linear Resonant Actuators (LRAs) that support `android.os.VibrationEffect.Composition` hardware primitives (Android 11/12+ API 30/31+). Standard Flutter `HapticFeedback` only exposes generic legacy vibrations.
+FreeBeat implements a dedicated **`PixelHapticsService`** over our native Kotlin bridge (`com.freebeat.app/dsp`) that queries `Vibrator.areAllPrimitivesSupported(...)` and dispatches rich, variable-scale hardware primitives for every micro-interaction:
+
+| Interaction in FreeBeat | Pixel Hardware Haptic Primitive (`VibrationEffect.Composition`) | Scale / Pattern | Legacy / Non-Pixel Fallback |
+| :--- | :--- | :--- | :--- |
+| **Rotary Knob Rotation** (Bass, Treble, Stereo X) | `PRIMITIVE_LOW_TICK` (every 2% step) | `scale: 0.45` (scales up with knob intensity `0.3 → 0.85`) | `HapticFeedback.selectionClick()` |
+| **10-Band EQ & Preamp Fader Drag** | `PRIMITIVE_LOW_TICK` (every `0.5 dB` increment) | `scale: 0.35` | `VibrationEffect.createOneShot(4ms, 40)` |
+| **Center Detent Snap (`0.0 dB` EQ / `0.0` L/R Balance)** | `PRIMITIVE_CLICK` + `PRIMITIVE_TICK` (`15ms` delay) | `scale: 0.90` (crisp mechanical notch snap) | `HapticFeedback.mediumImpact()` |
+| **Fader / Knob Rail Limit (`±15.0 dB` or `100%`)** | `PRIMITIVE_THUD` | `scale: 0.80` (firm physical stop) | `HapticFeedback.heavyImpact()` |
+| **Squiggly Seekbar Scrubbing** | `PRIMITIVE_LOW_TICK` (throttled at `28ms` intervals) | `scale: 0.30` (velvet texture scrub) | `HapticFeedback.selectionClick()` |
+| **Play / Pause Morphing Button** | `PRIMITIVE_CLICK` + `PRIMITIVE_QUICK_RISE` (on Play) / `PRIMITIVE_QUICK_FALL` (on Pause) | `scale: 0.75` | `HapticFeedback.lightImpact()` |
+| **MiniPlayer Expand / Collapse & Signal Path Open** | `PRIMITIVE_QUICK_RISE` (`scale: 0.55`) $\rightarrow$ `PRIMITIVE_TICK` (`scale: 0.70`) | Expressive spring launch | `HapticFeedback.mediumImpact()` |
+| **Hi-Fi Lossless Mode Activation & Offline Pin** | `PRIMITIVE_SLOW_RISE` (`0.5`) $\rightarrow$ `PRIMITIVE_CLICK` (`1.0`) | Signature Pixel confirmation | `HapticFeedback.heavyImpact()` |
+| **Synced Lyric Line Tap-to-Seek** | `PRIMITIVE_TICK` | `scale: 0.65` | `HapticFeedback.selectionClick()` |
+
+### 12.2 120Hz Material 3 Expressive Spring & Physics Animations
+- **M3 Expressive Spatial & Effects Springs**: Uses damped harmonic spring physics (`SpringDescription(mass: 1.0, stiffness: 380, damping: 28)`) for all layout morphs, card expansions, MiniPlayer-to-NowPlaying sheet transitions, and navigation pill indicator slides.
+- **Continuous ColorScheme Lerping**: When switching tracks, `TweenAnimationBuilder<Color>` / `ColorScheme.lerp` smoothly transitions background surfaces, the Squiggly Seekbar, and the Poweramp EQ spline curve over `650ms` (`Curves.easeOutCubic`).
+- **Interactive Micro-Scale Physics**: All cards, chips, rotary knobs, and transport buttons feature press-scale spring feedback (`0.95x` scale down on pointer-down, spring bounce back on release).
