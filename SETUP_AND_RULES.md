@@ -126,3 +126,24 @@ com.freebeat.app://oauth2redirect
 1. **Sequential Phase Execution**: Execute Phases 1 through 6 in order as documented in [EXECUTION_DOCUMENTATION.md](file:///f:/FreeBeat/EXECUTION_DOCUMENTATION.md).
 2. **Continuous Verification**: Run `flutter analyze` after completing each phase to catch type or lint issues immediately.
 3. **Commit Convention**: Use clean Conventional Commits (`docs:`, `feat(core):`, `feat(providers):`, `feat(dsp):`, `feat(ui):`, `test:`) and push completed milestones to the private GitHub repository.
+
+
+---
+
+## 7. Universal Android Compatibility, Bluetooth Codec & Bottleneck Rules
+
+### Rule B1 — Universal Android Coverage (`minSdkVersion = 24`) & Dual-Tier DSP Fallback
+- `minSdkVersion` MUST be set to **`24` (Android 7.0)** (`compileSdk = 35`, `targetSdk = 35`) to support 99.6%+ of Android devices.
+- `MainActivity.kt` MUST implement a **Dual-Tier Hardware DSP Engine**:
+  1. **Primary (API 28+ `DynamicsProcessing`)**: Hardware 10-band Pre-EQ, Post-EQ, Preamp, MBC, and Limiter.
+  2. **Fallback (API 24–27 or OEM firmware restriction)**: Automatic catch-and-fallback to Android `Equalizer` + `LoudnessEnhancer` + `BassBoost` + `Virtualizer`, interpolating the 10-band spline gains onto the available hardware bands so DSP never crashes on any Samsung, Xiaomi, OnePlus, Sony, or Motorola device.
+
+### Rule B2 — Universal Bluetooth Codec & Per-Output Route Handling
+- Must support all Bluetooth audio codecs transparently (**SBC, AAC, aptX, aptX HD, aptX Adaptive, aptX Lossless, LDAC, LHDC/LLAC, Samsung SSC, and BLE Audio LC3**).
+- Register `AudioDeviceCallback` in `MainActivity.kt` to detect active output device (`Bluetooth A2DP`, `BLE Audio`, `USB-C DAC`, `Wired Headphones`, `Speaker`), device name, hardware sample rates, and bit-depth encodings.
+- **Bluetooth Inter-Sample Peak Protection**: Automatically clamp the hardware limiter ceiling to **`-0.5 dBFS`** when streaming over Bluetooth to prevent resampler/encoder clipping on 24-bit/192kHz tracks.
+- **Per-Output DSP Profiles & Absolute Volume Protection**: Support automatic EQ preset switching per audio output type and provide a **"Disable DVC on Bluetooth Absolute Volume"** toggle.
+
+### Rule B3 — Cloud API Rate-Limit & Hi-Fi Seek Bottleneck Prevention
+- **Two-Pass Indexing**: Never fire unbounded parallel `Range` requests during library scans. Use bulk directory listing first, followed by a max-3-concurrent token-bucket queue with HTTP `429` exponential backoff for `bytes=0-65535` tag inspection.
+- **Mid-Stream Token Refresh**: `CloudStreamProxy` must transparently refresh expired OAuth2 tokens or re-sign S3 SigV4 URLs on incoming `Range` requests so paused streams never fail after 1 hour.
