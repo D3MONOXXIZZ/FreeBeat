@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 
 /// Authentic Google Pixel Material 3 Expressive Design System (Material You).
 ///
@@ -17,12 +17,12 @@ class PixelTheme {
   // Text Theme: Google Sans for headings/titles, Roboto for body
   // ───────────────────────────────────────────────────────────────────────────
   static TextTheme _buildTextTheme(ColorScheme cs) {
-    // Primary display & title font: Google Sans style
-    final googleSansFamily = GoogleFonts.openSans().fontFamily;
-    const fontFallbacks = ['Google Sans', 'Open Sans', 'Roboto', 'sans-serif'];
+    // Primary display & title font: Google Sans (Stock Pixel system font)
+    const googleSansFamily = 'Google Sans';
+    const fontFallbacks = ['Open Sans', 'Roboto', 'sans-serif'];
 
-    // Body font: Roboto
-    final robotoFamily = GoogleFonts.roboto().fontFamily;
+    // Body font: Roboto (Standard Android system font)
+    const robotoFamily = 'Roboto';
 
     TextStyle headingStyle({
       required double fontSize,
@@ -151,37 +151,76 @@ class PixelTheme {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Dark Theme (Default for Pixel Hi-Fi Experience)
+  // Dual Color Schemes (Explicitly derived from seed #6750A4 or wallpaper)
   // ───────────────────────────────────────────────────────────────────────────
-  static ThemeData buildDarkTheme({
+
+  /// Generates the complete Material 3 Dark ColorScheme explicitly derived from
+  /// the primary seed color #6750A4 (or Android wallpaper dynamic colors).
+  static ColorScheme buildDarkColorScheme({
     ColorScheme? wallpaperDynamicScheme,
     Color activeTrackSeedColor = kSeedDeepViolet,
   }) {
-    // Generate authentic M3 Monet ColorScheme from seed
     final baseScheme = wallpaperDynamicScheme ??
         ColorScheme.fromSeed(
           seedColor: kSeedDeepViolet,
           brightness: Brightness.dark,
         );
 
-    // If an active track seed color is passed, blend subtly while keeping violet foundation
-    final ColorScheme colorScheme;
     if (activeTrackSeedColor != kSeedDeepViolet &&
         wallpaperDynamicScheme == null) {
       final trackScheme = ColorScheme.fromSeed(
         seedColor: activeTrackSeedColor,
         brightness: Brightness.dark,
       );
-      colorScheme = baseScheme.copyWith(
+      return baseScheme.copyWith(
         primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
         primaryContainer: Color.lerp(
             baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
         tertiary: trackScheme.tertiary,
       );
-    } else {
-      colorScheme = baseScheme;
     }
+    return baseScheme;
+  }
 
+  /// Generates the complete Material 3 Light ColorScheme explicitly derived from
+  /// the primary seed color #6750A4 (or Android wallpaper dynamic colors).
+  static ColorScheme buildLightColorScheme({
+    ColorScheme? wallpaperDynamicScheme,
+    Color activeTrackSeedColor = kSeedDeepViolet,
+  }) {
+    final baseScheme = wallpaperDynamicScheme ??
+        ColorScheme.fromSeed(
+          seedColor: kSeedDeepViolet,
+          brightness: Brightness.light,
+        );
+
+    if (activeTrackSeedColor != kSeedDeepViolet &&
+        wallpaperDynamicScheme == null) {
+      final trackScheme = ColorScheme.fromSeed(
+        seedColor: activeTrackSeedColor,
+        brightness: Brightness.light,
+      );
+      return baseScheme.copyWith(
+        primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
+        primaryContainer: Color.lerp(
+            baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
+        tertiary: trackScheme.tertiary,
+      );
+    }
+    return baseScheme;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Dark Theme (Default for Pixel Hi-Fi Experience)
+  // ───────────────────────────────────────────────────────────────────────────
+  static ThemeData buildDarkTheme({
+    ColorScheme? wallpaperDynamicScheme,
+    Color activeTrackSeedColor = kSeedDeepViolet,
+  }) {
+    final colorScheme = buildDarkColorScheme(
+      wallpaperDynamicScheme: wallpaperDynamicScheme,
+      activeTrackSeedColor: activeTrackSeedColor,
+    );
     return _buildTheme(colorScheme, Brightness.dark);
   }
 
@@ -192,30 +231,16 @@ class PixelTheme {
     ColorScheme? wallpaperDynamicScheme,
     Color activeTrackSeedColor = kSeedDeepViolet,
   }) {
-    final baseScheme = wallpaperDynamicScheme ??
-        ColorScheme.fromSeed(
-          seedColor: kSeedDeepViolet,
-          brightness: Brightness.light,
-        );
-
-    final ColorScheme colorScheme;
-    if (activeTrackSeedColor != kSeedDeepViolet &&
-        wallpaperDynamicScheme == null) {
-      final trackScheme = ColorScheme.fromSeed(
-        seedColor: activeTrackSeedColor,
-        brightness: Brightness.light,
-      );
-      colorScheme = baseScheme.copyWith(
-        primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
-        primaryContainer: Color.lerp(
-            baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
-        tertiary: trackScheme.tertiary,
-      );
-    } else {
-      colorScheme = baseScheme;
-    }
-
+    final colorScheme = buildLightColorScheme(
+      wallpaperDynamicScheme: wallpaperDynamicScheme,
+      activeTrackSeedColor: activeTrackSeedColor,
+    );
     return _buildTheme(colorScheme, Brightness.light);
+  }
+
+  /// Builds a complete Material 3 theme directly from an explicit ColorScheme.
+  static ThemeData buildThemeFromScheme(ColorScheme cs, Brightness brightness) {
+    return _buildTheme(cs, brightness);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -270,7 +295,66 @@ class PixelTheme {
         surfaceTintColor: cs.surfaceTint,
         foregroundColor: cs.onSurface,
         centerTitle: false,
-        titleTextStyle: textTheme.headlineMedium,
+        titleTextStyle: textTheme.headlineMedium?.copyWith(
+          color: cs.onSurface,
+        ),
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness:
+              brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: brightness,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        ),
+      ),
+
+      // Global Icon Theme
+      iconTheme: IconThemeData(
+        color: cs.onSurface,
+      ),
+
+      // List Tile Theme
+      listTileTheme: ListTileThemeData(
+        iconColor: cs.onSurfaceVariant,
+        textColor: cs.onSurface,
+        titleTextStyle: textTheme.titleMedium?.copyWith(color: cs.onSurface),
+        subtitleTextStyle: textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+      ),
+
+      // Floating SnackBar
+      snackBarTheme: SnackBarThemeData(
+        elevation: 0,
+        backgroundColor: cs.inverseSurface,
+        contentTextStyle: TextStyle(color: cs.onInverseSurface),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        behavior: SnackBarBehavior.floating,
+      ),
+
+      // Popup Menu Theme
+      popupMenuTheme: PopupMenuThemeData(
+        elevation: 2,
+        color: cs.surfaceContainerHigh,
+        surfaceTintColor: cs.surfaceTint,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: TextStyle(color: cs.onSurface),
+      ),
+
+      // Input Decoration Theme
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+        labelStyle: TextStyle(color: cs.onSurfaceVariant),
+        hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
       ),
 
       // Bottom Navigation Bar: Tall (80dp+ height) with stadium pill indicator, no shadow
@@ -285,7 +369,7 @@ class PixelTheme {
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontFamily: GoogleFonts.roboto().fontFamily,
+            fontFamily: 'Roboto',
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             color: isSelected ? cs.onSurface : cs.onSurfaceVariant,

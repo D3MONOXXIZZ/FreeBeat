@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import '../core/models/audio_quality_settings.dart';
@@ -51,6 +52,52 @@ final cloudStreamProxyProvider = Provider<CloudStreamProxy>((ref) {
   ref.onDispose(proxy.dispose);
   return proxy;
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic System Theme Mode & Brightness Providers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// System theme mode provider bound to ThemeMode.system by default.
+/// Automatically reacts to system dark/light mode preference changes and permits user override.
+final themeModeProvider =
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  return ThemeModeNotifier();
+});
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier([super.initial = ThemeMode.system]);
+
+  void setMode(ThemeMode mode) {
+    state = mode;
+  }
+
+  void toggle() {
+    if (state == ThemeMode.system) {
+      state = ThemeMode.dark;
+    } else if (state == ThemeMode.dark) {
+      state = ThemeMode.light;
+    } else {
+      state = ThemeMode.system;
+    }
+  }
+}
+
+/// Provider tracking system-level platform brightness in real time.
+final systemBrightnessProvider =
+    StateNotifierProvider<SystemBrightnessNotifier, Brightness>((ref) {
+  return SystemBrightnessNotifier();
+});
+
+class SystemBrightnessNotifier extends StateNotifier<Brightness> {
+  SystemBrightnessNotifier()
+      : super(WidgetsBinding.instance.platformDispatcher.platformBrightness);
+
+  void updateBrightness(Brightness brightness) {
+    if (state != brightness) {
+      state = brightness;
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cloud Accounts & Unified Track Catalog State

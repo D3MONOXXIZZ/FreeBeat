@@ -120,7 +120,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                                   playback.isPlaying
                                       ? Icons.equalizer_rounded
                                       : track.providerType.icon,
-                                  color: Colors.white,
+                                  color: cs.onPrimary,
                                   size: 22,
                                 ),
                               ),

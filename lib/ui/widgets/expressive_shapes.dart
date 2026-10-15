@@ -265,7 +265,7 @@ class SpotifyQuickCard extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     isPlaying ? Icons.equalizer_rounded : icon,
-                    color: Colors.white,
+                    color: cs.onPrimary,
                     size: 26,
                   ),
                 ),

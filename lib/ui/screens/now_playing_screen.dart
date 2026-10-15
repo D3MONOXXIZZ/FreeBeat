@@ -240,7 +240,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                             ? Icons.favorite_rounded
                             : Icons.favorite_border_rounded,
                         color: track.isFavorite
-                            ? Colors.pinkAccent
+                            ? cs.error
                             : cs.onSurfaceVariant,
                       ),
                       onPressed: () {

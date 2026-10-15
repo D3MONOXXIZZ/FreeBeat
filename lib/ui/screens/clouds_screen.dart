@@ -274,6 +274,87 @@ class CloudsScreen extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+
+        // 4. Appearance & Material 3 Dynamic Theming (Pixel Settings Style)
+        Material(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(28),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.palette_rounded, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Appearance & Dynamic Theming',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            'Monet seed (#6750A4) with automatic Dark/Light adaptation',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ThemeMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.system,
+                        label: Text('System'),
+                        icon: Icon(Icons.brightness_auto_rounded, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        label: Text('Light'),
+                        icon: Icon(Icons.light_mode_rounded, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        label: Text('Dark'),
+                        icon: Icon(Icons.dark_mode_rounded, size: 16),
+                      ),
+                    ],
+                    selected: {ref.watch(themeModeProvider)},
+                    onSelectionChanged: (newSelection) {
+                      PixelHaptics.tick();
+                      ref
+                          .read(themeModeProvider.notifier)
+                          .setMode(newSelection.first);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Bound to system default. Switches immediately when toggling Dark/Light mode in Android settings without restarting the app.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -819,20 +900,20 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 child: FilledButton.icon(
                   onPressed: _isGoogleLoading ? null : _signInWithGoogle,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF4285F4),
-                    foregroundColor: Colors.white,
+                    backgroundColor: cs.primary,
+                    foregroundColor: cs.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   icon: _isGoogleLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: cs.onPrimary,
                           ),
                         )
                       : const Icon(Icons.account_circle_rounded, size: 20),
@@ -1121,12 +1202,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 child: FilledButton.icon(
                   onPressed: _isScanningWifi ? null : _scanWifi,
                   icon: _isScanningWifi
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: cs.onPrimary,
                           ),
                         )
                       : const Icon(Icons.radar_rounded, size: 18),
