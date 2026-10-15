@@ -1,170 +1,419 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Authentic Google Pixel Material 3 Expressive Theme.
-/// Features:
-/// - Deep obsidian/violet layered dark surfaces (matching M3 Expressive references)
-/// - Vibrant pastel accent roles: Electric Lavender (#A78BFA), Neon Lime (#C4F93B), Coral Pink (#F472B6)
-/// - Authentic Google Sans / Plus Jakarta Sans display typography
-/// - Expressive 24–32dp card squircle curvature and 999dp pill chips
+/// Authentic Google Pixel Material 3 Expressive Design System (Material You).
+///
+/// Strictly adheres to:
+/// 1. Monet Dynamic Palette using base seed #6750A4 (Deep Violet) or wallpaper dynamic colors.
+/// 2. Full M3 color roles & tonal elevation (zero heavy drop shadows).
+/// 3. Google Sans (or geometric sans fallback) for all headings/titles and Roboto for body text.
+/// 4. Extremely rounded shapes: 28dp for dialogs, cards, FABs; Stadium/pill (100dp) for buttons, chips, indicators.
+/// 5. Collapsing Large Top App Bars, 80dp+ NavigationBar with pill active indicator, thick M3 switches and sliders.
 class PixelTheme {
-  // Signature Material 3 Expressive Dark Palette Tokens
-  static const Color darkBackground = Color(0xFF0C0D14);
-  static const Color surfaceLowest = Color(0xFF07080D);
-  static const Color surfaceLow = Color(0xFF12131D);
-  static const Color surfaceDefault = Color(0xFF181A26);
-  static const Color surfaceHigh = Color(0xFF222433);
-  static const Color surfaceHighest = Color(0xFF2C2E42);
+  // Base seed color specified by user: Deep Violet (#6750A4)
+  static const Color kSeedDeepViolet = Color(0xFF6750A4);
 
-  static const Color accentLavender = Color(0xFFA78BFA);
-  static const Color accentNeonLime = Color(0xFFC4F93B);
-  static const Color accentCoral = Color(0xFFFB7185);
-  static const Color accentSky = Color(0xFF38BDF8);
+  // ───────────────────────────────────────────────────────────────────────────
+  // Text Theme: Google Sans for headings/titles, Roboto for body
+  // ───────────────────────────────────────────────────────────────────────────
+  static TextTheme _buildTextTheme(ColorScheme cs) {
+    // Primary display & title font: Google Sans style
+    final googleSansFamily = GoogleFonts.openSans().fontFamily;
+    const fontFallbacks = ['Google Sans', 'Open Sans', 'Roboto', 'sans-serif'];
 
+    // Body font: Roboto
+    final robotoFamily = GoogleFonts.roboto().fontFamily;
+
+    TextStyle headingStyle({
+      required double fontSize,
+      required FontWeight fontWeight,
+      double? letterSpacing,
+      double? height,
+    }) {
+      return TextStyle(
+        fontFamily: googleSansFamily,
+        fontFamilyFallback: fontFallbacks,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        height: height,
+        color: cs.onSurface,
+      );
+    }
+
+    TextStyle bodyStyle({
+      required double fontSize,
+      required FontWeight fontWeight,
+      Color? color,
+      double? letterSpacing,
+      double? height,
+    }) {
+      return TextStyle(
+        fontFamily: robotoFamily,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        height: height,
+        color: color ?? cs.onSurface,
+      );
+    }
+
+    return TextTheme(
+      // Display: large hero numbers / expressive playback counters
+      displayLarge: headingStyle(
+        fontSize: 57,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1.0,
+        height: 1.12,
+      ),
+      displayMedium: headingStyle(
+        fontSize: 45,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
+        height: 1.15,
+      ),
+      displaySmall: headingStyle(
+        fontSize: 36,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.25,
+        height: 1.2,
+      ),
+
+      // Headline: Top App Bars & section heroes
+      headlineLarge: headingStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
+      ),
+      headlineMedium: headingStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.25,
+      ),
+      headlineSmall: headingStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+      ),
+
+      // Title: list items, card headers, tabs
+      titleLarge: headingStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0,
+      ),
+      titleMedium: headingStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.15,
+      ),
+      titleSmall: headingStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.1,
+      ),
+
+      // Body: Roboto body text
+      bodyLarge: bodyStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.5,
+      ),
+      bodyMedium: bodyStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: cs.onSurfaceVariant,
+        letterSpacing: 0.25,
+      ),
+      bodySmall: bodyStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        color: cs.onSurfaceVariant,
+        letterSpacing: 0.4,
+      ),
+
+      // Labels: Buttons, chips, navigation items
+      labelLarge: headingStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.1,
+      ),
+      labelMedium: headingStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+      ),
+      labelSmall: headingStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Dark Theme (Default for Pixel Hi-Fi Experience)
+  // ───────────────────────────────────────────────────────────────────────────
   static ThemeData buildDarkTheme({
     ColorScheme? wallpaperDynamicScheme,
-    required Color activeTrackSeedColor,
+    Color activeTrackSeedColor = kSeedDeepViolet,
   }) {
-    final trackScheme = ColorScheme.fromSeed(
-      seedColor: activeTrackSeedColor,
-      brightness: Brightness.dark,
-    );
+    // Generate authentic M3 Monet ColorScheme from seed
+    final baseScheme = wallpaperDynamicScheme ??
+        ColorScheme.fromSeed(
+          seedColor: kSeedDeepViolet,
+          brightness: Brightness.dark,
+        );
 
-    final dynamicPrimary = Color.lerp(accentLavender, trackScheme.primary, 0.35)!;
+    // If an active track seed color is passed, blend subtly while keeping violet foundation
+    final ColorScheme colorScheme;
+    if (activeTrackSeedColor != kSeedDeepViolet &&
+        wallpaperDynamicScheme == null) {
+      final trackScheme = ColorScheme.fromSeed(
+        seedColor: activeTrackSeedColor,
+        brightness: Brightness.dark,
+      );
+      colorScheme = baseScheme.copyWith(
+        primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
+        primaryContainer: Color.lerp(
+            baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
+        tertiary: trackScheme.tertiary,
+      );
+    } else {
+      colorScheme = baseScheme;
+    }
 
-    // Merge dynamic seed with high-contrast Expressive surfaces
-    final effectiveScheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: dynamicPrimary,
-      onPrimary: const Color(0xFF1E1035),
-      primaryContainer: const Color(0xFF372857),
-      onPrimaryContainer: const Color(0xFFEDE9FE),
-      secondary: accentNeonLime,
-      onSecondary: const Color(0xFF142400),
-      secondaryContainer: const Color(0xFF274205),
-      onSecondaryContainer: const Color(0xFFE2F899),
-      tertiary: accentCoral,
-      onTertiary: const Color(0xFF4C0519),
-      tertiaryContainer: const Color(0xFF70132B),
-      onTertiaryContainer: const Color(0xFFFFDDE4),
-      error: const Color(0xFFFFB4AB),
-      onError: const Color(0xFF690005),
-      errorContainer: const Color(0xFF93000A),
-      onErrorContainer: const Color(0xFFFFDAD6),
-      surface: darkBackground,
-      onSurface: const Color(0xFFF1F0F7),
-      onSurfaceVariant: const Color(0xFFC7C5D5),
-      outline: const Color(0xFF767487),
-      outlineVariant: const Color(0xFF454556),
-      shadow: Colors.black,
-      scrim: Colors.black,
-      inverseSurface: const Color(0xFFE3E2E9),
-      onInverseSurface: const Color(0xFF1B1B21),
-      inversePrimary: const Color(0xFF6D28D9),
-      surfaceContainerLowest: surfaceLowest,
-      surfaceContainerLow: surfaceLow,
-      surfaceContainer: surfaceDefault,
-      surfaceContainerHigh: surfaceHigh,
-      surfaceContainerHighest: surfaceHighest,
-    );
+    return _buildTheme(colorScheme, Brightness.dark);
+  }
 
-    final textTheme = GoogleFonts.plusJakartaSansTextTheme(
-      ThemeData(brightness: Brightness.dark).textTheme,
-    ).copyWith(
-      displayLarge: GoogleFonts.outfit(
-        fontSize: 34,
-        fontWeight: FontWeight.w900,
-        letterSpacing: -1.0,
-        color: effectiveScheme.onSurface,
-      ),
-      displayMedium: GoogleFonts.outfit(
-        fontSize: 28,
-        fontWeight: FontWeight.w800,
-        letterSpacing: -0.8,
-        color: effectiveScheme.onSurface,
-      ),
-      headlineLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 24,
-        fontWeight: FontWeight.w800,
-        letterSpacing: -0.5,
-        color: effectiveScheme.onSurface,
-      ),
-      headlineMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.3,
-        color: effectiveScheme.onSurface,
-      ),
-      titleLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: effectiveScheme.onSurface,
-      ),
-      titleMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color: effectiveScheme.onSurface,
-      ),
-      bodyLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        color: effectiveScheme.onSurface,
-      ),
-      bodyMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 13,
-        fontWeight: FontWeight.w400,
-        color: effectiveScheme.onSurfaceVariant,
-      ),
-      labelLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.2,
-      ),
-    );
+  // ───────────────────────────────────────────────────────────────────────────
+  // Light Theme (Full Day/Night Monet Support)
+  // ───────────────────────────────────────────────────────────────────────────
+  static ThemeData buildLightTheme({
+    ColorScheme? wallpaperDynamicScheme,
+    Color activeTrackSeedColor = kSeedDeepViolet,
+  }) {
+    final baseScheme = wallpaperDynamicScheme ??
+        ColorScheme.fromSeed(
+          seedColor: kSeedDeepViolet,
+          brightness: Brightness.light,
+        );
+
+    final ColorScheme colorScheme;
+    if (activeTrackSeedColor != kSeedDeepViolet &&
+        wallpaperDynamicScheme == null) {
+      final trackScheme = ColorScheme.fromSeed(
+        seedColor: activeTrackSeedColor,
+        brightness: Brightness.light,
+      );
+      colorScheme = baseScheme.copyWith(
+        primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
+        primaryContainer: Color.lerp(
+            baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
+        tertiary: trackScheme.tertiary,
+      );
+    } else {
+      colorScheme = baseScheme;
+    }
+
+    return _buildTheme(colorScheme, Brightness.light);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Shared M3 Theme Builder (Shapes, Corner Radii, Elevation & Components)
+  // ───────────────────────────────────────────────────────────────────────────
+  static ThemeData _buildTheme(ColorScheme cs, Brightness brightness) {
+    final textTheme = _buildTextTheme(cs);
 
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: effectiveScheme,
-      scaffoldBackgroundColor: effectiveScheme.surface,
+      brightness: brightness,
+      colorScheme: cs,
+      scaffoldBackgroundColor: cs.surface,
       textTheme: textTheme,
+
+      // Zero drop shadow, tonal elevation via surfaceContainer
       cardTheme: CardThemeData(
         elevation: 0,
-        color: effectiveScheme.surfaceContainerLow,
+        color: cs.surfaceContainerLow,
+        surfaceTintColor: cs.surfaceTint,
+        margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(28),
         ),
       ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: effectiveScheme.surfaceContainerLowest,
-        indicatorColor: effectiveScheme.primaryContainer,
-        height: 76,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+
+      // Dialogs: Strict 28dp corner radius
+      dialogTheme: DialogThemeData(
+        elevation: 0,
+        backgroundColor: cs.surfaceContainerHigh,
+        surfaceTintColor: cs.surfaceTint,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
         ),
+      ),
+
+      // BottomSheet: 28dp top radius, tonal elevation
+      bottomSheetTheme: BottomSheetThemeData(
+        elevation: 0,
+        backgroundColor: cs.surfaceContainerLow,
+        surfaceTintColor: cs.surfaceTint,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+
+      // Large Top App Bar: Blends seamlessly with background, tints on scroll
+      appBarTheme: AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 2,
+        backgroundColor: cs.surface,
+        surfaceTintColor: cs.surfaceTint,
+        foregroundColor: cs.onSurface,
+        centerTitle: false,
+        titleTextStyle: textTheme.headlineMedium,
+      ),
+
+      // Bottom Navigation Bar: Tall (80dp+ height) with stadium pill indicator, no shadow
+      navigationBarTheme: NavigationBarThemeData(
+        height: 82,
+        elevation: 0,
+        backgroundColor: cs.surfaceContainer,
+        surfaceTintColor: cs.surfaceTint,
+        indicatorColor: cs.secondaryContainer,
+        indicatorShape: const StadiumBorder(),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return TextStyle(
+            fontFamily: GoogleFonts.roboto().fontFamily,
             fontSize: 12,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final isSelected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
             color: isSelected
-                ? effectiveScheme.onSurface
-                : effectiveScheme.onSurfaceVariant,
+                ? cs.onSecondaryContainer
+                : cs.onSurfaceVariant,
           );
         }),
       ),
-      chipTheme: ChipThemeData(
-        backgroundColor: effectiveScheme.surfaceContainerHigh,
+
+      // Floating Action Button: 28dp corner radius, Primary Container fill
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        elevation: 0,
+        focusElevation: 0,
+        hoverElevation: 0,
+        highlightElevation: 0,
+        backgroundColor: cs.primaryContainer,
+        foregroundColor: cs.onPrimaryContainer,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(28),
         ),
       ),
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: effectiveScheme.surfaceContainerLow,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+
+      // Filled Button: Stadium pill shape with generous horizontal padding
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          elevation: 0,
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          textStyle: textTheme.labelLarge,
         ),
+      ),
+
+      // Outlined Button: Stadium pill shape
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          side: BorderSide(color: cs.outlineVariant),
+          textStyle: textTheme.labelLarge,
+        ),
+      ),
+
+      // Chips: Fully pill-shaped stadium borders
+      chipTheme: ChipThemeData(
+        elevation: 0,
+        pressElevation: 0,
+        shape: const StadiumBorder(),
+        side: BorderSide.none,
+        backgroundColor: cs.surfaceContainerHigh,
+        selectedColor: cs.secondaryContainer,
+        labelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurface,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+
+      // Segmented Button: Fully pill-shaped stadium borders
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          elevation: const WidgetStatePropertyAll(0),
+          shape: const WidgetStatePropertyAll(StadiumBorder()),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return cs.secondaryContainer;
+            }
+            return cs.surfaceContainerHigh;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return cs.onSecondaryContainer;
+            }
+            return cs.onSurfaceVariant;
+          }),
+        ),
+      ),
+
+      // Switches: Thick, expressive M3 switch with prominent thumb
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return cs.onPrimary;
+          }
+          return cs.outline;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return cs.primary;
+          }
+          return cs.surfaceContainerHighest;
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.transparent;
+          }
+          return cs.outline;
+        }),
+      ),
+
+      // Sliders: Thick expressive track, pill thumb
+      sliderTheme: SliderThemeData(
+        trackHeight: 12,
+        thumbShape: const RoundSliderThumbShape(
+          enabledThumbRadius: 10,
+          elevation: 0,
+        ),
+        activeTrackColor: cs.primary,
+        inactiveTrackColor: cs.surfaceContainerHighest,
+        thumbColor: cs.primary,
+        overlayColor: cs.primary.withValues(alpha: 0.12),
+      ),
+
+      // Dividers: Subtle outline variant
+      dividerTheme: DividerThemeData(
+        color: cs.outlineVariant.withValues(alpha: 0.4),
+        thickness: 1,
+        space: 1,
       ),
     );
   }

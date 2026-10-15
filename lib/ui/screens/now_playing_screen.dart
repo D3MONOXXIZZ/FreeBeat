@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
@@ -203,23 +202,19 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                             track.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.outfit(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.6,
-                              color: cs.onSurface,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '${track.artist} • ${track.album}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurfaceVariant,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
                       ),
@@ -394,21 +389,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
         aspectRatio: 1.0,
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(36),
-            gradient: RadialGradient(
-              colors: [
-                track.dominantColor.withValues(alpha: 0.75),
-                cs.surfaceContainerHighest,
-              ],
-              radius: 0.9,
+            borderRadius: BorderRadius.circular(28),
+            color: cs.surfaceContainerHigh,
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: track.dominantColor.withValues(alpha: 0.35),
-                blurRadius: 36,
-                offset: const Offset(0, 18),
-              ),
-            ],
           ),
           child: Stack(
             alignment: Alignment.center,
@@ -418,11 +404,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                 child: Container(
                   width: 170,
                   height: 170,
-                  color: Colors.black.withValues(alpha: 0.25),
+                  color: cs.primaryContainer,
                   child: Icon(
                     track.providerType.icon,
                     size: 74,
-                    color: Colors.white,
+                    color: cs.onPrimaryContainer,
                   ),
                 ),
               ),
@@ -433,15 +419,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(16),
+                    color: cs.secondaryContainer,
+                    borderRadius: BorderRadius.circular(100),
                   ),
                   child: Text(
                     '${track.bitDepth}-BIT / ${(track.sampleRateHz / 1000).toInt()}kHz',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: cs.onSecondaryContainer,
                     ),
                   ),
                 ),
@@ -465,8 +451,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       key: const ValueKey('lyrics_view'),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(32),
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.35),
+          width: 1,
+        ),
       ),
       child: ListView.separated(
         physics: const BouncingScrollPhysics(),

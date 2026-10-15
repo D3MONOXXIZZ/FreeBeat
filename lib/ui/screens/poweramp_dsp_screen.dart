@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/models/poweramp_dsp_state.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/rotary_knob.dart';
 
 /// Poweramp-Grade 10-Band Equalizer, Preamp, Rotary Tone & Spatial DSP Studio.
+/// Strictly implements Google Material 3 Expressive guidelines:
+/// 1. M3 Large Top App Bar (`SliverAppBar.large`).
+/// 2. Stadium-pill chips and preset selector.
+/// 3. Distinct, rounded 28dp `surfaceContainerLow` cards grouping EQ, Tone, and Audio Controls.
+/// 4. Thick expressive sliders and rotary controls with zero drop shadows.
 class PowerampDspScreen extends ConsumerStatefulWidget {
   const PowerampDspScreen({super.key});
 
@@ -22,192 +25,209 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final dsp = ref.watch(powerampDspProvider);
     final notifier = ref.read(powerampDspProvider.notifier);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 140),
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Header & Preset Picker Row
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Poweramp DSP Studio',
-                      style: GoogleFonts.outfit(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    Text(
-                      '64-Bit Float • Preamp + 10-Band ISO EQ + Hardware Limiter',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                      ),
-                    ),
-                  ],
-                ),
+    return Scaffold(
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // ───────────────────────────────────────────────────────────────────
+          // 1. M3 Large Top App Bar (Collapses & Tints on Scroll)
+          // ───────────────────────────────────────────────────────────────────
+          SliverAppBar(
+            pinned: true,
+            title: Text(
+              'Poweramp DSP Studio',
+              style: textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
-              FilledButton.tonalIcon(
-                onPressed: () => _showPresetPickerSheet(context, dsp, notifier),
-                icon: const Icon(Icons.bookmarks_rounded, size: 16),
-                label: Text(
-                  kBuiltInDspPresets
-                      .where((p) => p.id == dsp.activePresetId)
-                      .map((p) => p.name)
-                      .firstOrNull ??
-                      'Custom Preset',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: FilledButton.tonalIcon(
+                  onPressed: () =>
+                      _showPresetPickerSheet(context, dsp, notifier),
+                  icon: const Icon(Icons.bookmarks_rounded, size: 16),
+                  label: Text(
+                    kBuiltInDspPresets
+                            .where((p) => p.id == dsp.activePresetId)
+                            .map((p) => p.name)
+                            .firstOrNull ??
+                        'Custom Preset',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
 
-          // 2. Top Hardware Power Toggles: EQ, TONE, LIMITER, DVC, FLAT
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('EQ'),
-                  selected: dsp.eqEnabled,
-                  onSelected: notifier.toggleEq,
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('TONE'),
-                  selected: dsp.toneEnabled,
-                  onSelected: notifier.toggleTone,
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('LIMITER'),
-                  selected: dsp.limiterEnabled,
-                  onSelected: notifier.toggleLimiter,
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('DVC'),
-                  selected: dsp.dvcEnabled,
-                  onSelected: notifier.toggleDvc,
-                ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  avatar: const Icon(Icons.restart_alt_rounded, size: 16),
-                  label: const Text('Reset Flat'),
-                  onPressed: notifier.resetFlat,
-                ),
-              ],
+          // ───────────────────────────────────────────────────────────────────
+          // 2. Hardware Power Toggles & Preset Row
+          // ───────────────────────────────────────────────────────────────────
+          SliverToBoxAdapter(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('EQ'),
+                    selected: dsp.eqEnabled,
+                    onSelected: notifier.toggleEq,
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('TONE'),
+                    selected: dsp.toneEnabled,
+                    onSelected: notifier.toggleTone,
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('LIMITER'),
+                    selected: dsp.limiterEnabled,
+                    onSelected: notifier.toggleLimiter,
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('DVC'),
+                    selected: dsp.dvcEnabled,
+                    onSelected: notifier.toggleDvc,
+                  ),
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.restart_alt_rounded, size: 16),
+                    label: const Text('Reset Flat'),
+                    onPressed: notifier.resetFlat,
+                  ),
+                ],
+              ),
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-          // 3. Interactive Frequency Response Spline Graph (20 Hz – 20 kHz)
-          Container(
-            height: 155,
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: dsp.isClippingRisk
-                    ? Colors.redAccent
-                    : cs.primary.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Stack(
-              children: [
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: _FrequencyResponseSplinePainter(
-                    dsp: dsp,
-                    lineColor: cs.primary,
-                    gridColor: cs.onSurfaceVariant.withValues(alpha: 0.18),
+          // ───────────────────────────────────────────────────────────────────
+          // 3. Frequency Response Spline Card (28dp Rounded Surface Container)
+          // ───────────────────────────────────────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(
+              child: Container(
+                height: 160,
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: dsp.isClippingRisk
+                        ? cs.error
+                        : cs.outlineVariant.withValues(alpha: 0.35),
                   ),
                 ),
-                Positioned(
-                  top: 0,
-                  left: 4,
-                  child: Text(
-                    'PREAMP ${dsp.preampDb >= 0 ? "+" : ""}${dsp.preampDb.toStringAsFixed(1)} dB • PEAK ${dsp.maxPeakDb >= 0 ? "+" : ""}${dsp.maxPeakDb.toStringAsFixed(1)} dB',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      color: cs.primary,
+                child: Stack(
+                  children: [
+                    CustomPaint(
+                      size: Size.infinite,
+                      painter: _FrequencyResponseSplinePainter(
+                        dsp: dsp,
+                        lineColor: cs.primary,
+                        gridColor: cs.outlineVariant.withValues(alpha: 0.25),
+                      ),
                     ),
-                  ),
-                ),
-                if (dsp.isClippingRisk)
-                  Positioned(
-                    top: 0,
-                    right: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'CLIPPING RISK (ENABLE LIMITER)',
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      child: Text(
+                        'PREAMP ${dsp.preampDb >= 0 ? "+" : ""}${dsp.preampDb.toStringAsFixed(1)} dB • PEAK ${dsp.maxPeakDb >= 0 ? "+" : ""}${dsp.maxPeakDb.toStringAsFixed(1)} dB',
                         style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.redAccent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.primary,
                         ),
                       ),
                     ),
-                  ),
-              ],
+                    if (dsp.isClippingRisk)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'CLIPPING RISK (LIMITER)',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-          // 4. Sub-Tab Switcher: [Preamp + 10-Band EQ] vs [Rotary Tone & Stereo X]
-          Row(
-            children: [
-              Expanded(
-                child: PixelFilterPill(
-                  label: 'Preamp + 10-Band EQ',
-                  isSelected: _subTab == 0,
-                  icon: Icons.equalizer_rounded,
-                  onTap: () => setState(() => _subTab = 0),
-                ),
+          // ───────────────────────────────────────────────────────────────────
+          // 4. Sub-Tab Switcher: [Preamp + 10-Band EQ] vs [Tone Knobs & Stereo X]
+          // ───────────────────────────────────────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _DspSubTabButton(
+                      label: 'Preamp + 10-Band EQ',
+                      isSelected: _subTab == 0,
+                      icon: Icons.equalizer_rounded,
+                      onTap: () => setState(() => _subTab = 0),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _DspSubTabButton(
+                      label: 'Tone Knobs & Stereo X',
+                      isSelected: _subTab == 1,
+                      icon: Icons.radio_button_checked_rounded,
+                      onTap: () => setState(() => _subTab = 1),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: PixelFilterPill(
-                  label: 'Tone Knobs & Stereo X',
-                  isSelected: _subTab == 1,
-                  icon: Icons.radio_button_checked_rounded,
-                  onTap: () => setState(() => _subTab = 1),
-                ),
-              ),
-            ],
+            ),
           ),
 
-          const SizedBox(height: 16),
+          const SliverToBoxAdapter(child: SizedBox(height: 14)),
 
-          if (_subTab == 0)
-            _buildPreampAnd10BandFaders(context, dsp, notifier)
-          else
-            _buildRotaryToneAndSpatialControls(context, dsp, notifier),
+          // ───────────────────────────────────────────────────────────────────
+          // 5. Main DSP Content: EQ or Tone Knobs inside 28dp Surface Cards
+          // ───────────────────────────────────────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 140),
+            sliver: SliverToBoxAdapter(
+              child: _subTab == 0
+                  ? _buildPreampAnd10BandFaders(context, dsp, notifier)
+                  : _buildRotaryToneAndSpatialControls(context, dsp, notifier),
+            ),
+          ),
         ],
       ),
     );
@@ -219,11 +239,16 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
     PowerampDspNotifier notifier,
   ) {
     final cs = Theme.of(context).colorScheme;
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.35),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,12 +276,13 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                   style: TextStyle(
                     fontSize: 11,
                     color: cs.primary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             height: 270,
             child: SingleChildScrollView(
@@ -313,31 +339,36 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
       children: [
         // 1. Three Poweramp Tactile Rotary Knobs: BASS, TREBLE, STEREO X
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 14),
           decoration: BoxDecoration(
             color: cs.surfaceContainerLow,
             borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               PowerampRotaryKnob(
                 label: 'BASS TONE',
-                subtitle: '${dsp.bassFreqHz.toInt()} Hz Low-Shelf',
+                subtitle: '${dsp.bassFreqHz.toInt()} Hz Shelf',
                 value: dsp.bassGain,
                 accentColor: cs.primary,
                 onChanged: notifier.setBassTone,
               ),
               PowerampRotaryKnob(
                 label: 'TREBLE AIR',
-                subtitle: '${(dsp.trebleFreqHz / 1000).toInt()} kHz High-Shelf',
+                subtitle:
+                    '${(dsp.trebleFreqHz / 1000).toInt()} kHz Shelf',
                 value: dsp.trebleGain,
                 accentColor: cs.tertiary,
                 onChanged: notifier.setTrebleTone,
               ),
               PowerampRotaryKnob(
                 label: 'STEREO X',
-                subtitle: 'Mid/Side Width',
+                subtitle: 'Width Expansion',
                 value: dsp.stereoExpansion,
                 accentColor: cs.secondary,
                 onChanged: notifier.setStereoExpansion,
@@ -345,14 +376,19 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 14),
 
-        // 2. Balance, Mono, Tempo & Crossfade Card
+        const SizedBox(height: 16),
+
+        // 2. Settings-Style Grouped Card for Balance, Tempo, Crossfade & Reverb
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: cs.surfaceContainerLow,
             borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,16 +397,22 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'L/R Channel Balance (${dsp.balance == 0 ? "Center" : dsp.balance.toStringAsFixed(2)})',
+                    'L/R Balance (${dsp.balance == 0 ? "Center" : dsp.balance.toStringAsFixed(2)})',
                     style: const TextStyle(
-                      fontSize: 13.5,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   Row(
                     children: [
-                      const Text('Mono Mix', style: TextStyle(fontSize: 12)),
-                      const SizedBox(width: 6),
+                      const Text(
+                        'Mono Mix',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Switch(
                         value: dsp.monoMix,
                         onChanged: notifier.toggleMonoMix,
@@ -386,11 +428,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                 divisions: 40,
                 onChanged: notifier.setBalance,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 'Playback Tempo / Speed (${dsp.tempo.toStringAsFixed(2)}x)',
                 style: const TextStyle(
-                  fontSize: 13.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -401,11 +443,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                 divisions: 30,
                 onChanged: notifier.setTempo,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 'Gapless Crossfade (${(quality.crossfadeDurationMs / 1000).toStringAsFixed(1)}s)',
                 style: const TextStyle(
-                  fontSize: 13.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -418,15 +460,15 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                     .read(audioQualityProvider.notifier)
                     .setCrossfadeDuration(v.round()),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               const Text(
                 'Acoustic Room Reverb',
                 style: TextStyle(
-                  fontSize: 13.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -453,11 +495,15 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
     PixelHaptics.sheetExpand();
     showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (ctx) {
         final presets = notifier.allPresets;
         return SafeArea(
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
               const Text(
                 'Poweramp & Audiophile EQ Presets',
@@ -490,6 +536,72 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _DspSubTabButton extends StatelessWidget {
+  const _DspSubTabButton({
+    required this.label,
+    required this.isSelected,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: () {
+        PixelHaptics.tick();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(100),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        decoration: BoxDecoration(
+          color: isSelected ? cs.secondaryContainer : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: isSelected ? cs.secondary : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected
+                  ? cs.onSecondaryContainer
+                  : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? cs.onSecondaryContainer
+                      : cs.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

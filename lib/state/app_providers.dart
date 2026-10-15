@@ -10,6 +10,8 @@ import '../core/storage/secure_credential_store.dart';
 import '../providers/implementations/network_and_saf_connectors.dart';
 import '../services/audio/cloud_stream_proxy.dart';
 import '../services/audio/poweramp_dsp_service.dart';
+import '../services/auth/native_cloud_auth_service.dart';
+import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +28,15 @@ final libraryDatabaseProvider = Provider<LibraryDatabase>((ref) {
 
 final connectorRegistryProvider = Provider<CloudConnectorRegistry>((ref) {
   return CloudConnectorRegistry();
+});
+
+final nativeCloudAuthServiceProvider = Provider<NativeCloudAuthService>((ref) {
+  return NativeCloudAuthService();
+});
+
+final localMediaServerDiscoveryServiceProvider =
+    Provider<LocalMediaServerDiscoveryService>((ref) {
+  return LocalMediaServerDiscoveryService();
 });
 
 final powerampDspServiceProvider = Provider<PowerampDspService>((ref) {

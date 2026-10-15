@@ -44,7 +44,7 @@ class _SpringPressScaleState extends State<SpringPressScale> {
 
 /// Google Pixel Material 3 Expressive Morphing Play/Pause Button.
 /// Smoothly morphs border radius from a circle (paused) into a squircle pill (playing)
-/// with custom Pixel LRA haptics.
+/// with custom Pixel LRA haptics, using pure M3 tonal elevation (no drop shadow).
 class MorphingPlayPauseButton extends StatelessWidget {
   const MorphingPlayPauseButton({
     super.key,
@@ -69,14 +69,11 @@ class MorphingPlayPauseButton extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           color: cs.primaryContainer,
-          borderRadius: BorderRadius.circular(isPlaying ? 24 : size / 2),
-          boxShadow: [
-            BoxShadow(
-              color: cs.primary.withValues(alpha: 0.28),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(isPlaying ? 28 : size / 2),
+          border: Border.all(
+            color: cs.primary.withValues(alpha: 0.35),
+            width: 1.5,
+          ),
         ),
         child: Center(
           child: AnimatedSwitcher(
@@ -131,7 +128,7 @@ class ScallopedBadgeClipper extends CustomClipper<Path> {
   bool shouldReclip(covariant ScallopedBadgeClipper oldClipper) => false;
 }
 
-/// Interactive Cloud Provider Filter Pill with Pixel Haptics.
+/// Interactive Cloud Provider Filter Pill with Pixel Stadium Border and Haptics.
 class PixelFilterPill extends StatelessWidget {
   const PixelFilterPill({
     super.key,
@@ -166,11 +163,11 @@ class PixelFilterPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? activeBg : cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(isSelected ? 16 : 24),
+          borderRadius: BorderRadius.circular(100), // Strict stadium pill
           border: Border.all(
             color: isSelected
-                ? (accentColor ?? cs.primary)
-                : cs.outlineVariant.withValues(alpha: 0.35),
+                ? (accentColor ?? cs.secondary)
+                : cs.outlineVariant.withValues(alpha: 0.25),
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -182,7 +179,7 @@ class PixelFilterPill extends StatelessWidget {
                 icon,
                 size: 16,
                 color: isSelected
-                    ? (accentColor ?? cs.primary)
+                    ? (accentColor ?? cs.onSecondaryContainer)
                     : cs.onSurfaceVariant,
               ),
               const SizedBox(width: 6),
@@ -192,7 +189,9 @@ class PixelFilterPill extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
+                color: isSelected
+                    ? (accentColor != null ? cs.onSurface : cs.onSecondaryContainer)
+                    : cs.onSurface,
               ),
             ),
           ],
@@ -202,7 +201,7 @@ class PixelFilterPill extends StatelessWidget {
   }
 }
 
-/// Spotify-style 2-column Quick Access Card with Material 3 Expressive squircle polish.
+/// Spotify-style 2-column Quick Access Card with Material 3 Expressive 20-28dp rounded polish.
 class SpotifyQuickCard extends StatelessWidget {
   const SpotifyQuickCard({
     super.key,
@@ -235,29 +234,20 @@ class SpotifyQuickCard extends StatelessWidget {
         duration: const Duration(milliseconds: 250),
         height: 60,
         decoration: BoxDecoration(
-          color: isPlaying ? cs.surfaceContainerHighest : cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(16),
+          color: isPlaying ? cs.surfaceContainerHighest : cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isPlaying
                 ? cs.primary
                 : cs.outlineVariant.withValues(alpha: 0.25),
             width: isPlaying ? 1.5 : 1.0,
           ),
-          boxShadow: isPlaying
-              ? [
-                  BoxShadow(
-                    color: cs.primary.withValues(alpha: 0.2),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
         ),
         child: Row(
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(15),
+                left: Radius.circular(19),
               ),
               child: Container(
                 width: 60,
@@ -319,7 +309,7 @@ class SpotifyQuickCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isPlaying
                       ? cs.primary
-                      : cs.surfaceContainerLowest.withValues(alpha: 0.6),
+                      : cs.surfaceContainerHighest,
                 ),
                 child: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -335,7 +325,7 @@ class SpotifyQuickCard extends StatelessWidget {
   }
 }
 
-/// Google Material 3 Expressive Cloud Shape Clipper (seen in Serafina showcase).
+/// Google Material 3 Expressive Cloud Shape Clipper.
 class CloudShapeClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
