@@ -7,6 +7,14 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/signal_path_sheet.dart';
 
+/// Spotify-Style + Google Material 3 Expressive Home Screen.
+/// Matches the user's reference images:
+/// - Top Bar with user avatar, dynamic time-of-day greeting, and quick actions
+/// - M3 Expressive Pill Filters ("All", "Lossless Hi-Fi", "Google Drive", "Jellyfin", "Offline", "Liked")
+/// - Spotify-style 6-item Quick Access 2-Column Grid (Liked Songs, 24-Bit FLAC, etc.)
+/// - "Your Mix" Editorial Hero Carousel with circular Play button (Direct match with Image 5)
+/// - "Jump Back In" / "Recently Played" vertical track list with song durations ("2:34", "3:34", etc.)
+/// - "Browse Clouds & Hi-Fi Formats" cards
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({
     super.key,
@@ -17,9 +25,24 @@ class HomeScreen extends ConsumerWidget {
   final VoidCallback onOpenNowPlaying;
   final ValueChanged<int> onNavigateToTab;
 
+  String _getTimeGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String _formatTrackDuration(int ms) {
+    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final tracks = ref.watch(filteredTracksProvider);
     final allTracks = ref.watch(tracksCatalogProvider);
     final accounts = ref.watch(cloudAccountsProvider);
@@ -30,149 +53,191 @@ class HomeScreen extends ConsumerWidget {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
-        // 1. Pixel Top Header & Search Pill
+        // ─────────────────────────────────────────────────────────────────────
+        // 1. Top Header: User Profile Avatar, Greeting, and Quick Actions
+        // ─────────────────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    ClipPath(
-                      clipper: ScallopedBadgeClipper(lobes: 10, depth: 0.09),
-                      child: Container(
-                        width: 42,
-                        height: 42,
-                        color: cs.primaryContainer,
-                        child: Icon(
-                          Icons.graphic_eq_rounded,
-                          color: cs.onPrimaryContainer,
-                          size: 22,
+                // User Profile Avatar with M3 Expressive scalloped border
+                SpringPressScale(
+                  onTap: () {
+                    PixelHaptics.tick();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('FreeBeat Audiophile Profile • ${accounts.length} Clouds Connected'),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'FreeBeat',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                          Text(
-                            '${accounts.length} Clouds Mounted • ${quality.shortBadge}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: cs.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SpringPressScale(
-                      onTap: () {
-                        PixelHaptics.sheetExpand();
-                        showModalBottomSheet<void>(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (_) => const SignalPathSheet(),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
+                    );
+                  },
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: cs.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.high_quality_rounded,
-                              size: 16,
-                              color: cs.onSecondaryContainer,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              quality.isLossless ? '24-BIT HI-FI' : '${quality.kbps}K',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: cs.onSecondaryContainer,
-                              ),
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [cs.primary, cs.tertiary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: cs.primary.withValues(alpha: 0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
+                        child: Center(
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: cs.onPrimary,
+                            size: 26,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFC4F93B), // Neon Lime online dot
+                            shape: BoxShape.circle,
+                            border: Border.all(color: cs.surface, width: 2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(width: 14),
 
-                // Pixel Search Bar Pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(28),
+                // Greeting & Hi-Fi Status
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getTimeGreeting(),
+                        style: textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      Text(
+                        '${accounts.length} Clouds Mounted • ${quality.shortBadge}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                  child: TextField(
-                    onChanged: (val) =>
-                        ref.read(searchQueryProvider.notifier).state = val,
-                    decoration: InputDecoration(
-                      icon: Icon(Icons.search_rounded, color: cs.onSurfaceVariant),
-                      hintText: 'Search songs, FLAC masters, or cloud drives...',
-                      border: InputBorder.none,
-                      suffixIcon: IconButton(
-                        icon: Icon(Icons.tune_rounded, color: cs.primary),
-                        tooltip: 'Open Poweramp 10-Band EQ Studio',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          onNavigateToTab(2);
-                        },
+                ),
+
+                // High-Quality Signal Path Badge
+                SpringPressScale(
+                  onTap: () {
+                    PixelHaptics.sheetExpand();
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => const SignalPathSheet(),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: cs.primary.withValues(alpha: 0.4),
                       ),
                     ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.high_quality_rounded,
+                          size: 16,
+                          color: cs.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          quality.isLossless ? 'HI-FI' : '${quality.kbps}K',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
+                const SizedBox(width: 8),
+
+                // Poweramp 10-Band EQ Quick Launch Button
+                IconButton(
+                  icon: Icon(Icons.tune_rounded, color: cs.onSurface),
+                  tooltip: 'Poweramp 10-Band EQ',
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onNavigateToTab(2);
+                  },
                 ),
               ],
             ),
           ),
         ),
 
-        // 2. Cloud Source Filter Strip
+        // ─────────────────────────────────────────────────────────────────────
+        // 2. M3 Expressive Pill Filters Row (Spotify Style)
+        // ─────────────────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 54,
+            height: 52,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              physics: const BouncingScrollPhysics(),
               children: [
                 PixelFilterPill(
-                  label: 'All Clouds (${allTracks.length})',
+                  label: 'All Tracks',
                   isSelected: selectedFilter == 'all',
-                  icon: Icons.cloud_done_rounded,
+                  icon: Icons.all_inclusive_rounded,
                   onTap: () =>
                       ref.read(selectedCloudFilterProvider.notifier).state = 'all',
+                ),
+                const SizedBox(width: 8),
+                PixelFilterPill(
+                  label: 'Lossless Hi-Fi',
+                  isSelected: selectedFilter == 'hifi',
+                  icon: Icons.graphic_eq_rounded,
+                  accentColor: const Color(0xFFC4F93B),
+                  onTap: () => ref
+                      .read(selectedCloudFilterProvider.notifier)
+                      .state = selectedFilter == 'hifi' ? 'all' : 'hifi',
                 ),
                 const SizedBox(width: 8),
                 PixelFilterPill(
                   label: 'Pinned Offline',
                   isSelected: selectedFilter == 'offline',
                   icon: Icons.download_done_rounded,
+                  accentColor: cs.tertiary,
                   onTap: () => ref
                       .read(selectedCloudFilterProvider.notifier)
-                      .state = 'offline',
+                      .state = selectedFilter == 'offline' ? 'all' : 'offline',
                 ),
                 const SizedBox(width: 8),
                 for (final provider in [
@@ -181,7 +246,6 @@ class HomeScreen extends ConsumerWidget {
                   CloudProviderType.s3,
                   CloudProviderType.oneDrive,
                   CloudProviderType.subsonic,
-                  CloudProviderType.webdav,
                 ]) ...[
                   PixelFilterPill(
                     label: provider.displayName,
@@ -190,7 +254,7 @@ class HomeScreen extends ConsumerWidget {
                     accentColor: provider.accentColor,
                     onTap: () => ref
                         .read(selectedCloudFilterProvider.notifier)
-                        .state = provider.id,
+                        .state = selectedFilter == provider.id ? 'all' : provider.id,
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -199,36 +263,167 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
 
-        // 3. Expressive Hero Carousel ("Jump Back In • Hi-Fi Cloud Masters")
+        // ─────────────────────────────────────────────────────────────────────
+        // 3. Spotify-Style 2-Column Quick-Access Grid (6 cards)
+        // ─────────────────────────────────────────────────────────────────────
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 60,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            delegate: SliverChildListDelegate([
+              // 1. Liked Songs
+              SpotifyQuickCard(
+                title: 'Liked Songs',
+                subtitle: '${allTracks.where((t) => t.isFavorite).length} favorites',
+                icon: Icons.favorite_rounded,
+                accentColor: const Color(0xFF7C3AED),
+                onTap: () {
+                  final fav = allTracks.firstWhere(
+                    (t) => t.isFavorite,
+                    orElse: () => allTracks.first,
+                  );
+                  ref.read(playbackProvider.notifier).playTrack(fav);
+                  onOpenNowPlaying();
+                },
+              ),
+              // 2. Astral Meadow (First Track)
+              if (allTracks.isNotEmpty)
+                SpotifyQuickCard(
+                  title: allTracks[0].title,
+                  subtitle: allTracks[0].artist,
+                  icon: Icons.music_note_rounded,
+                  accentColor: allTracks[0].dominantColor,
+                  isPlaying: playback.currentTrack.id == allTracks[0].id && playback.isPlaying,
+                  onTap: () {
+                    ref.read(playbackProvider.notifier).playTrack(allTracks[0]);
+                  },
+                ),
+              // 3. Blue Crane (Second Track)
+              if (allTracks.length > 1)
+                SpotifyQuickCard(
+                  title: allTracks[1].title,
+                  subtitle: allTracks[1].artist,
+                  icon: Icons.album_rounded,
+                  accentColor: allTracks[1].dominantColor,
+                  isPlaying: playback.currentTrack.id == allTracks[1].id && playback.isPlaying,
+                  onTap: () {
+                    ref.read(playbackProvider.notifier).playTrack(allTracks[1]);
+                  },
+                ),
+              // 4. Google Drive Masters
+              SpotifyQuickCard(
+                title: 'Google Drive',
+                subtitle: '24-Bit FLAC Vault',
+                icon: Icons.add_to_drive_rounded,
+                accentColor: const Color(0xFF0F9D58),
+                onTap: () {
+                  ref.read(selectedCloudFilterProvider.notifier).state =
+                      CloudProviderType.googleDrive.id;
+                },
+              ),
+              // 5. Jellyfin Hi-Res
+              SpotifyQuickCard(
+                title: 'Jellyfin Server',
+                subtitle: 'Direct Play • 192k',
+                icon: Icons.dns_rounded,
+                accentColor: const Color(0xFF00A4DC),
+                onTap: () {
+                  ref.read(selectedCloudFilterProvider.notifier).state =
+                      CloudProviderType.jellyfin.id;
+                },
+              ),
+              // 6. Poweramp 10-Band EQ
+              SpotifyQuickCard(
+                title: 'Poweramp EQ',
+                subtitle: '10-Band DSP Studio',
+                icon: Icons.graphic_eq_rounded,
+                accentColor: const Color(0xFFC4F93B),
+                onTap: () => onNavigateToTab(2),
+              ),
+            ]),
+          ),
+        ),
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 4. "Your Mix" Section (Direct visual match to Image 5)
+        // ─────────────────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Hi-Fi Cloud Masters',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      'Your Mix',
+                      style: textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC4F93B).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'Hi-Fi',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFC4F93B),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                TextButton.icon(
-                  onPressed: () {
-                    PixelHaptics.tick();
-                    onNavigateToTab(3);
+                // Circular Play Button (as seen in Image 5)
+                SpringPressScale(
+                  onTap: () {
+                    if (allTracks.isNotEmpty) {
+                      ref.read(playbackProvider.notifier).playTrack(allTracks.first);
+                    }
                   },
-                  icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-                  label: const Text('Add Cloud'),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.primary,
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.primary.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      playback.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: cs.onPrimary,
+                      size: 24,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
         ),
+
+        // Horizontal Square Cards Carousel ("Astral Meadow", "Blue Crane", "Ladder to the Moon")
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 215,
+            height: 230,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
@@ -238,9 +433,10 @@ class HomeScreen extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final track = allTracks[index];
                 final isCurrent = playback.currentTrack.id == track.id;
-                return _ExpressiveHeroCard(
+                return _SpotifyMixCard(
                   track: track,
                   isCurrent: isCurrent,
+                  isPlaying: isCurrent && playback.isPlaying,
                   onTap: () {
                     ref.read(playbackProvider.notifier).playTrack(track);
                     onOpenNowPlaying();
@@ -251,38 +447,58 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
 
-        // 4. Unified Cloud Stream List
+        // ─────────────────────────────────────────────────────────────────────
+        // 5. "Jump Back In" / "Recently Played" Track List (As in Image 5)
+        // ─────────────────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
-            child: Text(
-              'Instant Cloud Streams (${tracks.length})',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Jump back in',
+                  style: textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                Text(
+                  '${tracks.length} tracks',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
+
+        // Vertical List with Song Durations ("2:34", "3:34", "3:46", etc.)
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 140),
           sliver: SliverList.separated(
             itemCount: tracks.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, __) => const SizedBox(height: 6),
             itemBuilder: (context, index) {
               final track = tracks[index];
-              final isPlayingThis = playback.currentTrack.id == track.id;
-              return _CloudTrackTile(
+              final isCurrent = playback.currentTrack.id == track.id;
+              final isPlayingThis = isCurrent && playback.isPlaying;
+              return _SpotifyTrackRow(
                 track: track,
-                isActive: isPlayingThis,
+                isCurrent: isCurrent,
+                isPlaying: isPlayingThis,
+                durationText: _formatTrackDuration(track.durationMs),
                 onTap: () {
                   ref.read(playbackProvider.notifier).playTrack(track);
                 },
+                onToggleFavorite: () {
+                  ref.read(tracksCatalogProvider.notifier).toggleFavorite(track.id);
+                },
                 onTogglePin: () {
-                  ref
-                      .read(tracksCatalogProvider.notifier)
-                      .togglePinOffline(track.id);
+                  ref.read(tracksCatalogProvider.notifier).togglePinOffline(track.id);
                 },
               );
             },
@@ -293,15 +509,18 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _ExpressiveHeroCard extends StatelessWidget {
-  const _ExpressiveHeroCard({
+/// Spotify-style Large Square Album Card with M3 Expressive Gradient and Tags.
+class _SpotifyMixCard extends StatelessWidget {
+  const _SpotifyMixCard({
     required this.track,
     required this.isCurrent,
+    required this.isPlaying,
     required this.onTap,
   });
 
   final Track track;
   final bool isCurrent;
+  final bool isPlaying;
   final VoidCallback onTap;
 
   @override
@@ -311,123 +530,125 @@ class _ExpressiveHeroCard extends StatelessWidget {
 
     return SpringPressScale(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 350),
-        width: 270,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              seed.withValues(alpha: 0.42),
-              cs.surfaceContainerHighest,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(
-            color: isCurrent ? cs.primary : seed.withValues(alpha: 0.35),
-            width: isCurrent ? 2.0 : 1.0,
-          ),
-        ),
+      child: SizedBox(
+        width: 155,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                ClipPath(
-                  clipper: ScallopedBadgeClipper(lobes: 12, depth: 0.08),
-                  child: Container(
-                    width: 52,
-                    height: 52,
-                    color: seed.withValues(alpha: 0.35),
-                    child: Icon(
-                      track.providerType.icon,
-                      color: Colors.white,
-                      size: 24,
+            // Square Artwork Container with 20dp corners
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 155,
+              height: 155,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  colors: [
+                    seed.withValues(alpha: 0.8),
+                    seed.withValues(alpha: 0.35),
+                    cs.surfaceContainerHighest,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(
+                  color: isCurrent ? cs.primary : Colors.white.withValues(alpha: 0.08),
+                  width: isCurrent ? 2.0 : 1.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: seed.withValues(alpha: isCurrent ? 0.35 : 0.15),
+                    blurRadius: isCurrent ? 16 : 8,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Stack(
+                children: [
+                  // Center Icon / Scalloped Accent
+                  Center(
+                    child: ClipPath(
+                      clipper: ScallopedBadgeClipper(lobes: 10, depth: 0.08),
+                      child: Container(
+                        width: 58,
+                        height: 58,
+                        color: Colors.black.withValues(alpha: 0.3),
+                        child: Icon(
+                          track.providerType.icon,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
+
+                  // Top-Right Hi-Fi Chip
+                  Positioned(
+                    top: 8,
+                    right: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.38),
-                        borderRadius: BorderRadius.circular(14),
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        '${track.bitDepth}-BIT/${(track.sampleRateHz / 1000).toInt()}k ${track.codec}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        '${track.bitDepth}-BIT',
                         style: const TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 9.5,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+
+                  // Bottom-Right Floating Play Button
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isPlaying ? cs.primary : Colors.black.withValues(alpha: 0.55),
+                      ),
+                      child: Icon(
+                        isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const Spacer(),
+            const SizedBox(height: 8),
+
+            // Track Title
             Text(
               track.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: isCurrent ? cs.primary : cs.onSurface,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
+
+            // Artist & Album
             Text(
-              '${track.artist} • ${track.providerType.displayName}',
+              track.artist,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
                 color: cs.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(
-                  track.isPinnedOffline
-                      ? Icons.offline_pin_rounded
-                      : Icons.cloud_queue_rounded,
-                  size: 15,
-                  color: cs.primary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    track.isPinnedOffline
-                        ? 'Pinned Offline'
-                        : '${track.bitrateKbps} kbps Direct',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: cs.primary,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: cs.primary,
-                  size: 28,
-                ),
-              ],
             ),
           ],
         ),
@@ -436,51 +657,69 @@ class _ExpressiveHeroCard extends StatelessWidget {
   }
 }
 
-class _CloudTrackTile extends StatelessWidget {
-  const _CloudTrackTile({
+/// Spotify Track Row with Duration, Artwork Thumbnail, and Material 3 Expressive state.
+class _SpotifyTrackRow extends StatelessWidget {
+  const _SpotifyTrackRow({
     required this.track,
-    required this.isActive,
+    required this.isCurrent,
+    required this.isPlaying,
+    required this.durationText,
     required this.onTap,
+    required this.onToggleFavorite,
     required this.onTogglePin,
   });
 
   final Track track;
-  final bool isActive;
+  final bool isCurrent;
+  final bool isPlaying;
+  final String durationText;
   final VoidCallback onTap;
+  final VoidCallback onToggleFavorite;
   final VoidCallback onTogglePin;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
     return SpringPressScale(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? cs.secondaryContainer : cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isActive
-                ? cs.primary
-                : cs.outlineVariant.withValues(alpha: 0.25),
-          ),
+          color: isCurrent ? cs.surfaceContainerHigh : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: isCurrent
+              ? Border.all(color: cs.primary.withValues(alpha: 0.35))
+              : null,
         ),
         child: Row(
           children: [
+            // Artwork Thumbnail (48x48) with squircle corners
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: track.dominantColor.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(16),
+                color: track.dominantColor.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                isActive ? Icons.equalizer_rounded : track.providerType.icon,
-                color: isActive ? cs.primary : track.dominantColor,
+              child: Center(
+                child: isPlaying
+                    ? Icon(
+                        Icons.equalizer_rounded,
+                        color: cs.primary,
+                        size: 24,
+                      )
+                    : Icon(
+                        track.providerType.icon,
+                        color: Colors.white,
+                        size: 22,
+                      ),
               ),
             ),
             const SizedBox(width: 14),
+
+            // Track Title & Metadata
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,25 +731,22 @@ class _CloudTrackTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
+                      color: isCurrent ? cs.primary : cs.onSurface,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                         decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(6),
+                          color: cs.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(5),
                         ),
                         child: Text(
-                          '${track.codec} ${track.bitDepth}/${(track.sampleRateHz / 1000).toInt()}k',
+                          track.codec,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 9.5,
                             fontWeight: FontWeight.w800,
                             color: cs.primary,
                           ),
@@ -519,7 +755,7 @@ class _CloudTrackTile extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${track.artist} • ${track.providerType.displayName}',
+                          '${track.artist} • ${track.album}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -533,16 +769,28 @@ class _CloudTrackTile extends StatelessWidget {
                 ],
               ),
             ),
+
+            // Duration (e.g. "2:34", "3:34") as seen in Image 5
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                durationText,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isCurrent ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+
+            // Favorite Button
             IconButton(
               icon: Icon(
-                track.isPinnedOffline
-                    ? Icons.download_done_rounded
-                    : Icons.download_for_offline_outlined,
-                color:
-                    track.isPinnedOffline ? cs.primary : cs.onSurfaceVariant,
+                track.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: track.isFavorite ? const Color(0xFFFB7185) : cs.onSurfaceVariant,
+                size: 20,
               ),
-              tooltip: 'Pin Offline',
-              onPressed: onTogglePin,
+              onPressed: onToggleFavorite,
             ),
           ],
         ),

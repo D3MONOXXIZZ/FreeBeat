@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/models/audio_quality_settings.dart';
 import '../../core/models/cloud_account.dart';
 import '../../providers/implementations/network_and_saf_connectors.dart';
@@ -33,9 +34,10 @@ class CloudsScreen extends ConsumerWidget {
               children: [
                 Text(
                   'Clouds & Hi-Fi Quality',
-                  style: TextStyle(
-                    fontSize: 23,
+                  style: GoogleFonts.outfit(
+                    fontSize: 24,
                     fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
                     color: cs.onSurface,
                   ),
                 ),

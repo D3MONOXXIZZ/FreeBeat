@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/models/poweramp_dsp_state.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
@@ -39,9 +40,10 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen> {
                   children: [
                     Text(
                       'Poweramp DSP Studio',
-                      style: TextStyle(
-                        fontSize: 23,
+                      style: GoogleFonts.outfit(
+                        fontSize: 24,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
                         color: cs.onSurface,
                       ),
                     ),

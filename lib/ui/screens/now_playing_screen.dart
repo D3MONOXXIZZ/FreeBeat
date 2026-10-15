@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
@@ -202,19 +203,20 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                             track.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 22,
+                            style: GoogleFonts.outfit(
+                              fontSize: 26,
                               fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
                               color: cs.onSurface,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            track.artist,
+                            '${track.artist} • ${track.album}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14.5,
                               fontWeight: FontWeight.w600,
                               color: cs.onSurfaceVariant,
                             ),

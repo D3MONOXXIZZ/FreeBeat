@@ -201,3 +201,156 @@ class PixelFilterPill extends StatelessWidget {
     );
   }
 }
+
+/// Spotify-style 2-column Quick Access Card with Material 3 Expressive squircle polish.
+class SpotifyQuickCard extends StatelessWidget {
+  const SpotifyQuickCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accentColor,
+    required this.onTap,
+    this.isPlaying = false,
+    this.artworkUrl,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accentColor;
+  final VoidCallback onTap;
+  final bool isPlaying;
+  final String? artworkUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SpringPressScale(
+      onTap: () {
+        PixelHaptics.tick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        height: 60,
+        decoration: BoxDecoration(
+          color: isPlaying ? cs.surfaceContainerHighest : cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isPlaying
+                ? cs.primary
+                : cs.outlineVariant.withValues(alpha: 0.25),
+            width: isPlaying ? 1.5 : 1.0,
+          ),
+          boxShadow: isPlaying
+              ? [
+                  BoxShadow(
+                    color: cs.primary.withValues(alpha: 0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(15),
+              ),
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      accentColor.withValues(alpha: 0.8),
+                      accentColor.withValues(alpha: 0.4),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    isPlaying ? Icons.equalizer_rounded : icon,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isPlaying ? cs.primary : cs.onSurface,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isPlaying
+                      ? cs.primary
+                      : cs.surfaceContainerLowest.withValues(alpha: 0.6),
+                ),
+                child: Icon(
+                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  size: 20,
+                  color: isPlaying ? cs.onPrimary : cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Google Material 3 Expressive Cloud Shape Clipper (seen in Serafina showcase).
+class CloudShapeClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final w = size.width;
+    final h = size.height;
+    final path = Path();
+    path.moveTo(w * 0.25, h * 0.75);
+    path.cubicTo(w * 0.05, h * 0.75, 0, h * 0.55, w * 0.15, h * 0.40);
+    path.cubicTo(w * 0.10, h * 0.20, w * 0.30, h * 0.05, w * 0.48, h * 0.18);
+    path.cubicTo(w * 0.62, h * 0.02, w * 0.85, h * 0.10, w * 0.88, h * 0.35);
+    path.cubicTo(w * 1.02, h * 0.45, w * 1.0, h * 0.70, w * 0.82, h * 0.75);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
