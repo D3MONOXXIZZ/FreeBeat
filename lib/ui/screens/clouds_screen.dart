@@ -1,32 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../core/models/audio_quality_settings.dart';
 import '../../core/models/cloud_account.dart';
-import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/discovery/local_media_server_discovery_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import 'settings/settings_screen.dart';
 
-/// Cloud Storage Hub, 12-Provider Add Cloud Wizard, Configurable Bitrate Tiers
-/// (96 kbps -> 320 kbps -> 24-bit/192kHz Hi-Fi Lossless), and Universal Bluetooth Settings.
+/// Clean, focused Cloud Storage Hub (Google Material 3 Expressive).
+/// Dedicated solely to managing connected cloud drives, 1-tap cloud authorization,
+/// installed cloud app launching/Play Store redirects, and local media servers.
 class CloudsScreen extends ConsumerWidget {
   const CloudsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final accounts = ref.watch(cloudAccountsProvider);
-    final quality = ref.watch(audioQualityProvider);
-    final qualityNotifier = ref.read(audioQualityProvider.notifier);
-    final routeAsync = ref.watch(audioOutputRouteProvider);
-    final route = routeAsync.valueOrNull ?? const AudioOutputRouteInfo();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
       physics: const BouncingScrollPhysics(),
       children: [
-        // 1. Header & Add Cloud Button
+        // 1. Header with Title, Settings Icon & Add Cloud Button
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -36,12 +33,12 @@ class CloudsScreen extends ConsumerWidget {
                 children: [
                   Text(
                     'Clouds & Hi-Fi Quality',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   Text(
-                    '100% Serverless • Android Keystore Encrypted',
+                    '100% Serverless • Device Encrypted',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -50,6 +47,17 @@ class CloudsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+            IconButton.filledTonal(
+              onPressed: () {
+                PixelHaptics.tick();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+              icon: const Icon(Icons.settings_outlined, size: 20),
+              tooltip: 'Settings',
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
@@ -64,140 +72,181 @@ class CloudsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
 
-        // 2. Connected Cloud Accounts Grouped Card (Pixel Settings Style)
-        Container(
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Column(
-              children: [
-                for (int i = 0; i < accounts.length; i++) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 1,
-                      indent: 68,
-                      endIndent: 16,
-                      color: cs.outlineVariant.withValues(alpha: 0.25),
+        // 2. Connected Cloud Accounts Card
+        if (accounts.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      shape: BoxShape.circle,
                     ),
-                  ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    leading: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: accounts[i]
-                          .providerType
-                          .accentColor
-                          .withValues(alpha: 0.16),
-                      child: Icon(
-                        accounts[i].providerType.icon,
-                        color: accounts[i].providerType.accentColor,
-                        size: 20,
-                      ),
+                    child: Icon(
+                      Icons.cloud_outlined,
+                      size: 28,
+                      color: cs.primary,
                     ),
-                    title: Text(
-                      accounts[i].displayName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14.5,
-                      ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'No Cloud Accounts Connected',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
-                    subtitle: Text(
-                      '${accounts[i].providerType.displayName} • ${accounts[i].endpointOrFolder}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap "Add Cloud" above to connect Google Drive, OneDrive, Dropbox, or a local server.',
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      tooltip: 'Disconnect Cloud',
-                      onPressed: () {
-                        ref
-                            .read(cloudAccountsProvider.notifier)
-                            .removeAccount(accounts[i].id);
-                      },
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _showAddCloudWizard(context, ref),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Connect a Cloud Drive'),
+                    style: FilledButton.styleFrom(
+                      shape: const StadiumBorder(),
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // 3. Configurable Audio Bitrate & Hi-Fi Lossless Tiers
-        Material(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(28),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.high_quality_rounded, color: cs.primary),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Audio Bitrate & Hi-Fi Lossless Tiers',
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.35),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Column(
+                children: [
+                  for (int i = 0; i < accounts.length; i++) ...[
+                    if (i > 0)
+                      Divider(
+                        height: 1,
+                        indent: 68,
+                        endIndent: 16,
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                      ),
+                    ListTile(
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: accounts[i]
+                            .providerType
+                            .accentColor
+                            .withValues(alpha: 0.16),
+                        child: Icon(
+                          accounts[i].providerType.icon,
+                          color: accounts[i].providerType.accentColor,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        accounts[i].displayName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        accounts[i].endpointOrFolder,
                         style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        color: cs.error,
+                        onPressed: () => _confirmRemoveAccount(
+                          context,
+                          ref,
+                          accounts[i],
                         ),
                       ),
                     ),
                   ],
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 20),
+
+        // 3. Fast Cloud App Launchers (Open installed app or Google Play Store)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.apps_rounded, color: cs.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Installed Cloud Apps',
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            'Opens the app or Google Play Store if not installed',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                _QualityDropdownTile(
-                  title: 'Wi-Fi Streaming Quality',
-                  subtitle: quality.wifiTier.subtitle,
-                  value: quality.wifiTier,
-                  onChanged: (tier) {
-                    if (tier != null) qualityNotifier.setWifiTier(tier);
-                  },
+                const SizedBox(height: 16),
+                _AppLauncherRow(
+                  name: 'Google Drive',
+                  packageName: 'com.google.android.apps.docs',
+                  icon: Icons.add_to_drive_rounded,
+                  color: const Color(0xFF4285F4),
                 ),
-                const Divider(height: 20),
-                _QualityDropdownTile(
-                  title: 'Mobile Data Streaming Quality',
-                  subtitle: quality.cellularTier.subtitle,
-                  value: quality.cellularTier,
-                  onChanged: (tier) {
-                    if (tier != null) qualityNotifier.setCellularTier(tier);
-                  },
+                const Divider(height: 14),
+                _AppLauncherRow(
+                  name: 'Microsoft OneDrive',
+                  packageName: 'com.microsoft.skydrive',
+                  icon: Icons.cloud_queue_rounded,
+                  color: const Color(0xFF0078D4),
                 ),
-                const Divider(height: 20),
-                _QualityDropdownTile(
-                  title: 'Offline Pinned Download Quality',
-                  subtitle: quality.offlineDownloadTier.subtitle,
-                  value: quality.offlineDownloadTier,
-                  onChanged: (tier) {
-                    if (tier != null) {
-                      qualityNotifier.setOfflineDownloadTier(tier);
-                    }
-                  },
+                const Divider(height: 14),
+                _AppLauncherRow(
+                  name: 'Dropbox',
+                  packageName: 'com.dropbox.android',
+                  icon: Icons.inventory_2_rounded,
+                  color: const Color(0xFF0061FF),
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    '24-Bit / 192 kHz Hi-Res Direct Output',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Bypass standard resampling when streaming FLAC/ALAC/WAV',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  value: quality.enableHiResDirectOutput,
-                  onChanged: qualityNotifier.toggleHiResDirectOutput,
+                const Divider(height: 14),
+                _AppLauncherRow(
+                  name: 'Nextcloud',
+                  packageName: 'com.nextcloud.client',
+                  icon: Icons.language_rounded,
+                  color: const Color(0xFF0082C9),
                 ),
               ],
             ),
@@ -206,106 +255,31 @@ class CloudsScreen extends ConsumerWidget {
 
         const SizedBox(height: 16),
 
-        // 4. Universal Bluetooth Codec & Android OEM Compatibility Safeguards
-        Material(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(28),
+        // 4. Quick Device / SD Card Audio Import Card
+        Card(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.bluetooth_audio_rounded, color: cs.secondary),
-                    const SizedBox(width: 10),
+                    Icon(Icons.sd_card_rounded, color: cs.secondary),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Bluetooth Codec & Device Compatibility',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
+                          Text(
+                            'Device & SD Card Storage',
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           Text(
-                            'Active Route: ${route.deviceName} (${route.bluetoothCodecName})',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: cs.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Bluetooth Inter-Sample Peak Limiter (-0.5 dBFS)',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Prevents resampling crackle on LDAC, aptX HD/Adaptive, AAC, SBC & LC3',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  value: quality.bluetoothIspProtection,
-                  onChanged: qualityNotifier.toggleBluetoothIspProtection,
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Disable DVC on Bluetooth Absolute Volume',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: const Text(
-                    'Prevents sudden AVRCP volume jumps on Samsung, Pixel & Xiaomi earbuds',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  value: quality.disableDvcOnBluetoothAbsoluteVolume,
-                  onChanged: qualityNotifier.toggleDisableDvcOnBluetooth,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // 4. Appearance & Material 3 Dynamic Theming (Pixel Settings Style)
-        Material(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(28),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.palette_rounded, color: cs.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Appearance & Dynamic Theming',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          Text(
-                            'Monet seed (#6750A4) with automatic Dark/Light adaptation',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: cs.primary,
-                              fontWeight: FontWeight.w600,
+                            'Import audio files downloaded on your phone',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -314,41 +288,13 @@ class CloudsScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment(
-                        value: ThemeMode.system,
-                        label: Text('System'),
-                        icon: Icon(Icons.brightness_auto_rounded, size: 16),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.light,
-                        label: Text('Light'),
-                        icon: Icon(Icons.light_mode_rounded, size: 16),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.dark,
-                        label: Text('Dark'),
-                        icon: Icon(Icons.dark_mode_rounded, size: 16),
-                      ),
-                    ],
-                    selected: {ref.watch(themeModeProvider)},
-                    onSelectionChanged: (newSelection) {
-                      PixelHaptics.tick();
-                      ref
-                          .read(themeModeProvider.notifier)
-                          .setMode(newSelection.first);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Bound to system default. Switches immediately when toggling Dark/Light mode in Android settings without restarting the app.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
+                FilledButton.tonalIcon(
+                  onPressed: () => _pickLocalAudioFiles(context, ref),
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  label: const Text('Pick Music from Device Storage'),
+                  style: FilledButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    minimumSize: const Size.fromHeight(48),
                   ),
                 ),
               ],
@@ -356,6 +302,65 @@ class CloudsScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _pickLocalAudioFiles(BuildContext context, WidgetRef ref) async {
+    PixelHaptics.tick();
+    final authService = ref.read(nativeCloudAuthServiceProvider);
+    const safAccount = CloudAccount(
+      id: 'local_storage',
+      providerType: CloudProviderType.androidSaf,
+      displayName: 'Device Storage',
+      endpointOrFolder: 'Local Music Files',
+    );
+    final tracks = await authService.pickFromInstalledCloudApp(account: safAccount);
+    if (tracks.isNotEmpty) {
+      await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
+      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
+      await PixelHaptics.hifiConfirm();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Imported ${tracks.length} tracks from device storage!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _confirmRemoveAccount(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAccount account,
+  ) {
+    PixelHaptics.tick();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Disconnect ${account.displayName}?'),
+        content: const Text(
+          'This will remove the cloud account and its indexed tracks from your library.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () {
+              ref.read(cloudAccountsProvider.notifier).removeAccount(account.id);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -375,63 +380,67 @@ class CloudsScreen extends ConsumerWidget {
   }
 }
 
-class _QualityDropdownTile extends StatelessWidget {
-  const _QualityDropdownTile({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
+class _AppLauncherRow extends ConsumerWidget {
+  const _AppLauncherRow({
+    required this.name,
+    required this.packageName,
+    required this.icon,
+    required this.color,
   });
 
-  final String title;
-  final String subtitle;
-  final AudioQualityTier value;
-  final ValueChanged<AudioQualityTier?> onChanged;
+  final String name;
+  final String packageName;
+  final IconData icon;
+  final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 14),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ],
+          child: Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
         ),
-        const SizedBox(width: 10),
-        DropdownButton<AudioQualityTier>(
-          value: value,
-          underline: const SizedBox.shrink(),
-          items: AudioQualityTier.values.map((tier) {
-            return DropdownMenuItem(
-              value: tier,
-              child: Text(
-                tier.isLossless ? 'Hi-Fi Lossless' : '${tier.kbps} kbps',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+        FilledButton.tonal(
+          onPressed: () async {
+            PixelHaptics.tick();
+            final authService = ref.read(nativeCloudAuthServiceProvider);
+            final opened = await authService.launchOrOpenPlayStore(
+              packageName: packageName,
             );
-          }).toList(),
-          onChanged: onChanged,
+            if (!opened && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Opening Google Play Store for $name...'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            shape: const StadiumBorder(),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Open / Install', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              SizedBox(width: 4),
+              Icon(Icons.open_in_new_rounded, size: 14),
+            ],
+          ),
         ),
       ],
     );
@@ -439,10 +448,10 @@ class _QualityDropdownTile extends StatelessWidget {
 }
 
 enum _AddCloudMode {
-  oneTap('1-Tap Cloud', Icons.touch_app_rounded),
-  wifiServers('Wi-Fi Servers', Icons.radar_rounded),
+  oneTapCloud('1-Tap Cloud', Icons.touch_app_rounded),
+  wifiServers('Wi-Fi Servers', Icons.wifi_find_rounded),
   installedApps('Installed Apps', Icons.apps_rounded),
-  manual('Manual / S3', Icons.tune_rounded);
+  manual('Manual / S3', Icons.dns_rounded);
 
   const _AddCloudMode(this.label, this.icon);
   final String label;
@@ -458,105 +467,171 @@ class _AddCloudWizardSheet extends ConsumerStatefulWidget {
 }
 
 class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
-  _AddCloudMode _mode = _AddCloudMode.oneTap;
-
-  // Google Sign-In state
+  _AddCloudMode _mode = _AddCloudMode.oneTapCloud;
   bool _isGoogleLoading = false;
-  String? _googleNotice;
-
-  // Wi-Fi Discovery state
-  bool _isScanningWifi = false;
-  List<DiscoveredMediaServer> _discoveredServers = [];
-
-  // General connecting state
   bool _isConnecting = false;
+  bool _isScanningWifi = false;
 
-  // Manual / Advanced setup controllers
-  CloudProviderType _manualType = CloudProviderType.s3;
-  final _nameCtrl = TextEditingController(text: 'My Cloud Vault');
-  final _endpointCtrl =
-      TextEditingController(text: 'https://s3.us-east-1.amazonaws.com');
-  final _userCtrl = TextEditingController();
-  final _secretCtrl = TextEditingController();
-  final _bucketCtrl = TextEditingController(text: 'lossless-music');
+  final _manualServerUrlController = TextEditingController();
+  final _manualUsernameController = TextEditingController();
+  final _manualPasswordController = TextEditingController();
+  final _manualBucketController = TextEditingController();
+
+  CloudProviderType _selectedManualType = CloudProviderType.jellyfin;
+  List<DiscoveredMediaServer> _discoveredWifiServers = [];
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
-    _endpointCtrl.dispose();
-    _userCtrl.dispose();
-    _secretCtrl.dispose();
-    _bucketCtrl.dispose();
+    _manualServerUrlController.dispose();
+    _manualUsernameController.dispose();
+    _manualPasswordController.dispose();
+    _manualBucketController.dispose();
     super.dispose();
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 1-Tap Google Drive Native Auth
-  // ───────────────────────────────────────────────────────────────────────────
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isGoogleLoading = true;
-      _googleNotice = null;
-    });
+    setState(() => _isGoogleLoading = true);
     PixelHaptics.tick();
 
-    try {
-      final authService = ref.read(nativeCloudAuthServiceProvider);
-      final result = await authService.signInWithGoogleDrive();
+    final authService = ref.read(nativeCloudAuthServiceProvider);
+    final result = await authService.signInWithGoogleDrive();
 
-      if (!mounted) return;
+    setState(() => _isGoogleLoading = false);
 
-      if (result.isSuccess && result.account != null) {
-        final account = result.account!;
-        final secrets = {'accessToken': result.accessToken ?? ''};
-        await ref
-            .read(cloudAccountsProvider.notifier)
-            .addAccount(account, secrets);
+    if (result.isSuccess && result.account != null) {
+      await ref.read(cloudAccountsProvider.notifier).addAccount(
+        result.account!,
+        {'accessToken': result.accessToken ?? ''},
+      );
+      await PixelHaptics.hifiConfirm();
 
-        // Proactively scan Google Drive for audio files
-        final connector = GoogleDriveConnector();
-        final tracks = await connector.scanLibrary(account, secrets);
-        if (tracks.isNotEmpty) {
-          await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
-        }
-
-        await PixelHaptics.hifiConfirm();
-        if (mounted) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Connected Google Drive for ${result.displayName ?? result.email}! '
-                '(${tracks.isNotEmpty ? "${tracks.length} tracks indexed" : "Drive connected"})',
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } else if (result.isCancelled) {
-        setState(() {
-          _isGoogleLoading = false;
-        });
-      } else {
-        setState(() {
-          _isGoogleLoading = false;
-          _googleNotice = result.errorMessage ??
-              'Google Sign-In canceled or Play Services not configured on this device.';
-        });
-      }
-    } catch (e) {
       if (mounted) {
-        setState(() {
-          _isGoogleLoading = false;
-          _googleNotice = e.toString();
-        });
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connected to ${result.displayName ?? result.email}!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else if (result.isDeveloperConfigError) {
+      if (mounted) {
+        _showGoogleDeveloperErrorDialog();
+      }
+    } else if (!result.isCancelled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.errorMessage ?? 'Google Sign-In failed'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 1-Tap Mount via Android Storage Access Framework (SAF)
-  // ───────────────────────────────────────────────────────────────────────────
+  void _showGoogleDeveloperErrorDialog() {
+    final cs = Theme.of(context).colorScheme;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cs.surfaceContainerHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(Icons.info_outline_rounded, color: cs.primary, size: 24),
+                const SizedBox(width: 12),
+                const Text(
+                  'Google Drive Connection Options',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Native 1-tap sign-in requires adding your app SHA-1 to Google Cloud Console. You can easily connect via Web Browser, or import directly from the installed Google Drive app:',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final authService = ref.read(nativeCloudAuthServiceProvider);
+                await authService.launchOAuthAuthorization(
+                  provider: CloudProviderType.googleDrive,
+                  clientId: 'freebeat-drive-client',
+                );
+              },
+              icon: const Icon(Icons.language_rounded, size: 18),
+              label: const Text('Sign in via Web Browser (OAuth 2.0)'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: const StadiumBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _mountViaSaf(
+                  providerType: CloudProviderType.googleDrive,
+                  defaultName: 'Google Drive App Mount',
+                );
+              },
+              icon: const Icon(Icons.folder_shared_rounded, size: 18),
+              label: const Text('Import via Google Drive App (Android SAF)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: const StadiumBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: () async {
+                final authService = ref.read(nativeCloudAuthServiceProvider);
+                final sha1 = await authService.getAppSha1Fingerprint();
+                await Clipboard.setData(ClipboardData(
+                  text: 'Package: com.freebeat.freebeat\nSHA-1: $sha1',
+                ));
+                PixelHaptics.tick();
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text('Copied Package & SHA-1 to clipboard: $sha1'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text('Copy SHA-1 & Package Name for Developer Console'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _mountViaSaf({
     required CloudProviderType providerType,
     required String defaultName,
@@ -574,8 +649,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       );
 
       final authService = ref.read(nativeCloudAuthServiceProvider);
-      final tracks =
-          await authService.pickFromInstalledCloudApp(account: account);
+      final tracks = await authService.pickFromInstalledCloudApp(account: account);
 
       if (tracks.isNotEmpty) {
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
@@ -586,9 +660,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Mounted ${tracks.length} audio tracks from $defaultName!',
-              ),
+              content: Text('Mounted ${tracks.length} audio tracks from $defaultName!'),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -596,129 +668,28 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       } else {
         setState(() => _isConnecting = false);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _isConnecting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not mount files: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Wi-Fi Media Server Discovery
-  // ───────────────────────────────────────────────────────────────────────────
   Future<void> _scanWifi() async {
+    setState(() => _isScanningWifi = true);
+    PixelHaptics.tick();
+
+    final discoveryService = ref.read(localMediaServerDiscoveryServiceProvider);
+    final servers = await discoveryService.discoverAll(
+      timeout: const Duration(seconds: 4),
+    );
+
     setState(() {
-      _isScanningWifi = true;
+      _discoveredWifiServers = servers;
+      _isScanningWifi = false;
     });
-    PixelHaptics.tick();
 
-    try {
-      final discovery = ref.read(localMediaServerDiscoveryServiceProvider);
-      final found = await discovery.discoverAll();
-      if (mounted) {
-        setState(() {
-          _discoveredServers = found;
-          _isScanningWifi = false;
-        });
-        PixelHaptics.tick(intensity: 0.8);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isScanningWifi = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _connectDiscoveredServer(DiscoveredMediaServer server) async {
-    setState(() => _isConnecting = true);
-    PixelHaptics.tick();
-
-    try {
-      final account = CloudAccount(
-        id: '${server.type.id}_${DateTime.now().millisecondsSinceEpoch}',
-        providerType: server.type,
-        displayName: server.name,
-        endpointOrFolder: server.url,
-        lastSyncedAt: DateTime.now(),
-      );
-
-      await ref.read(cloudAccountsProvider.notifier).addAccount(account, {
-        'apiKey': '',
-        'accessToken': '',
-      });
-
-      // Scan default library for the server
-      final registry = ref.read(connectorRegistryProvider);
-      final connector = registry.forType(server.type);
-      final tracks = await connector.scanLibrary(account, {});
-      if (tracks.isNotEmpty) {
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
-      }
-
-      await PixelHaptics.hifiConfirm();
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Connected to ${server.name}! (${tracks.length} tracks indexed)',
-            ),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isConnecting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to connect: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Manual Account Mount
-  // ───────────────────────────────────────────────────────────────────────────
-  Future<void> _submitManual() async {
-    setState(() => _isConnecting = true);
-    PixelHaptics.tick();
-
-    final account = CloudAccount(
-      id: 'acc_${DateTime.now().millisecondsSinceEpoch}',
-      providerType: _manualType,
-      displayName: _nameCtrl.text.trim().isEmpty
-          ? _manualType.displayName
-          : _nameCtrl.text.trim(),
-      endpointOrFolder: _endpointCtrl.text.trim(),
-      usernameOrEmail: _userCtrl.text.trim(),
-      bucketOrShareName: _bucketCtrl.text.trim(),
-      lastSyncedAt: DateTime.now(),
-    );
-
-    await ref.read(cloudAccountsProvider.notifier).addAccount(
-      account,
-      {
-        'password': _secretCtrl.text.trim(),
-        'accessToken': _secretCtrl.text.trim(),
-        'apiKey': _secretCtrl.text.trim(),
-        'accessKeyId': _userCtrl.text.trim(),
-        'secretAccessKey': _secretCtrl.text.trim(),
-      },
-    );
-
-    if (mounted) Navigator.of(context).pop();
+    await PixelHaptics.hifiConfirm();
   }
 
   @override
@@ -727,174 +698,92 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
 
     return Padding(
       padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
         left: 20,
         right: 20,
-        top: 10,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+        top: 8,
       ),
       child: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Add Cloud & Media Drive',
-                        style: GoogleFonts.outfit(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      Text(
-                        '1-Tap Native Sign-In • Android App Mount • Auto-Discovery',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
+                Icon(Icons.cloud_sync_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                const Text(
+                  'Add Cloud & Media Drive',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+
+            // Mode Selector
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<_AddCloudMode>(
+                segments: _AddCloudMode.values.map((mode) {
+                  return ButtonSegment(
+                    value: mode,
+                    label: Text(mode.label),
+                    icon: Icon(mode.icon, size: 16),
+                  );
+                }).toList(),
+                selected: {_mode},
+                onSelectionChanged: (newSelection) {
+                  PixelHaptics.tick();
+                  setState(() => _mode = newSelection.first);
+                },
+              ),
+            ),
             const SizedBox(height: 16),
 
-            // Mode Selector Segmented Button
-            SegmentedButton<_AddCloudMode>(
-              segments: _AddCloudMode.values.map((mode) {
-                return ButtonSegment<_AddCloudMode>(
-                  value: mode,
-                  icon: Icon(mode.icon, size: 16),
-                  label: Text(
-                    mode.label,
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
-                  ),
-                );
-              }).toList(),
-              selected: {_mode},
-              onSelectionChanged: (val) {
-                PixelHaptics.tick();
-                setState(() => _mode = val.first);
-              },
-            ),
-            const SizedBox(height: 18),
-
-            // Mode Body
+            // Mode Views
             switch (_mode) {
-              _AddCloudMode.oneTap => _buildOneTapCloudView(cs),
-              _AddCloudMode.wifiServers => _buildWifiServersView(cs),
+              _AddCloudMode.oneTapCloud => _buildOneTapCloudView(cs),
+              _AddCloudMode.wifiServers => _buildWifiTab(cs),
               _AddCloudMode.installedApps => _buildInstalledAppsView(cs),
-              _AddCloudMode.manual => _buildManualSetupView(cs),
+              _AddCloudMode.manual => _buildManualView(cs),
             },
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // 1-Tap Cloud View (Google Drive, OneDrive, Dropbox, Box)
-  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildOneTapCloudView(ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. Google Drive Hero Card
+        // Google Drive Card
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: const Color(0xFF4285F4).withValues(alpha: 0.5),
-              width: 1.5,
+              color: const Color(0xFF4285F4).withValues(alpha: 0.35),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF4285F4).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.add_to_drive_rounded,
-                      color: Color(0xFF4285F4),
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Google Drive',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Recommended',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF4285F4),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          'Direct 1-tap sign in via your device Google Account',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Icon(Icons.add_to_drive_rounded, color: Color(0xFF4285F4), size: 28),
+                  SizedBox(width: 12),
+                  Text('Google Drive', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               Text(
-                'Seamlessly streams lossless FLAC, MP3, and WAV audio from your Google Drive without manual tokens or developer setup.',
+                'Stream your audio library directly from Google Drive.',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 14),
-
-              // Sign in with Google Button
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -903,88 +792,19 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                     backgroundColor: cs.primary,
                     foregroundColor: cs.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: const StadiumBorder(),
                   ),
                   icon: _isGoogleLoading
                       ? SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.onPrimary,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary),
                         )
                       : const Icon(Icons.account_circle_rounded, size: 20),
-                  label: Text(
-                    _isGoogleLoading
-                        ? 'Connecting Google Account...'
-                        : 'Continue with Google Account',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
+                  label: const Text('Continue with Google Account', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
-
-              if (_googleNotice != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cs.errorContainer.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: cs.error.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline_rounded,
-                              size: 16, color: cs.error),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Google Sign-In Note',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: cs.error,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _googleNotice!,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onErrorContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Tip: You can also mount Google Drive directly via the Drive App button below with 0 configuration:',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: cs.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
               const SizedBox(height: 8),
-
-              // Alternative: Mount via Google Drive App (Android SAF)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -994,15 +814,10 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                   ),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: const StadiumBorder(),
                   ),
                   icon: const Icon(Icons.folder_shared_rounded, size: 18),
-                  label: const Text(
-                    'Mount via Google Drive App (Android SAF)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
+                  label: const Text('Mount via Google Drive App (Android SAF)'),
                 ),
               ),
             ],
@@ -1011,50 +826,52 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
 
         const SizedBox(height: 14),
 
-        // 2. Microsoft OneDrive Card
+        // Microsoft OneDrive Card
         _buildOAuthCard(
           cs: cs,
           type: CloudProviderType.oneDrive,
           accentColor: const Color(0xFF0078D4),
           title: 'Microsoft OneDrive',
-          description:
-              'Mount from the installed OneDrive app or sign in with your Microsoft 365 account.',
-          primaryActionLabel: 'Mount via OneDrive App',
-          onPrimaryAction: () => _mountViaSaf(
-            providerType: CloudProviderType.oneDrive,
-            defaultName: 'OneDrive App Mount',
-          ),
-          secondaryActionLabel: 'Sign in with Microsoft',
-          onSecondaryAction: () async {
+          description: 'Sign in with your Microsoft 365 account or open the OneDrive app.',
+          primaryActionLabel: 'Sign in with Microsoft 365',
+          onPrimaryAction: () async {
             final authService = ref.read(nativeCloudAuthServiceProvider);
             await authService.launchOAuthAuthorization(
               provider: CloudProviderType.oneDrive,
               clientId: 'f9479b18-0524-460b-8d34-716b9b324d67',
             );
           },
+          secondaryActionLabel: 'Open OneDrive App / Play Store',
+          onSecondaryAction: () async {
+            final authService = ref.read(nativeCloudAuthServiceProvider);
+            await authService.launchOrOpenPlayStore(
+              packageName: 'com.microsoft.skydrive',
+            );
+          },
         ),
 
         const SizedBox(height: 12),
 
-        // 3. Dropbox & Box Cards
+        // Dropbox Card
         _buildOAuthCard(
           cs: cs,
           type: CloudProviderType.dropbox,
           accentColor: const Color(0xFF0061FF),
           title: 'Dropbox',
-          description:
-              'Stream byte-range audio files directly from Dropbox cloud or installed app.',
-          primaryActionLabel: 'Mount via Dropbox App',
-          onPrimaryAction: () => _mountViaSaf(
-            providerType: CloudProviderType.dropbox,
-            defaultName: 'Dropbox App Mount',
-          ),
-          secondaryActionLabel: 'Sign in with Dropbox',
-          onSecondaryAction: () async {
+          description: 'Stream audio files directly from Dropbox cloud or app.',
+          primaryActionLabel: 'Sign in with Dropbox',
+          onPrimaryAction: () async {
             final authService = ref.read(nativeCloudAuthServiceProvider);
             await authService.launchOAuthAuthorization(
               provider: CloudProviderType.dropbox,
               clientId: 'dropbox_freebeat_client',
+            );
+          },
+          secondaryActionLabel: 'Open Dropbox App / Play Store',
+          onSecondaryAction: () async {
+            final authService = ref.read(nativeCloudAuthServiceProvider);
+            await authService.launchOrOpenPlayStore(
+              packageName: 'com.dropbox.android',
             );
           },
         ),
@@ -1078,42 +895,22 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accentColor.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.35),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: accentColor.withValues(alpha: 0.15),
-                child: Icon(type.icon, color: accentColor, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Icon(type.icon, color: accentColor, size: 24),
+              const SizedBox(width: 10),
+              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(description, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1121,30 +918,20 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 child: FilledButton.tonal(
                   onPressed: onPrimaryAction,
                   style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: const StadiumBorder(),
                   ),
-                  child: Text(
-                    primaryActionLabel,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+                  child: Text(primaryActionLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onSecondaryAction,
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: Text(
-                    secondaryActionLabel,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+              OutlinedButton(
+                onPressed: onSecondaryAction,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: const StadiumBorder(),
                 ),
+                child: Text(secondaryActionLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -1153,10 +940,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Wi-Fi Servers View (Jellyfin / Navidrome Auto-Discovery & Presets)
-  // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildWifiServersView(ColorScheme cs) {
+  Widget _buildWifiTab(ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1164,37 +948,22 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: cs.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: cs.secondary.withValues(alpha: 0.4),
-            ),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Icon(Icons.wifi_rounded, color: cs.secondary),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Auto-Detect Local Media Servers',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          'Broadcasts UDP 7359 & scans home Wi-Fi for Jellyfin & Navidrome',
-                          style: TextStyle(fontSize: 11.5),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Icon(Icons.wifi_find_rounded, color: Color(0xFF00A4DC), size: 24),
+                  SizedBox(width: 10),
+                  Text('Auto-Detect Local Media Servers', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Scans your local Wi-Fi network for Jellyfin, Emby, Subsonic, Navidrome, and Plex servers.',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 14),
               SizedBox(
@@ -1202,150 +971,62 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 child: FilledButton.icon(
                   onPressed: _isScanningWifi ? null : _scanWifi,
                   icon: _isScanningWifi
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.onPrimary,
-                          ),
-                        )
+                      ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
                       : const Icon(Icons.radar_rounded, size: 18),
-                  label: Text(
-                    _isScanningWifi
-                        ? 'Broadcasting & Scanning Wi-Fi...'
-                        : 'Scan Wi-Fi for Media Servers',
-                  ),
+                  label: Text(_isScanningWifi ? 'Broadcasting & Scanning Wi-Fi...' : 'Scan Wi-Fi for Media Servers'),
+                  style: FilledButton.styleFrom(shape: const StadiumBorder()),
                 ),
               ),
-              if (_isScanningWifi) ...[
-                const SizedBox(height: 10),
-                const LinearProgressIndicator(),
-              ],
             ],
           ),
         ),
 
-        const SizedBox(height: 14),
-
-        // Discovered Servers List
-        if (_discoveredServers.isNotEmpty) ...[
-          const Text(
-            'Discovered on Local Network:',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
+        if (_discoveredWifiServers.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Discovered on your Wi-Fi:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          for (final server in _discoveredServers) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: server.type.accentColor.withValues(alpha: 0.5),
+          for (final server in _discoveredWifiServers)
+            Card(
+              child: ListTile(
+                leading: Icon(server.type.icon, color: server.type.accentColor),
+                title: Text(server.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text('${server.url} • ${server.discoveredVia}'),
+                trailing: FilledButton.tonal(
+                  onPressed: () {
+                    final acc = CloudAccount(
+                      id: server.id,
+                      providerType: server.type,
+                      displayName: server.name,
+                      endpointOrFolder: server.url,
+                    );
+                    ref.read(cloudAccountsProvider.notifier).addAccount(acc, {});
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Connect'),
                 ),
               ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor:
-                        server.type.accentColor.withValues(alpha: 0.2),
-                    child: Icon(
-                      server.type.icon,
-                      color: server.type.accentColor,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          server.name,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          '${server.url} • ${server.discoveredVia}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  FilledButton(
-                    onPressed: () => _connectDiscoveredServer(server),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text('Connect'),
-                  ),
-                ],
-              ),
             ),
-          ],
-          const SizedBox(height: 10),
         ],
 
-        // Quick Local Presets
-        const Text(
-          'Quick Host Presets:',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-        ),
+        const SizedBox(height: 16),
+        const Text('Quick Host Presets:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
-          runSpacing: 8,
           children: [
             ActionChip(
-              avatar: const Icon(Icons.computer_rounded, size: 16),
-              label: const Text('Host Jellyfin (10.0.2.2:8096)'),
-              onPressed: () => _connectDiscoveredServer(
-                const DiscoveredMediaServer(
-                  id: 'preset_host_jf',
-                  name: 'Host Jellyfin (10.0.2.2:8096)',
-                  url: 'http://10.0.2.2:8096',
-                  type: CloudProviderType.jellyfin,
-                  discoveredVia: 'Host Preset',
-                ),
-              ),
+              label: const Text('Jellyfin (8096)'),
+              onPressed: () {
+                _manualServerUrlController.text = 'http://192.168.1.100:8096';
+                setState(() => _mode = _AddCloudMode.manual);
+              },
             ),
             ActionChip(
-              avatar: const Icon(Icons.surround_sound_rounded, size: 16),
-              label: const Text('Host Navidrome (10.0.2.2:4533)'),
-              onPressed: () => _connectDiscoveredServer(
-                const DiscoveredMediaServer(
-                  id: 'preset_host_navi',
-                  name: 'Host Navidrome (10.0.2.2:4533)',
-                  url: 'http://10.0.2.2:4533',
-                  type: CloudProviderType.subsonic,
-                  discoveredVia: 'Host Preset',
-                ),
-              ),
-            ),
-            ActionChip(
-              avatar: const Icon(Icons.home_rounded, size: 16),
-              label: const Text('Localhost (127.0.0.1:8096)'),
-              onPressed: () => _connectDiscoveredServer(
-                const DiscoveredMediaServer(
-                  id: 'preset_local_jf',
-                  name: 'Localhost Jellyfin (127.0.0.1:8096)',
-                  url: 'http://127.0.0.1:8096',
-                  type: CloudProviderType.jellyfin,
-                  discoveredVia: 'Localhost Preset',
-                ),
-              ),
+              label: const Text('Navidrome (4533)'),
+              onPressed: () {
+                _manualServerUrlController.text = 'http://192.168.1.100:4533';
+                setState(() => _mode = _AddCloudMode.manual);
+              },
             ),
           ],
         ),
@@ -1353,9 +1034,6 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Installed Apps View (Universal SAF Mount)
-  // ───────────────────────────────────────────────────────────────────────────
   Widget _buildInstalledAppsView(ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1365,72 +1043,23 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           decoration: BoxDecoration(
             color: cs.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: const Color(0xFF3DDC84).withValues(alpha: 0.4),
-              width: 1.5,
-            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3DDC84).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.phone_android_rounded,
-                      color: Color(0xFF3DDC84),
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Mount Any Installed Cloud App',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          'Android Storage Access Framework (SAF)',
-                          style: TextStyle(fontSize: 11.5),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Icon(Icons.phone_android_rounded, color: Color(0xFF3DDC84), size: 26),
+                  SizedBox(width: 12),
+                  Text('Mount Any Installed Cloud App', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
-                'Connect directly to any cloud app installed on your phone without entering usernames or passwords. Tap below and choose your cloud provider from the Android file picker menu:',
+                'Import audio files from Google Drive, OneDrive, Dropbox, or device storage via Android document picker.',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
               ),
-              const SizedBox(height: 14),
-
-              // Supported Cloud Apps Row
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _appChip('Google Drive', Icons.add_to_drive_rounded, const Color(0xFF4285F4)),
-                  _appChip('Microsoft OneDrive', Icons.cloud_queue_rounded, const Color(0xFF0078D4)),
-                  _appChip('Dropbox', Icons.inventory_2_rounded, const Color(0xFF0061FF)),
-                  _appChip('Nextcloud', Icons.language_rounded, const Color(0xFF0082C9)),
-                  _appChip('MEGA', Icons.cloud_download_rounded, const Color(0xFFD9272E)),
-                  _appChip('Proton Drive', Icons.shield_rounded, const Color(0xFF6D4AFF)),
-                  _appChip('SD Card / Local Storage', Icons.sd_card_rounded, const Color(0xFF4CAF50)),
-                ],
-              ),
               const SizedBox(height: 16),
-
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -1442,15 +1071,10 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                           ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: const StadiumBorder(),
                   ),
                   icon: const Icon(Icons.folder_open_rounded, size: 20),
-                  label: const Text(
-                    'Pick Music from Installed Cloud App',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
+                  label: const Text('Pick Music from Installed Cloud App', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -1460,121 +1084,73 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     );
   }
 
-  Widget _appChip(String label, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Manual Setup View (S3/R2, WebDAV, SFTP, SMB)
-  // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildManualSetupView(ColorScheme cs) {
-    final manualTypes = [
-      CloudProviderType.s3,
-      CloudProviderType.webdav,
-      CloudProviderType.sftp,
-      CloudProviderType.smb,
-      CloudProviderType.jellyfin,
-      CloudProviderType.subsonic,
-    ];
-
+  Widget _buildManualView(ColorScheme cs) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: manualTypes.map((type) {
-            final selected = _manualType == type;
-            return ChoiceChip(
-              avatar: Icon(type.icon, size: 16),
-              label: Text(type.displayName),
-              selected: selected,
-              onSelected: (_) {
-                PixelHaptics.tick();
-                setState(() {
-                  _manualType = type;
-                  _nameCtrl.text = type.displayName;
-                });
-              },
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _nameCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Account Display Name',
-            border: OutlineInputBorder(),
+        DropdownButtonFormField<CloudProviderType>(
+          initialValue: _selectedManualType,
+          decoration: InputDecoration(
+            labelText: 'Server / Protocol Type',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
           ),
+          items: const [
+            DropdownMenuItem(value: CloudProviderType.jellyfin, child: Text('Jellyfin / Emby Server')),
+            DropdownMenuItem(value: CloudProviderType.subsonic, child: Text('Subsonic / Navidrome API')),
+            DropdownMenuItem(value: CloudProviderType.webdav, child: Text('WebDAV (Nextcloud / ownCloud)')),
+            DropdownMenuItem(value: CloudProviderType.s3, child: Text('S3 Object Storage (AWS / MinIO)')),
+          ],
+          onChanged: (val) {
+            if (val != null) setState(() => _selectedManualType = val);
+          },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         TextField(
-          controller: _endpointCtrl,
-          decoration: const InputDecoration(
+          controller: _manualServerUrlController,
+          decoration: InputDecoration(
             labelText: 'Server URL / Endpoint / IP Address',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
           ),
         ),
-        if (_manualType == CloudProviderType.s3) ...[
-          const SizedBox(height: 10),
-          TextField(
-            controller: _bucketCtrl,
-            decoration: const InputDecoration(
-              labelText: 'S3 / R2 Bucket Name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ],
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         TextField(
-          controller: _userCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Username / Access Key ID',
-            border: OutlineInputBorder(),
+          controller: _manualUsernameController,
+          decoration: InputDecoration(
+            labelText: 'Username / Access Key',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         TextField(
-          controller: _secretCtrl,
+          controller: _manualPasswordController,
           obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Password / API Key / Secret Key (Keystore Encrypted)',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: 'Password / API Key',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
           ),
         ),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _isConnecting ? null : _submitManual,
-            icon: const Icon(Icons.cloud_done_rounded),
-            label: const Text('Mount Cloud Drive'),
+          child: FilledButton(
+            onPressed: () {
+              final account = CloudAccount(
+                id: 'manual_${DateTime.now().millisecondsSinceEpoch}',
+                providerType: _selectedManualType,
+                displayName: '${_selectedManualType.displayName} Server',
+                endpointOrFolder: _manualServerUrlController.text.trim(),
+                usernameOrEmail: _manualUsernameController.text.trim(),
+              );
+              ref.read(cloudAccountsProvider.notifier).addAccount(account, {
+                'password': _manualPasswordController.text,
+              });
+              Navigator.of(context).pop();
+            },
+            style: FilledButton.styleFrom(shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(vertical: 14)),
+            child: const Text('Mount Cloud Drive', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
         ),
       ],
     );
   }
 }
-

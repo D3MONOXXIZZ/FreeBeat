@@ -75,11 +75,12 @@ class _MainShellState extends ConsumerState<MainShell> {
             children: pages,
           ),
 
-          // Floating Docked Mini-Player above NavigationBar (Stock Pixel Tonal Elevation)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 10,
+          // Floating Docked Mini-Player above NavigationBar (Active playback only)
+          if (playback.queue.isNotEmpty && track.id.isNotEmpty)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 10,
             child: SpringPressScale(
               onTap: _openFullNowPlaying,
               child: Container(

@@ -78,6 +78,54 @@ class MainActivity : FlutterActivity() {
                         triggerPixelLraHaptic(type, intensity)
                         result.success(true)
                     }
+                    "isAppInstalled" -> {
+                        val packageName = call.argument<String>("packageName") ?: ""
+                        val isInstalled = try {
+                            packageManager.getPackageInfo(packageName, 0)
+                            true
+                        } catch (e: Exception) {
+                            false
+                        }
+                        result.success(isInstalled)
+                    }
+                    "launchApp" -> {
+                        val packageName = call.argument<String>("packageName") ?: ""
+                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(launchIntent)
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    }
+                    "getAppSha1Fingerprint" -> {
+                        val sha1 = try {
+                            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+                            }
+                            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                packageInfo.signingInfo?.apkContentsSigners
+                            } else {
+                                @Suppress("DEPRECATION")
+                                packageInfo.signatures
+                            }
+                            val cert = signatures?.firstOrNull()?.toByteArray()
+                            if (cert != null) {
+                                val md = java.security.MessageDigest.getInstance("SHA-1")
+                                val digest = md.digest(cert)
+                                digest.joinToString(":") { "%02X".format(it) }
+                            } else {
+                                "UNKNOWN"
+                            }
+                        } catch (e: Exception) {
+                            "ERROR: ${e.message}"
+                        }
+                        result.success(sha1)
+                    }
                     else -> result.notImplemented()
                 }
             }

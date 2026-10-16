@@ -104,11 +104,14 @@ class SystemBrightnessNotifier extends StateNotifier<Brightness> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
-  CloudAccountsNotifier(this._db, this._credStore)
-      : super(DemoCloudConnector.defaultShowcaseAccounts());
+  CloudAccountsNotifier(this._db, this._credStore) : super(const []);
 
   final LibraryDatabase _db;
   final SecureCredentialStore _credStore;
+
+  void loadSampleDemoAccounts() {
+    state = DemoCloudConnector.defaultShowcaseAccounts();
+  }
 
   Future<void> addAccount(
     CloudAccount account,
@@ -137,10 +140,13 @@ final cloudAccountsProvider =
 });
 
 class TracksCatalogNotifier extends StateNotifier<List<Track>> {
-  TracksCatalogNotifier(this._db)
-      : super(DemoCloudConnector.defaultShowcaseTracks());
+  TracksCatalogNotifier(this._db) : super(const []);
 
   final LibraryDatabase _db;
+
+  void loadSampleDemoTracks() {
+    state = DemoCloudConnector.defaultShowcaseTracks();
+  }
 
   Future<void> addIndexedTracks(List<Track> newTracks) async {
     if (newTracks.isEmpty) return;
@@ -268,6 +274,11 @@ final audioQualityProvider =
 final audioOutputRouteProvider = FutureProvider<AudioOutputRouteInfo>((ref) async {
   final dspService = ref.watch(powerampDspServiceProvider);
   return dspService.fetchAudioRouteInfo();
+});
+
+final audioRouteInfoProvider = Provider<AudioOutputRouteInfo>((ref) {
+  final asyncVal = ref.watch(audioOutputRouteProvider);
+  return asyncVal.valueOrNull ?? const AudioOutputRouteInfo();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -507,6 +518,24 @@ class PlaybackViewState {
     return idx;
   }
 
+  static final Track emptyTrack = Track(
+    id: '',
+    accountId: '',
+    providerType: CloudProviderType.androidSaf,
+    remotePathOrId: '',
+    title: 'No track playing',
+    artist: 'Connect cloud storage or import songs',
+    album: 'FreeBeat',
+    durationMs: 0,
+    streamUrl: '',
+    codec: 'FLAC',
+    bitDepth: 24,
+    sampleRateHz: 96000,
+    bitrateKbps: 1411,
+    sizeBytes: 0,
+    dominantColorValue: 0xFF6750A4,
+  );
+
   PlaybackViewState copyWith({
     Track? currentTrack,
     List<Track>? queue,
@@ -530,15 +559,21 @@ class PlaybackViewState {
 
 class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   PlaybackNotifier(
-    this._ref,
-    List<Track> initialTracks,
-  ) : super(
+    this._ref, [
+    List<Track> initialTracks = const [],
+  ]) : super(
           PlaybackViewState(
-            currentTrack: initialTracks.first,
+            currentTrack: initialTracks.isNotEmpty
+                ? initialTracks.first
+                : PlaybackViewState.emptyTrack,
             queue: initialTracks,
+            positionMs: 0,
+            bufferedPositionMs: 0,
           ),
         ) {
-    _initAudioPlayer();
+    if (initialTracks.isNotEmpty) {
+      _initAudioPlayer();
+    }
   }
 
   final Ref _ref;
@@ -685,6 +720,5 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
 final playbackProvider =
     StateNotifierProvider<PlaybackNotifier, PlaybackViewState>((ref) {
-  final tracks = DemoCloudConnector.defaultShowcaseTracks();
-  return PlaybackNotifier(ref, tracks);
+  return PlaybackNotifier(ref, const []);
 });

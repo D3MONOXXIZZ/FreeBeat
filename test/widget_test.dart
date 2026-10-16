@@ -1,11 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/main.dart';
 
 void main() {
   testWidgets(
-    'FreeBeat boots Pixel M3 Expressive UI, navigates across tabs, and interacts with Poweramp 10-Band EQ & Now Playing',
+    'FreeBeat boots Pixel M3 Expressive UI, navigates across tabs, tests Settings hub, and handles zero seed data',
     (WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -14,21 +13,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. Verify Home screen with Spotify layout & Your Mix
+      // 1. Verify Home screen with M3 header and zero-seed empty state
       expect(find.text('Your Mix'), findsWidgets);
-      expect(find.text('Astral Meadow'), findsWidgets);
+      expect(find.text('Your Music, Everywhere'), findsOneWidget);
+      expect(find.text('Connect Cloud Storage'), findsOneWidget);
 
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      // 2. Open Settings Hub from Top App Bar
+      await tester.tap(find.byTooltip('Settings').first);
       await tester.pumpAndSettle();
-      expect(find.text('Jump back in'), findsOneWidget);
 
-      // 2. Navigate to Library tab
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Audio Quality'), findsOneWidget);
+      expect(find.text('Bluetooth & Output'), findsOneWidget);
+      expect(find.text('Storage & Sync'), findsOneWidget);
+      expect(find.text('About FreeBeat'), findsOneWidget);
+
+      // Navigate to Appearance sub-page
+      await tester.tap(find.text('Appearance'));
+      await tester.pumpAndSettle();
+      expect(find.text('Theme Mode'), findsOneWidget);
+      expect(find.text('System Default'), findsOneWidget);
+
+      // Return to Settings Hub, then back to Home
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Your Mix'), findsWidgets);
+
+      // 3. Navigate to Library tab
       await tester.tap(find.text('Library'));
       await tester.pumpAndSettle();
       expect(find.text('Your Library'), findsOneWidget);
-      expect(find.text('Hi-Res 24-Bit'), findsOneWidget);
+      expect(find.text('Your Library is Empty'), findsOneWidget);
 
-      // 3. Navigate to Poweramp 10-Band EQ Studio tab
+      // 4. Navigate to Poweramp 10-Band EQ Studio tab
       await tester.tap(find.text('Poweramp EQ'));
       await tester.pumpAndSettle();
       expect(find.text('Poweramp DSP Studio'), findsOneWidget);
@@ -42,23 +62,15 @@ void main() {
       expect(find.text('TREBLE AIR'), findsOneWidget);
       expect(find.text('STEREO X'), findsOneWidget);
 
-      // 4. Navigate to Clouds tab
+      // 5. Navigate to Clouds tab
       await tester.tap(find.text('Clouds'));
       await tester.pumpAndSettle();
       expect(find.text('Clouds & Hi-Fi Quality'), findsOneWidget);
-      expect(find.text('Audio Bitrate & Hi-Fi Lossless Tiers'), findsOneWidget);
-
-      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
-      await tester.pumpAndSettle();
-      expect(find.text('Bluetooth Codec & Device Compatibility'), findsOneWidget);
-
-      // 5. Open Full Now Playing Screen by tapping the MiniPlayer
-      await tester.tap(find.text('Your Mix').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Astral Meadow').last);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('Poweramp 10-Band EQ'), findsOneWidget);
+      expect(find.text('No Cloud Accounts Connected'), findsOneWidget);
+      expect(find.text('Installed Cloud Apps'), findsOneWidget);
+      expect(find.text('Google Drive'), findsOneWidget);
+      expect(find.text('Microsoft OneDrive'), findsOneWidget);
+      expect(find.text('Dropbox'), findsOneWidget);
     },
   );
 }

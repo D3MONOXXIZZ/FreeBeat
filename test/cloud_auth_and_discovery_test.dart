@@ -132,11 +132,11 @@ void main() {
 
       // Check header and 1-Tap Google Drive Card
       expect(find.text('Add Cloud & Media Drive'), findsOneWidget);
-      expect(find.text('Google Drive'), findsOneWidget);
+      expect(find.text('Google Drive'), findsWidgets);
       expect(find.text('Continue with Google Account'), findsOneWidget);
       expect(find.text('Mount via Google Drive App (Android SAF)'), findsOneWidget);
-      expect(find.text('Microsoft OneDrive'), findsOneWidget);
-      expect(find.text('Dropbox'), findsOneWidget);
+      expect(find.text('Microsoft OneDrive'), findsWidgets);
+      expect(find.text('Dropbox'), findsWidgets);
 
       // Switch to 'Wi-Fi Servers' mode
       await tester.tap(find.text('Wi-Fi Servers'));
@@ -146,12 +146,16 @@ void main() {
       expect(find.text('Quick Host Presets:'), findsOneWidget);
 
       // Switch to 'Installed Apps' mode
+      await tester.ensureVisible(find.text('Installed Apps'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Installed Apps'));
       await tester.pumpAndSettle();
       expect(find.text('Mount Any Installed Cloud App'), findsOneWidget);
       expect(find.text('Pick Music from Installed Cloud App'), findsOneWidget);
 
       // Switch to 'Manual / S3' mode
+      await tester.ensureVisible(find.text('Manual / S3'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Manual / S3'));
       await tester.pumpAndSettle();
       expect(find.text('Server URL / Endpoint / IP Address'), findsOneWidget);

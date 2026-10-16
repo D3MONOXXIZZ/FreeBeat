@@ -58,5 +58,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <package android:name="com.google.android.apps.docs" />
+        <package android:name="com.microsoft.skydrive" />
+        <package android:name="com.dropbox.android" />
+        <package android:name="com.nextcloud.client" />
+        <package android:name="com.box.android" />
     </queries>
 </manifest>

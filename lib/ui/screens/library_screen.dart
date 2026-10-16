@@ -4,6 +4,7 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import 'settings/settings_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements:
@@ -34,7 +35,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final accounts = ref.read(cloudAccountsProvider);
     final safAccount = accounts.firstWhere(
       (a) => a.providerType == CloudProviderType.androidSaf,
-      orElse: () => accounts.first,
+      orElse: () => const CloudAccount(
+        id: 'local_storage_saf',
+        providerType: CloudProviderType.androidSaf,
+        displayName: 'Local Storage',
+        endpointOrFolder: 'Local Music Files',
+      ),
     );
     final picked =
         await authService.pickFromInstalledCloudApp(account: safAccount);
@@ -113,6 +119,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   PixelHaptics.tick();
                 },
               ),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                tooltip: 'Settings',
+                onPressed: () {
+                  PixelHaptics.tick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                },
+              ),
               const SizedBox(width: 8),
             ],
           ),
@@ -180,43 +196,128 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(28),
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < filtered.length; i++) ...[
-                        if (i > 0)
-                          Divider(
-                            height: 1,
-                            indent: 74,
-                            endIndent: 16,
-                            color: cs.outlineVariant.withValues(alpha: 0.25),
+                  child: allTracks.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: cs.primaryContainer,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Icon(
+                                    Icons.queue_music_rounded,
+                                    size: 32,
+                                    color: cs.onPrimaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Your Library is Empty',
+                                  style: textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Add music files from your device or connect cloud storage to start listening.',
+                                  textAlign: TextAlign.center,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                FilledButton.icon(
+                                  onPressed: _pickLocalFiles,
+                                  icon: const Icon(Icons.add_rounded, size: 18),
+                                  label: const Text('Add Music from Device'),
+                                  style: FilledButton.styleFrom(
+                                    shape: const StadiumBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    PixelHaptics.tick();
+                                    ref
+                                        .read(cloudAccountsProvider.notifier)
+                                        .loadSampleDemoAccounts();
+                                    ref
+                                        .read(tracksCatalogProvider.notifier)
+                                        .loadSampleDemoTracks();
+                                  },
+                                  icon: const Icon(Icons.auto_awesome_rounded,
+                                      size: 16),
+                                  label: const Text('Load Demo Showcase'),
+                                ),
+                              ],
+                            ),
                           ),
-                        _LibraryTrackTile(
-                          track: filtered[i],
-                          isCurrent: playback.currentTrack.id == filtered[i].id,
-                          isPlaying:
-                              playback.currentTrack.id == filtered[i].id &&
-                                  playback.isPlaying,
-                          durationText:
-                              _formatTrackDuration(filtered[i].durationMs),
-                          onTap: () {
-                            ref
-                                .read(playbackProvider.notifier)
-                                .playTrack(filtered[i]);
-                          },
-                          onToggleFavorite: () {
-                            ref
-                                .read(tracksCatalogProvider.notifier)
-                                .toggleFavorite(filtered[i].id);
-                          },
-                          onTogglePin: () {
-                            ref
-                                .read(tracksCatalogProvider.notifier)
-                                .togglePinOffline(filtered[i].id);
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
+                        )
+                      : filtered.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    Icon(Icons.filter_list_off_rounded,
+                                        size: 32, color: cs.onSurfaceVariant),
+                                    const SizedBox(height: 8),
+                                    Text('No tracks in this view',
+                                        style: textTheme.titleMedium),
+                                    const SizedBox(height: 8),
+                                    TextButton(
+                                      onPressed: () =>
+                                          setState(() => _segment = 'all'),
+                                      child: const Text('View All Tracks'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : Column(
+                              children: [
+                                for (int i = 0; i < filtered.length; i++) ...[
+                                  if (i > 0)
+                                    Divider(
+                                      height: 1,
+                                      indent: 74,
+                                      endIndent: 16,
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.25),
+                                    ),
+                                  _LibraryTrackTile(
+                                    track: filtered[i],
+                                    isCurrent: playback.currentTrack.id ==
+                                        filtered[i].id,
+                                    isPlaying: playback.currentTrack.id ==
+                                            filtered[i].id &&
+                                        playback.isPlaying,
+                                    durationText: _formatTrackDuration(
+                                        filtered[i].durationMs),
+                                    onTap: () {
+                                      ref
+                                          .read(playbackProvider.notifier)
+                                          .playTrack(filtered[i]);
+                                    },
+                                    onToggleFavorite: () {
+                                      ref
+                                          .read(tracksCatalogProvider.notifier)
+                                          .toggleFavorite(filtered[i].id);
+                                    },
+                                    onTogglePin: () {
+                                      ref
+                                          .read(tracksCatalogProvider.notifier)
+                                          .togglePinOffline(filtered[i].id);
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
                 ),
               ),
             ),
