@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -52,6 +55,22 @@ class NativeCloudAuthService {
 
   final GoogleSignIn _googleSignIn;
   final MethodChannel _channel;
+
+  /// High-fidelity and standard audio extensions recognized across Android DocumentsProvider and Google Drive.
+  static const List<String> supportedAudioExtensions = [
+    'mp3',
+    'flac',
+    'm4a',
+    'wav',
+    'aac',
+    'ogg',
+    'opus',
+    'alac',
+    'aiff',
+    'dsd',
+    'dff',
+    'wma',
+  ];
 
   /// 1-Tap Google Drive Native Sign-In using the Android Google Account chooser modal.
   /// On devices with Google Play Services / Google accounts, this displays the native bottom sheet
@@ -201,28 +220,188 @@ class NativeCloudAuthService {
     required CloudAccount account,
   }) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
-        allowMultiple: true,
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: supportedAudioExtensions,
+          allowMultiple: true,
+          withData: true,
+        );
+      } catch (_) {
+        // Fallback to FileType.any if custom throws on OEM Android picker
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: true,
+          withData: true,
+        );
+      }
+
+      if (result == null || result.files.isEmpty) return [];
+
+      Directory? appMusicDir;
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        appMusicDir = Directory(p.join(appDir.path, 'imported_music'));
+        if (!appMusicDir.existsSync()) {
+          appMusicDir.createSync(recursive: true);
+        }
+      } catch (_) {}
+
+      final tracks = <Track>[];
+      final supportedAudioExts = {
+        '.mp3',
+        '.flac',
+        '.m4a',
+        '.wav',
+        '.aac',
+        '.ogg',
+        '.opus',
+        '.alac',
+        '.aiff',
+        '.wma',
+        '.dsd',
+        '.dff',
+      };
+
+      for (final file in result.files) {
+        final name = file.name;
+        final ext = p.extension(name).toLowerCase();
+        if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) continue;
+
+        String finalPath = file.path ?? '';
+
+        // If file.path is null or in a temporary cache, persist it to app documents
+        if (appMusicDir != null) {
+          try {
+            final destFile = File(p.join(appMusicDir.path, name));
+            if (file.bytes != null && file.bytes!.isNotEmpty) {
+              await destFile.writeAsBytes(file.bytes!);
+              finalPath = destFile.path;
+            } else if (file.path != null && File(file.path!).existsSync()) {
+              if (!destFile.existsSync() || destFile.lengthSync() == 0) {
+                await File(file.path!).copy(destFile.path);
+              }
+              finalPath = destFile.existsSync() ? destFile.path : file.path!;
+            } else if (file.identifier != null && file.identifier!.isNotEmpty) {
+              finalPath = file.identifier!;
+            }
+          } catch (_) {
+            finalPath = file.path ?? file.identifier ?? '';
+          }
+        }
+
+        if (finalPath.isEmpty) {
+          finalPath = file.path ?? file.identifier ?? '';
+        }
+        if (finalPath.isEmpty) continue;
+
+        final parsed = RangeTagParser.parseFromFilename(name);
+        final cleanTitle = parsed.title ??
+            name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+        final providerLabel = account.displayName.isNotEmpty
+            ? account.displayName
+            : account.providerType.displayName;
+
+        tracks.add(
+          Track(
+            id: 'drive_${name.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}',
+            accountId: account.id,
+            providerType: account.providerType,
+            remotePathOrId: finalPath,
+            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+            artist: parsed.artist ?? providerLabel,
+            album: parsed.album ?? providerLabel,
+            durationMs: 210000,
+            streamUrl: finalPath,
+            codec: parsed.codec ??
+                (ext.isNotEmpty
+                    ? ext.replaceAll('.', '').toUpperCase()
+                    : 'FLAC'),
+            bitDepth: parsed.bitDepth ?? 24,
+            sampleRateHz: parsed.sampleRateHz ?? 96000,
+            bitrateKbps: parsed.bitrateKbps ?? 1411,
+            sizeBytes: file.size > 0 ? file.size : 25000000,
+            dominantColorValue: account.providerType.accentColorValue,
+            isPinnedOffline: true,
+            localCachePath: finalPath,
+          ),
+        );
+      }
+
+      return tracks;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 1-Tap Folder Import: Scans an entire music directory (e.g. from Google Drive or device)
+  Future<List<Track>> pickFolder({
+    required CloudAccount account,
+  }) async {
+    try {
+      final dirPath = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Select ${account.displayName} Music Folder',
       );
-      if (result == null) return [];
-      return result.files.where((f) => f.path != null).map((file) {
-        final parsed = RangeTagParser.parseFromFilename(file.name);
+      if (dirPath == null || dirPath.isEmpty) return [];
+
+      final dir = Directory(dirPath);
+      if (!dir.existsSync()) return [];
+
+      final supportedExts = {
+        '.mp3',
+        '.flac',
+        '.m4a',
+        '.wav',
+        '.aac',
+        '.ogg',
+        '.opus',
+        '.alac',
+        '.aiff',
+        '.wma',
+        '.dsd',
+        '.dff',
+      };
+
+      final entities = dir.listSync(recursive: true, followLinks: false);
+      final audioFiles = entities.whereType<File>().where((f) {
+        final ext = p.extension(f.path).toLowerCase();
+        return supportedExts.contains(ext);
+      }).toList();
+
+      if (audioFiles.isEmpty) return [];
+
+      final providerLabel = account.displayName.isNotEmpty
+          ? account.displayName
+          : account.providerType.displayName;
+
+      return audioFiles.map((file) {
+        final name = p.basename(file.path);
+        final ext = p.extension(name).toLowerCase();
+        final parsed = RangeTagParser.parseFromFilename(name);
+        final cleanTitle = parsed.title ??
+            name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+        final parentFolder = p.basename(p.dirname(file.path));
+
         return Track(
-          id: 'saf_${file.name.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}',
+          id: 'folder_${file.path.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}',
           accountId: account.id,
           providerType: account.providerType,
-          remotePathOrId: file.path!,
-          title: parsed.title ?? file.name,
-          artist: parsed.artist ?? account.displayName,
-          album: parsed.album ?? account.displayName,
+          remotePathOrId: file.path,
+          title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+          artist: parsed.artist ?? providerLabel,
+          album: parsed.album ??
+              (parentFolder.isNotEmpty ? parentFolder : providerLabel),
           durationMs: 210000,
-          streamUrl: file.path!,
-          codec: parsed.codec ?? 'FLAC',
+          streamUrl: file.path,
+          codec: parsed.codec ??
+              (ext.isNotEmpty
+                  ? ext.replaceAll('.', '').toUpperCase()
+                  : 'FLAC'),
           bitDepth: parsed.bitDepth ?? 24,
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1411,
-          sizeBytes: file.size,
+          sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
           dominantColorValue: account.providerType.accentColorValue,
           isPinnedOffline: true,
           localCachePath: file.path,

@@ -110,9 +110,9 @@ class GoogleDriveConnector implements CloudProviderConnector {
     if (token.isEmpty) return [];
     try {
       final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
-        'q': "mimeType contains 'audio/' and trashed = false",
+        'q': "(mimeType contains 'audio/' or name contains '.mp3' or name contains '.flac' or name contains '.m4a' or name contains '.wav' or name contains '.ogg' or name contains '.opus' or name contains '.aac') and trashed = false",
         'fields': 'files(id,name,mimeType,size)',
-        'pageSize': '250',
+        'pageSize': '500',
       });
       final resp = await _client.get(
         uri,
@@ -126,13 +126,14 @@ class GoogleDriveConnector implements CloudProviderConnector {
         final id = f['id'] as String;
         final name = f['name'] as String? ?? 'Drive Track.flac';
         final parsed = RangeTagParser.parseFromFilename(name);
+        final cleanTitle = parsed.title ?? name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
         return Track(
           id: 'gdrive_$id',
           accountId: account.id,
           providerType: type,
           remotePathOrId: id,
-          title: parsed.title ?? name,
-          artist: parsed.artist ?? 'Google Drive Artist',
+          title: cleanTitle.isNotEmpty ? cleanTitle : name,
+          artist: parsed.artist ?? (account.displayName.isNotEmpty ? account.displayName : 'Google Drive'),
           album: parsed.album ?? account.displayName,
           durationMs: 215000,
           streamUrl:

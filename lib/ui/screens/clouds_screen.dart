@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
+import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/discovery/local_media_server_discovery_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
@@ -499,14 +500,25 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     setState(() => _isGoogleLoading = false);
 
     if (result.isSuccess && result.account != null) {
-      await ref.read(cloudAccountsProvider.notifier).addAccount(
-        result.account!,
-        {'accessToken': result.accessToken ?? ''},
-      );
+      final account = result.account!;
+      final secrets = {'accessToken': result.accessToken ?? ''};
+      await ref.read(cloudAccountsProvider.notifier).addAccount(account, secrets);
+
+      // Automatically scan Google Drive for audio files if token is provided
+      if (secrets['accessToken']!.isNotEmpty) {
+        final connector = GoogleDriveConnector();
+        final tracks = await connector.scanLibrary(account, secrets);
+        if (tracks.isNotEmpty) {
+          await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
+        }
+      }
+
       await PixelHaptics.hifiConfirm();
 
       if (mounted) {
-        Navigator.of(context).pop();
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Connected to ${result.displayName ?? result.email}!'),
@@ -559,48 +571,49 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Icon(Icons.info_outline_rounded, color: cs.primary, size: 24),
+                const Icon(Icons.add_to_drive_rounded, color: Color(0xFF4285F4), size: 26),
                 const SizedBox(width: 12),
-                const Text(
-                  'Google Drive Connection Options',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                const Expanded(
+                  child: Text(
+                    'Import from Google Drive',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              'Native 1-tap sign-in requires adding your app SHA-1 to Google Cloud Console. You can easily connect via Web Browser, or import directly from the installed Google Drive app:',
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+              'Direct Google Play Services login requires SHA-1 registration in Google Cloud Console. You can immediately access your music using Android\'s built-in Google Drive document provider without any setup:',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: () async {
+              onPressed: () {
                 Navigator.pop(ctx);
-                final authService = ref.read(nativeCloudAuthServiceProvider);
-                await authService.launchOAuthAuthorization(
-                  provider: CloudProviderType.googleDrive,
-                  clientId: 'freebeat-drive-client',
+                _mountViaSaf(
+                  providerType: CloudProviderType.googleDrive,
+                  defaultName: 'Google Drive',
                 );
               },
-              icon: const Icon(Icons.language_rounded, size: 18),
-              label: const Text('Sign in via Web Browser (OAuth 2.0)'),
+              icon: const Icon(Icons.audio_file_rounded, size: 20),
+              label: const Text('Pick Audio Files from Google Drive', style: TextStyle(fontWeight: FontWeight.w700)),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 shape: const StadiumBorder(),
               ),
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
+            FilledButton.tonalIcon(
               onPressed: () {
                 Navigator.pop(ctx);
-                _mountViaSaf(
+                _mountFolderViaSaf(
                   providerType: CloudProviderType.googleDrive,
-                  defaultName: 'Google Drive App Mount',
+                  defaultName: 'Google Drive Folder',
                 );
               },
-              icon: const Icon(Icons.folder_shared_rounded, size: 18),
-              label: const Text('Import via Google Drive App (Android SAF)'),
-              style: OutlinedButton.styleFrom(
+              icon: const Icon(Icons.folder_shared_rounded, size: 20),
+              label: const Text('Import Music Folder from Drive / Device', style: TextStyle(fontWeight: FontWeight.w700)),
+              style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 shape: const StadiumBorder(),
               ),
@@ -657,20 +670,79 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
         await PixelHaptics.hifiConfirm();
 
         if (mounted) {
-          Navigator.of(context).pop();
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Mounted ${tracks.length} audio tracks from $defaultName!'),
+              content: Text('Imported ${tracks.length} audio tracks from $defaultName!'),
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
       } else {
-        setState(() => _isConnecting = false);
+        if (mounted) setState(() => _isConnecting = false);
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() => _isConnecting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _mountFolderViaSaf({
+    required CloudProviderType providerType,
+    required String defaultName,
+  }) async {
+    setState(() => _isConnecting = true);
+    PixelHaptics.tick();
+
+    try {
+      final account = CloudAccount(
+        id: 'saf_folder_${DateTime.now().millisecondsSinceEpoch}',
+        providerType: providerType,
+        displayName: defaultName,
+        endpointOrFolder: 'Folder Import (${providerType.displayName})',
+        lastSyncedAt: DateTime.now(),
+      );
+
+      final authService = ref.read(nativeCloudAuthServiceProvider);
+      final tracks = await authService.pickFolder(account: account);
+
+      if (tracks.isNotEmpty) {
+        await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
+        await PixelHaptics.hifiConfirm();
+
+        if (mounted) {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Imported ${tracks.length} tracks from $defaultName!'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        if (mounted) setState(() => _isConnecting = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isConnecting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Folder import failed: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -780,45 +852,63 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Stream your audio library directly from Google Drive.',
+                'Stream or import music directly from your Google Drive files or cloud folders.',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _isGoogleLoading ? null : _signInWithGoogle,
+                  onPressed: () => _mountViaSaf(
+                    providerType: CloudProviderType.googleDrive,
+                    defaultName: 'Google Drive',
+                  ),
                   style: FilledButton.styleFrom(
-                    backgroundColor: cs.primary,
-                    foregroundColor: cs.onPrimary,
+                    backgroundColor: const Color(0xFF4285F4),
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: const StadiumBorder(),
                   ),
-                  icon: _isGoogleLoading
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary),
-                        )
-                      : const Icon(Icons.account_circle_rounded, size: 20),
-                  label: const Text('Continue with Google Account', style: TextStyle(fontWeight: FontWeight.w700)),
+                  icon: const Icon(Icons.audio_file_rounded, size: 20),
+                  label: const Text('Pick Audio Files from Google Drive', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _mountViaSaf(
-                    providerType: CloudProviderType.googleDrive,
-                    defaultName: 'Google Drive App Mount',
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _mountFolderViaSaf(
+                        providerType: CloudProviderType.googleDrive,
+                        defaultName: 'Google Drive Folder',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: const StadiumBorder(),
+                      ),
+                      icon: const Icon(Icons.folder_shared_rounded, size: 16),
+                      label: const Text('Import Folder', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: const StadiumBorder(),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isGoogleLoading ? null : _signInWithGoogle,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: const StadiumBorder(),
+                      ),
+                      icon: _isGoogleLoading
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cloud_sync_rounded, size: 16),
+                      label: const Text('Cloud Sign-In', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    ),
                   ),
-                  icon: const Icon(Icons.folder_shared_rounded, size: 18),
-                  label: const Text('Mount via Google Drive App (Android SAF)'),
-                ),
+                ],
               ),
             ],
           ),
@@ -1073,8 +1163,26 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: const StadiumBorder(),
                   ),
-                  icon: const Icon(Icons.folder_open_rounded, size: 20),
-                  label: const Text('Pick Music from Installed Cloud App', style: TextStyle(fontWeight: FontWeight.w700)),
+                  icon: const Icon(Icons.audio_file_rounded, size: 20),
+                  label: const Text('Pick Music Files from Installed App', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isConnecting
+                      ? null
+                      : () => _mountFolderViaSaf(
+                            providerType: CloudProviderType.androidSaf,
+                            defaultName: 'Mounted Music Folder',
+                          ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const StadiumBorder(),
+                  ),
+                  icon: const Icon(Icons.folder_shared_rounded, size: 20),
+                  label: const Text('Import Entire Folder', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

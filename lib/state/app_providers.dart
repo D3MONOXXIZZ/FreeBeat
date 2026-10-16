@@ -104,10 +104,19 @@ class SystemBrightnessNotifier extends StateNotifier<Brightness> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
-  CloudAccountsNotifier(this._db, this._credStore) : super(const []);
+  CloudAccountsNotifier(this._db, this._credStore) : super(const []) {
+    _loadFromDb();
+  }
 
   final LibraryDatabase _db;
   final SecureCredentialStore _credStore;
+
+  Future<void> _loadFromDb() async {
+    final loaded = await _db.loadAccounts();
+    if (loaded.isNotEmpty) {
+      state = loaded;
+    }
+  }
 
   void loadSampleDemoAccounts() {
     state = DemoCloudConnector.defaultShowcaseAccounts();
@@ -140,9 +149,23 @@ final cloudAccountsProvider =
 });
 
 class TracksCatalogNotifier extends StateNotifier<List<Track>> {
-  TracksCatalogNotifier(this._db) : super(const []);
+  TracksCatalogNotifier(this._db, this._ref) : super(const []) {
+    _loadFromDb();
+  }
 
   final LibraryDatabase _db;
+  final Ref _ref;
+
+  Future<void> _loadFromDb() async {
+    final loaded = await _db.loadTracks();
+    if (loaded.isNotEmpty) {
+      state = loaded;
+      final playback = _ref.read(playbackProvider);
+      if (playback.queue.isEmpty) {
+        _ref.read(playbackProvider.notifier).setQueue(loaded);
+      }
+    }
+  }
 
   void loadSampleDemoTracks() {
     state = DemoCloudConnector.defaultShowcaseTracks();
@@ -156,6 +179,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       map[t.id] = t;
     }
     state = map.values.toList();
+    final playback = _ref.read(playbackProvider);
+    if (playback.queue.isEmpty) {
+      _ref.read(playbackProvider.notifier).setQueue(state);
+    }
   }
 
   Future<void> toggleFavorite(String trackId) async {
@@ -181,7 +208,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
 final tracksCatalogProvider =
     StateNotifierProvider<TracksCatalogNotifier, List<Track>>((ref) {
-  return TracksCatalogNotifier(ref.watch(libraryDatabaseProvider));
+  return TracksCatalogNotifier(ref.watch(libraryDatabaseProvider), ref);
 });
 
 /// Selected Cloud Filter on Home / Library ('all' or CloudProviderType.id or 'offline')
@@ -664,7 +691,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         );
         if (_audioPlayer != null) {
           if (_audioPlayer!.audioSource == null) {
-            await _audioPlayer!.setUrl(state.currentTrack.streamUrl);
+            await _setAudioSource(state.currentTrack.streamUrl);
           }
           unawaited(_audioPlayer!.play());
         }
@@ -677,10 +704,38 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
   }
 
-  Future<void> playTrack(Track track) async {
+  Future<void> _setAudioSource(String urlOrPath) async {
+    if (_audioPlayer == null || urlOrPath.isEmpty) return;
+    try {
+      if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
+        await _audioPlayer!.setUrl(urlOrPath);
+      } else if (urlOrPath.startsWith('content://')) {
+        await _audioPlayer!.setAudioSource(AudioSource.uri(Uri.parse(urlOrPath)));
+      } else {
+        await _audioPlayer!.setFilePath(urlOrPath);
+      }
+    } catch (_) {}
+  }
+
+  void setQueue(List<Track> tracks, {Track? startTrack}) {
+    if (tracks.isEmpty) return;
+    final current = startTrack ??
+        (tracks.any((t) => t.id == state.currentTrack.id)
+            ? state.currentTrack
+            : tracks.first);
+    state = state.copyWith(queue: tracks, currentTrack: current);
+  }
+
+  Future<void> playTrack(Track track, {List<Track>? newQueue}) async {
     await PixelHaptics.playPauseToggle();
+    final List<Track> effectiveQueue = newQueue ??
+        (state.queue.isEmpty ? _ref.read(tracksCatalogProvider) : state.queue);
+    final hasTrack = effectiveQueue.any((t) => t.id == track.id);
+    final queueToUse = hasTrack ? effectiveQueue : [track, ...effectiveQueue];
+
     state = state.copyWith(
       currentTrack: track,
+      queue: queueToUse,
       positionMs: 0,
       bufferedPositionMs: (track.durationMs * 0.35).round(),
       isPlaying: true,
@@ -688,7 +743,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _startTicker();
     try {
       if (_audioPlayer != null) {
-        await _audioPlayer!.setUrl(track.streamUrl);
+        await _setAudioSource(track.streamUrl);
         unawaited(_audioPlayer!.play());
       }
     } catch (_) {}

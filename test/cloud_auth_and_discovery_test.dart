@@ -64,6 +64,39 @@ void main() {
       expect(dropboxUri.host, 'www.dropbox.com');
       expect(dropboxUri.queryParameters['client_id'], 'dropbox_client_123');
     });
+
+    test('NativeCloudAuthService supports comprehensive hi-fi audio extensions for SAF picker', () {
+      expect(NativeCloudAuthService.supportedAudioExtensions, containsAll(['mp3', 'flac', 'm4a', 'wav', 'aac', 'ogg', 'opus', 'alac']));
+    });
+
+    test('GoogleDriveConnector scans audio files with query filtering', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.host == 'www.googleapis.com' && request.url.path == '/drive/v3/files') {
+          final q = request.url.queryParameters['q'] ?? '';
+          expect(q, contains('.flac'));
+          expect(q, contains('.mp3'));
+          return http.Response(
+            '{"files": [{"id": "file123", "name": "Artist - Song.flac", "size": "15000000"}]}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final connector = GoogleDriveConnector(client: mockClient);
+      const account = CloudAccount(
+        id: 'acc_1',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'My Drive',
+        endpointOrFolder: 'root',
+      );
+      final tracks = await connector.scanLibrary(account, {'accessToken': 'test_token'});
+      expect(tracks.length, 1);
+      expect(tracks.first.title, 'Song');
+      expect(tracks.first.artist, 'Artist');
+      expect(tracks.first.codec, 'FLAC');
+    });
   });
 
   group('Local Media Server Wi-Fi Auto-Discovery', () {
@@ -133,8 +166,9 @@ void main() {
       // Check header and 1-Tap Google Drive Card
       expect(find.text('Add Cloud & Media Drive'), findsOneWidget);
       expect(find.text('Google Drive'), findsWidgets);
-      expect(find.text('Continue with Google Account'), findsOneWidget);
-      expect(find.text('Mount via Google Drive App (Android SAF)'), findsOneWidget);
+      expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
+      expect(find.text('Import Folder'), findsOneWidget);
+      expect(find.text('Cloud Sign-In'), findsOneWidget);
       expect(find.text('Microsoft OneDrive'), findsWidgets);
       expect(find.text('Dropbox'), findsWidgets);
 
@@ -151,7 +185,8 @@ void main() {
       await tester.tap(find.text('Installed Apps'));
       await tester.pumpAndSettle();
       expect(find.text('Mount Any Installed Cloud App'), findsOneWidget);
-      expect(find.text('Pick Music from Installed Cloud App'), findsOneWidget);
+      expect(find.text('Pick Music Files from Installed App'), findsOneWidget);
+      expect(find.text('Import Entire Folder'), findsOneWidget);
 
       // Switch to 'Manual / S3' mode
       await tester.ensureVisible(find.text('Manual / S3'));

@@ -10,7 +10,10 @@ class LibraryDatabase {
   final List<CloudAccount> _memoryAccounts = [];
   final List<Track> _memoryTracks = [];
 
+  bool _initAttempted = false;
+
   Future<void> init() async {
+    _initAttempted = true;
     try {
       final dbPath = await getDatabasesPath();
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
@@ -65,13 +68,21 @@ class LibraryDatabase {
     }
   }
 
+  Future<void> _ensureInitialized() async {
+    if (_db == null && !_initAttempted) {
+      await init();
+    }
+  }
+
   Future<List<CloudAccount>> loadAccounts() async {
+    await _ensureInitialized();
     if (_db == null) return List.unmodifiable(_memoryAccounts);
     final rows = await _db!.query('cloud_accounts');
     return rows.map(CloudAccount.fromMap).toList();
   }
 
   Future<void> upsertAccount(CloudAccount account) async {
+    await _ensureInitialized();
     _memoryAccounts.removeWhere((a) => a.id == account.id);
     _memoryAccounts.add(account);
     if (_db != null) {
@@ -84,6 +95,7 @@ class LibraryDatabase {
   }
 
   Future<void> removeAccount(String accountId) async {
+    await _ensureInitialized();
     _memoryAccounts.removeWhere((a) => a.id == accountId);
     _memoryTracks.removeWhere((t) => t.accountId == accountId);
     if (_db != null) {
@@ -93,12 +105,14 @@ class LibraryDatabase {
   }
 
   Future<List<Track>> loadTracks() async {
+    await _ensureInitialized();
     if (_db == null) return List.unmodifiable(_memoryTracks);
     final rows = await _db!.query('tracks');
     return rows.map(Track.fromMap).toList();
   }
 
   Future<void> upsertTracks(List<Track> tracks) async {
+    await _ensureInitialized();
     for (final track in tracks) {
       final idx = _memoryTracks.indexWhere((t) => t.id == track.id);
       if (idx >= 0) {
