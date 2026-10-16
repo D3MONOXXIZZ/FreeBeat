@@ -5,7 +5,10 @@ import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
+import '../widgets/material_you_album_cover.dart';
+import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
+import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -200,11 +203,35 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Artists',
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Artists',
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (_selectedArtist != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ArtistDetailsScreen(
+                                artistName: _selectedArtist!,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        label: Text('View $_selectedArtist'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -226,6 +253,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         setState(() {
                           _selectedArtist = isSelected ? null : artist;
                         });
+                      },
+                      onLongPress: () {
+                        PixelHaptics.medium();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ArtistDetailsScreen(artistName: artist),
+                          ),
+                        );
                       },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -526,20 +562,13 @@ class _LibraryTrackTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: cs.surfaceContainerHighest,
-              ),
-              child: Center(
-                child: Icon(
-                  isPlaying ? Icons.equalizer_rounded : track.providerType.icon,
-                  color: isCurrent ? cs.primary : cs.onSurfaceVariant,
-                  size: 22,
-                ),
-              ),
+            MaterialYouAlbumCover(
+              track: track,
+              size: 48,
+              borderRadius: 14,
+              showQualityBadge: false,
+              showSourceBadge: false,
+              isPlaying: isPlaying,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -579,13 +608,25 @@ class _LibraryTrackTile extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          '${track.artist} • $durationText',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            PixelHaptics.tick();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ArtistDetailsScreen(artistName: track.artist),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            '${track.artist} • $durationText',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
@@ -613,6 +654,18 @@ class _LibraryTrackTile extends StatelessWidget {
                 size: 20,
               ),
               onPressed: onToggleFavorite,
+            ),
+            IconButton(
+              icon: const Icon(Icons.more_vert_rounded, size: 20),
+              tooltip: 'Track Options',
+              onPressed: () {
+                PixelHaptics.tick();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TrackDetailsScreen(track: track),
+                  ),
+                );
+              },
             ),
           ],
         ),

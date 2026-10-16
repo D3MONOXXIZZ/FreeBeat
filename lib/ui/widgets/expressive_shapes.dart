@@ -8,11 +8,13 @@ class SpringPressScale extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.scaleDown = 0.95,
   });
 
   final Widget child;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final double scaleDown;
 
   @override
@@ -30,6 +32,10 @@ class _SpringPressScaleState extends State<SpringPressScale> {
       onTapUp: (_) {
         setState(() => _pressed = false);
         widget.onTap?.call();
+      },
+      onLongPress: () {
+        setState(() => _pressed = false);
+        widget.onLongPress?.call();
       },
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedScale(

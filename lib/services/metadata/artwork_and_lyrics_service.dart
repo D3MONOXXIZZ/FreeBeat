@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../../core/models/track.dart';
+import 'artwork_extractor.dart';
 
-/// Enriches missing high-resolution album art via iTunes Search API and
-/// fetches millisecond-accurate time-synced `.lrc` lyrics via LRCLIB / cloud sidecars.
+/// Enriches missing high-resolution album art via embedded file tag extraction,
+/// iTunes Search API fallback, and fetches millisecond-accurate time-synced `.lrc`
+/// lyrics via LRCLIB / cloud sidecars.
 class ArtworkAndLyricsService {
   ArtworkAndLyricsService({http.Client? client})
       : _client = client ?? http.Client();
@@ -69,8 +74,13 @@ class ArtworkAndLyricsService {
     required String title,
   }) async {
     try {
+      final cleanArtist = artist.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
+      final cleanTitle = title.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
+      final query = cleanArtist.isNotEmpty ? '$cleanArtist $cleanTitle' : cleanTitle;
+      if (query.isEmpty) return null;
+
       final uri = Uri.https('itunes.apple.com', '/search', {
-        'term': '$artist $title',
+        'term': query,
         'media': 'music',
         'entity': 'song',
         'limit': '1',
@@ -90,5 +100,66 @@ class ArtworkAndLyricsService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Enriches [track] with high-res artwork from:
+  /// 1. Embedded tags in local file (MP3 APIC or FLAC PICTURE)
+  /// 2. iTunes Search API fallback, downloaded and cached locally
+  Future<Track> enrichTrackArtwork(Track track) async {
+    // If artwork is already a valid existing file, keep it
+    if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
+      if (!track.artworkUrl!.startsWith('http://') &&
+          !track.artworkUrl!.startsWith('https://')) {
+        if (File(track.artworkUrl!).existsSync()) {
+          return track;
+        }
+      }
+    }
+
+    // 1. Try local embedded artwork extraction
+    final potentialLocalPaths = [
+      track.localCachePath,
+      track.remotePathOrId,
+      track.streamUrl,
+    ];
+
+    for (final path in potentialLocalPaths) {
+      if (path != null && path.isNotEmpty) {
+        final file = File(path);
+        if (file.existsSync()) {
+          final extracted = await ArtworkExtractor.extractEmbeddedArtwork(file, track.id);
+          if (extracted != null && File(extracted).existsSync()) {
+            return track.copyWith(artworkUrl: extracted);
+          }
+        }
+      }
+    }
+
+    // 2. Query iTunes Search API for 600x600 cover
+    final netUrl = await lookupHighResArtwork(
+      artist: track.artist,
+      title: track.title,
+    );
+
+    if (netUrl != null && netUrl.isNotEmpty) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final artDir = Directory(p.join(appDir.path, 'album_art'));
+        if (!artDir.existsSync()) {
+          artDir.createSync(recursive: true);
+        }
+        final sanitizedId = track.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final targetFile = File(p.join(artDir.path, '$sanitizedId.jpg'));
+
+        final imgResp = await _client.get(Uri.parse(netUrl)).timeout(const Duration(seconds: 6));
+        if (imgResp.statusCode == 200 && imgResp.bodyBytes.length > 500) {
+          await targetFile.writeAsBytes(imgResp.bodyBytes);
+          return track.copyWith(artworkUrl: targetFile.path);
+        }
+      } catch (_) {}
+      return track.copyWith(artworkUrl: netUrl);
+    }
+
+    return track;
   }
 }

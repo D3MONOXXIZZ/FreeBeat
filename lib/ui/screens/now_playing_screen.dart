@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
-import '../widgets/pixel_artwork.dart';
+import '../widgets/material_you_album_cover.dart';
 import '../widgets/signal_path_sheet.dart';
 import '../widgets/waveform_seekbar.dart';
+import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
+import 'track_details_screen.dart';
 
 /// Full-Screen Google Pixel Material 3 Expressive Now Playing Screen.
 /// Strictly implements Screen 2 in Figma inspiration:
@@ -163,6 +165,18 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                         ),
                       ),
                       IconButton(
+                        icon: const Icon(Icons.info_outline_rounded, size: 24),
+                        tooltip: 'Track Details',
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => TrackDetailsScreen(track: track),
+                            ),
+                          );
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.tune_rounded, size: 24),
                         tooltip: 'Poweramp EQ',
                         onPressed: () {
@@ -178,56 +192,27 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   // 3. Hero Album Artwork Card with Ambient Colored Drop Glow
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: AspectRatio(
                       aspectRatio: 1.0,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(32),
-                          boxShadow: [
-                            BoxShadow(
-                              color: track.dominantColor.withValues(alpha: 0.35),
-                              blurRadius: 36,
-                              spreadRadius: 4,
-                              offset: const Offset(0, 16),
+                      child: GestureDetector(
+                        onTap: () {
+                          PixelHaptics.tick();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => TrackDetailsScreen(track: track),
                             ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(32),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              PixelOrganicArtwork(
-                                style: PixelArtStyle.desertSun,
-                                borderRadius: 32,
-                                primaryColor: track.dominantColor,
-                              ),
-                              // Subtle format badge overlay
-                              Positioned(
-                                top: 16,
-                                right: 16,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.45),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '${track.bitDepth}-BIT FLAC',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                          );
+                        },
+                        child: Hero(
+                          tag: 'album_art_${track.id}',
+                          child: MaterialYouAlbumCover(
+                            track: track,
+                            size: double.infinity,
+                            borderRadius: 32,
+                            showQualityBadge: true,
+                            showSourceBadge: true,
+                            isPlaying: playback.isPlaying,
                           ),
                         ),
                       ),
@@ -257,16 +242,50 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                   ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              track.artist.isEmpty
-                                  ? 'Connect cloud storage or import songs'
-                                  : track.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w500,
-                                color: cs.onSurfaceVariant,
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () {
+                                if (track.artist.isNotEmpty &&
+                                    track.artist !=
+                                        'Connect cloud storage or import songs') {
+                                  PixelHaptics.tick();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ArtistDetailsScreen(
+                                        artistName: track.artist,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      track.artist.isEmpty
+                                          ? 'Connect cloud storage or import songs'
+                                          : track.artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  if (track.artist.isNotEmpty &&
+                                      track.artist !=
+                                          'Connect cloud storage or import songs') ...[
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 16,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ],

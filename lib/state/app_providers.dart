@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +11,13 @@ import '../core/models/track.dart';
 import '../core/storage/library_database.dart';
 import '../core/storage/secure_credential_store.dart';
 import '../providers/implementations/network_and_saf_connectors.dart';
+import '../services/audio/cloud_audio_cache_service.dart';
 import '../services/audio/cloud_stream_proxy.dart';
 import '../services/audio/poweramp_dsp_service.dart';
 import '../services/auth/native_cloud_auth_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
+import '../services/metadata/artwork_and_lyrics_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core Infrastructure Providers
@@ -52,6 +55,18 @@ final cloudStreamProxyProvider = Provider<CloudStreamProxy>((ref) {
   );
   ref.onDispose(proxy.dispose);
   return proxy;
+});
+
+final artworkAndLyricsServiceProvider =
+    Provider<ArtworkAndLyricsService>((ref) {
+  return ArtworkAndLyricsService();
+});
+
+final cloudAudioCacheServiceProvider =
+    ChangeNotifierProvider<CloudAudioCacheService>((ref) {
+  return CloudAudioCacheService(
+    credentialStore: ref.watch(credentialStoreProvider),
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,12 +184,48 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
         if (playback.queue.isEmpty) {
           _ref.read(playbackProvider.notifier).setQueue(loaded);
         }
+        _enrichMissingArtwork(loaded);
       }
     }
   }
 
   void loadSampleDemoTracks() {
     state = DemoCloudConnector.defaultShowcaseTracks();
+  }
+
+  Future<void> updateTrack(Track updated) async {
+    state = state.map((t) => t.id == updated.id ? updated : t).toList();
+    if (_db != null) {
+      await _db.upsertTracks([updated]);
+    }
+  }
+
+  Future<void> enrichTrackArtwork(Track track) async {
+    if (_ref == null) return;
+    try {
+      final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
+      final enriched = await artworkSvc.enrichTrackArtwork(track);
+      if (enriched.artworkUrl != null && enriched.artworkUrl!.isNotEmpty) {
+        await updateTrack(enriched);
+      }
+    } catch (_) {}
+  }
+
+  void _enrichMissingArtwork(List<Track> tracks) {
+    if (_ref == null) return;
+    unawaited(() async {
+      final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
+      for (final t in tracks) {
+        if (t.artworkUrl == null || t.artworkUrl!.isEmpty) {
+          try {
+            final enriched = await artworkSvc.enrichTrackArtwork(t);
+            if (enriched.artworkUrl != null && enriched.artworkUrl!.isNotEmpty) {
+              await updateTrack(enriched);
+            }
+          } catch (_) {}
+        }
+      }
+    }());
   }
 
   Future<void> addIndexedTracks(List<Track> newTracks) async {
@@ -192,6 +243,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       if (playback.queue.isEmpty) {
         _ref.read(playbackProvider.notifier).setQueue(state);
       }
+      _enrichMissingArtwork(newTracks);
     }
   }
 
@@ -199,7 +251,11 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     await PixelHaptics.tick(intensity: 0.75);
     state = state.map((t) {
       if (t.id == trackId) {
-        return t.copyWith(isFavorite: !t.isFavorite);
+        final updated = t.copyWith(isFavorite: !t.isFavorite);
+        if (_db != null) {
+          _db.upsertTracks([updated]);
+        }
+        return updated;
       }
       return t;
     }).toList();
@@ -207,12 +263,24 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
   Future<void> togglePinOffline(String trackId) async {
     await PixelHaptics.hifiConfirm();
+    Track? target;
     state = state.map((t) {
       if (t.id == trackId) {
-        return t.copyWith(isPinnedOffline: !t.isPinnedOffline);
+        target = t.copyWith(isPinnedOffline: !t.isPinnedOffline);
+        if (_db != null) {
+          _db.upsertTracks([target!]);
+        }
+        return target!;
       }
       return t;
     }).toList();
+
+    if (_ref != null && target != null && target!.isPinnedOffline) {
+      final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+      unawaited(cacheSvc.cacheTrack(target!, onComplete: (cachedTrack) {
+        updateTrack(cachedTrack);
+      }));
+    }
   }
 }
 
@@ -737,22 +805,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             bufferedPositionMs: 0,
           ),
         ) {
-    if (initialTracks.isNotEmpty) {
-      _initAudioPlayer();
-    }
+    _initAudioPlayer();
   }
 
   final Ref _ref;
   AudioPlayer? _audioPlayer;
   Timer? _progressTicker;
+  bool _isInitializingPlayer = false;
 
   Future<void> _initAudioPlayer() async {
+    if (_audioPlayer != null || _isInitializingPlayer) return;
+    _isInitializingPlayer = true;
     try {
       final proxy = _ref.read(cloudStreamProxyProvider);
       await proxy.start();
-      _audioPlayer = AudioPlayer();
+      final player = AudioPlayer();
+      await player.setVolume(1.0);
 
-      _audioPlayer!.androidAudioSessionIdStream.listen((sessionId) {
+      player.androidAudioSessionIdStream.listen((sessionId) {
         if (sessionId != null && sessionId > 0) {
           final dspSvc = _ref.read(powerampDspServiceProvider);
           dspSvc.attachAudioSession(sessionId);
@@ -760,14 +830,41 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       });
 
-      _audioPlayer!.positionStream.listen((pos) {
+      player.playerStateStream.listen((playerState) {
+        if (!mounted) return;
+        final playing = playerState.playing;
+        final proc = playerState.processingState;
+        if (proc == ProcessingState.completed) {
+          skipNext();
+        } else if (state.isPlaying != playing) {
+          state = state.copyWith(isPlaying: playing);
+        }
+      });
+
+      player.positionStream.listen((pos) {
         if (mounted && state.isPlaying) {
           state = state.copyWith(positionMs: pos.inMilliseconds);
         }
       });
+
+      player.bufferedPositionStream.listen((buf) {
+        if (mounted) {
+          state = state.copyWith(bufferedPositionMs: buf.inMilliseconds);
+        }
+      });
+
+      _audioPlayer = player;
     } catch (_) {
       // Headless widget test environment fallback uses smooth internal ticker
       _audioPlayer = null;
+    } finally {
+      _isInitializingPlayer = false;
+    }
+  }
+
+  Future<void> _ensureAudioPlayerInitialized() async {
+    if (_audioPlayer == null) {
+      await _initAudioPlayer();
     }
   }
 
@@ -775,6 +872,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _progressTicker?.cancel();
     _progressTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (!mounted || !state.isPlaying) return;
+      if (_audioPlayer != null) return;
       final nextPos = state.positionMs + 250;
       if (nextPos >= state.currentTrack.durationMs) {
         skipNext();
@@ -795,6 +893,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
     if (nextPlaying) {
       _startTicker();
+      await _ensureAudioPlayerInitialized();
       try {
         final proxy = _ref.read(cloudStreamProxyProvider);
         final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
@@ -805,28 +904,69 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         );
         if (_audioPlayer != null) {
           if (_audioPlayer!.audioSource == null) {
-            await _setAudioSource(state.currentTrack.streamUrl);
+            await _loadAndPlayTrack(state.currentTrack);
+          } else {
+            await _audioPlayer!.play();
           }
-          unawaited(_audioPlayer!.play());
         }
       } catch (_) {}
     } else {
       _progressTicker?.cancel();
       try {
-        unawaited(_audioPlayer?.pause());
+        await _audioPlayer?.pause();
       } catch (_) {}
     }
   }
 
-  Future<void> _setAudioSource(String urlOrPath) async {
-    if (_audioPlayer == null || urlOrPath.isEmpty) return;
+  Future<void> _loadAndPlayTrack(Track track) async {
+    if (_audioPlayer == null || track.id.isEmpty) return;
     try {
-      if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
-        await _audioPlayer!.setUrl(urlOrPath);
-      } else if (urlOrPath.startsWith('content://')) {
-        await _audioPlayer!.setAudioSource(AudioSource.uri(Uri.parse(urlOrPath)));
+      final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+      final cachedPath = await cacheSvc.getCachedFilePath(track);
+      final effectiveSource = cachedPath ?? track.streamUrl;
+
+      if (cachedPath != null && File(cachedPath).existsSync()) {
+        await _audioPlayer!.setFilePath(cachedPath);
+        await _audioPlayer!.play();
+        return;
+      }
+
+      if (effectiveSource.startsWith('http://') ||
+          effectiveSource.startsWith('https://')) {
+        Map<String, String>? headers;
+        if (track.providerType == CloudProviderType.googleDrive) {
+          final secrets = await _ref
+              .read(credentialStoreProvider)
+              .readSecrets(track.accountId);
+          final token = secrets['accessToken'] ?? '';
+          if (token.isNotEmpty) {
+            headers = {'Authorization': 'Bearer $token'};
+          }
+        }
+
+        await _audioPlayer!.setAudioSource(
+          AudioSource.uri(Uri.parse(effectiveSource), headers: headers),
+        );
+        await _audioPlayer!.play();
+
+        // Stream directly while caching in background
+        unawaited(cacheSvc.cacheTrack(track, onComplete: (cachedTrack) {
+          _ref.read(tracksCatalogProvider.notifier).updateTrack(cachedTrack);
+        }));
+      } else if (effectiveSource.startsWith('content://')) {
+        await _audioPlayer!.setAudioSource(
+          AudioSource.uri(Uri.parse(effectiveSource)),
+        );
+        await _audioPlayer!.play();
       } else {
-        await _audioPlayer!.setFilePath(urlOrPath);
+        if (File(effectiveSource).existsSync()) {
+          await _audioPlayer!.setFilePath(effectiveSource);
+        } else {
+          await _audioPlayer!.setAudioSource(
+            AudioSource.uri(Uri.parse(effectiveSource)),
+          );
+        }
+        await _audioPlayer!.play();
       }
     } catch (_) {}
   }
@@ -855,12 +995,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       isPlaying: true,
     );
     _startTicker();
+
+    await _ensureAudioPlayerInitialized();
     try {
       if (_audioPlayer != null) {
-        await _setAudioSource(track.streamUrl);
-        unawaited(_audioPlayer!.play());
+        await _loadAndPlayTrack(track);
       }
     } catch (_) {}
+
+    if (track.artworkUrl == null || track.artworkUrl!.isEmpty) {
+      _ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(track);
+    }
   }
 
   Future<void> seekToMs(int targetMs, {bool withHaptic = false}) async {

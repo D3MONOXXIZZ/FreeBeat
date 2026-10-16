@@ -9,6 +9,7 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/metadata/range_tag_parser.dart';
+import '../metadata/artwork_extractor.dart';
 
 /// Result object for Native Google Sign-In operations.
 class NativeGoogleAuthResult {
@@ -302,10 +303,20 @@ class NativeCloudAuthService {
         final providerLabel = account.displayName.isNotEmpty
             ? account.displayName
             : account.providerType.displayName;
+        final trackId =
+            'drive_${name.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}';
+
+        String? embeddedArt;
+        if (File(finalPath).existsSync()) {
+          embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
+            File(finalPath),
+            trackId,
+          );
+        }
 
         tracks.add(
           Track(
-            id: 'drive_${name.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}',
+            id: trackId,
             accountId: account.id,
             providerType: account.providerType,
             remotePathOrId: finalPath,
@@ -314,6 +325,7 @@ class NativeCloudAuthService {
             album: parsed.album ?? providerLabel,
             durationMs: 210000,
             streamUrl: finalPath,
+            artworkUrl: embeddedArt,
             codec: parsed.codec ??
                 (ext.isNotEmpty
                     ? ext.replaceAll('.', '').toUpperCase()
@@ -375,38 +387,51 @@ class NativeCloudAuthService {
           ? account.displayName
           : account.providerType.displayName;
 
-      return audioFiles.map((file) {
+      final tracks = <Track>[];
+      for (final file in audioFiles) {
         final name = p.basename(file.path);
         final ext = p.extension(name).toLowerCase();
         final parsed = RangeTagParser.parseFromFilename(name);
         final cleanTitle = parsed.title ??
             name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
         final parentFolder = p.basename(p.dirname(file.path));
+        final trackId =
+            'folder_${file.path.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}';
 
-        return Track(
-          id: 'folder_${file.path.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}',
-          accountId: account.id,
-          providerType: account.providerType,
-          remotePathOrId: file.path,
-          title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-          artist: parsed.artist ?? providerLabel,
-          album: parsed.album ??
-              (parentFolder.isNotEmpty ? parentFolder : providerLabel),
-          durationMs: 210000,
-          streamUrl: file.path,
-          codec: parsed.codec ??
-              (ext.isNotEmpty
-                  ? ext.replaceAll('.', '').toUpperCase()
-                  : 'FLAC'),
-          bitDepth: parsed.bitDepth ?? 24,
-          sampleRateHz: parsed.sampleRateHz ?? 96000,
-          bitrateKbps: parsed.bitrateKbps ?? 1411,
-          sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
-          dominantColorValue: account.providerType.accentColorValue,
-          isPinnedOffline: true,
-          localCachePath: file.path,
+        String? embeddedArt;
+        if (file.existsSync()) {
+          embeddedArt =
+              await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
+        }
+
+        tracks.add(
+          Track(
+            id: trackId,
+            accountId: account.id,
+            providerType: account.providerType,
+            remotePathOrId: file.path,
+            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+            artist: parsed.artist ?? providerLabel,
+            album: parsed.album ??
+                (parentFolder.isNotEmpty ? parentFolder : providerLabel),
+            durationMs: 210000,
+            streamUrl: file.path,
+            artworkUrl: embeddedArt,
+            codec: parsed.codec ??
+                (ext.isNotEmpty
+                    ? ext.replaceAll('.', '').toUpperCase()
+                    : 'FLAC'),
+            bitDepth: parsed.bitDepth ?? 24,
+            sampleRateHz: parsed.sampleRateHz ?? 96000,
+            bitrateKbps: parsed.bitrateKbps ?? 1411,
+            sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
+            dominantColorValue: account.providerType.accentColorValue,
+            isPinnedOffline: true,
+            localCachePath: file.path,
+          ),
         );
-      }).toList();
+      }
+      return tracks;
     } catch (_) {
       return [];
     }

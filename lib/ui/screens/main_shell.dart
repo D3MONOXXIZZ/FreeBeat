@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
-import '../widgets/pixel_artwork.dart';
+import '../widgets/material_you_album_cover.dart';
 import 'clouds_screen.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
@@ -102,18 +102,13 @@ class _MainShellState extends ConsumerState<MainShell> {
                         padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
                         child: Row(
                           children: [
-                            // Squircle Album Artwork (14dp radius)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: SizedBox(
-                                width: 46,
-                                height: 46,
-                                child: PixelOrganicArtwork(
-                                  style: PixelArtStyle.desertSun,
-                                  borderRadius: 14,
-                                  primaryColor: track.dominantColor,
-                                ),
-                              ),
+                            MaterialYouAlbumCover(
+                              track: track,
+                              size: 46,
+                              borderRadius: 14,
+                              showQualityBadge: false,
+                              showSourceBadge: false,
+                              isPlaying: playback.isPlaying,
                             ),
                             const SizedBox(width: 12),
 

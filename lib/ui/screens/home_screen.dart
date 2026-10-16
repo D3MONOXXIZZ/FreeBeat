@@ -7,7 +7,9 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/signal_path_sheet.dart';
+import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
+import 'track_details_screen.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -61,6 +63,126 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final minutes = totalSeconds ~/ 60;
     final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  void _showTrackOptionsModal(Track track) {
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: cs.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    MaterialYouAlbumCover(
+                      track: track,
+                      size: 52,
+                      borderRadius: 14,
+                      showQualityBadge: false,
+                      showSourceBadge: false,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            track.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            '${track.artist} • ${track.album}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text('View Track Details',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                      '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TrackDetailsScreen(track: track),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.person_rounded),
+                  title: Text('View Artist: ${track.artist}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ArtistDetailsScreen(artistName: track.artist),
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    track.isPinnedOffline
+                        ? Icons.download_done_rounded
+                        : Icons.download_rounded,
+                  ),
+                  title: Text(
+                    track.isPinnedOffline
+                        ? 'Cached Offline (Tap to Remove)'
+                        : 'Download / Cache Offline',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    ref
+                        .read(tracksCatalogProvider.notifier)
+                        .togglePinOffline(track.id);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _getTimeGreeting() {
@@ -866,9 +988,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   return SpringPressScale(
                     onTap: () {
                       PixelHaptics.tick();
-                      ref
-                          .read(selectedArtistFilterProvider.notifier)
-                          .state = artist.name;
+                      if (ref.read(selectedArtistFilterProvider) == artist.name) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ArtistDetailsScreen(
+                              artistName: artist.name,
+                            ),
+                          ),
+                        );
+                      } else {
+                        ref
+                            .read(selectedArtistFilterProvider.notifier)
+                            .state = artist.name;
+                      }
+                    },
+                    onLongPress: () {
+                      PixelHaptics.tick();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ArtistDetailsScreen(
+                            artistName: artist.name,
+                          ),
+                        ),
+                      );
                     },
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1242,6 +1384,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       .read(tracksCatalogProvider.notifier)
                                       .toggleFavorite(tracks[i].id);
                                 },
+                                onOpenOptions: () {
+                                  _showTrackOptionsModal(tracks[i]);
+                                },
                               ),
                             ],
                           ],
@@ -1323,6 +1468,7 @@ class _PixelTrackTile extends StatelessWidget {
     required this.durationText,
     required this.onTap,
     required this.onToggleFavorite,
+    required this.onOpenOptions,
   });
 
   final Track track;
@@ -1331,6 +1477,7 @@ class _PixelTrackTile extends StatelessWidget {
   final String durationText;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
+  final VoidCallback onOpenOptions;
 
   @override
   Widget build(BuildContext context) {
@@ -1418,6 +1565,17 @@ class _PixelTrackTile extends StatelessWidget {
               onPressed: () {
                 PixelHaptics.tick();
                 onToggleFavorite();
+              },
+            ),
+            IconButton(
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                size: 20,
+              ),
+              tooltip: 'Track Options',
+              onPressed: () {
+                PixelHaptics.tick();
+                onOpenOptions();
               },
             ),
           ],

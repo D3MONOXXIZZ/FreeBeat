@@ -35,6 +35,18 @@ class PixelHaptics {
     }
   }
 
+  /// Medium impact feedback for long-press and secondary selections.
+  static Future<void> medium() async {
+    try {
+      await _channel.invokeMethod('triggerPixelHaptic', {
+        'type': 'tick',
+        'intensity': 0.85,
+      });
+    } catch (_) {
+      await HapticFeedback.mediumImpact();
+    }
+  }
+
   /// Mechanical notch snap when crossing `0.0 dB` on Preamp/EQ faders or center L/R balance
   /// (`PRIMITIVE_CLICK` + `PRIMITIVE_TICK`).
   static Future<void> centerDetentSnap() async {
