@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -149,20 +150,25 @@ final cloudAccountsProvider =
 });
 
 class TracksCatalogNotifier extends StateNotifier<List<Track>> {
-  TracksCatalogNotifier(this._db, this._ref) : super(const []) {
-    _loadFromDb();
+  TracksCatalogNotifier([this._db, this._ref]) : super(const []) {
+    if (_db != null) {
+      _loadFromDb();
+    }
   }
 
-  final LibraryDatabase _db;
-  final Ref _ref;
+  final LibraryDatabase? _db;
+  final Ref? _ref;
 
   Future<void> _loadFromDb() async {
+    if (_db == null) return;
     final loaded = await _db.loadTracks();
     if (loaded.isNotEmpty) {
       state = loaded;
-      final playback = _ref.read(playbackProvider);
-      if (playback.queue.isEmpty) {
-        _ref.read(playbackProvider.notifier).setQueue(loaded);
+      if (_ref != null) {
+        final playback = _ref.read(playbackProvider);
+        if (playback.queue.isEmpty) {
+          _ref.read(playbackProvider.notifier).setQueue(loaded);
+        }
       }
     }
   }
@@ -173,15 +179,19 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
   Future<void> addIndexedTracks(List<Track> newTracks) async {
     if (newTracks.isEmpty) return;
-    await _db.upsertTracks(newTracks);
+    if (_db != null) {
+      await _db.upsertTracks(newTracks);
+    }
     final map = {for (final t in state) t.id: t};
     for (final t in newTracks) {
       map[t.id] = t;
     }
     state = map.values.toList();
-    final playback = _ref.read(playbackProvider);
-    if (playback.queue.isEmpty) {
-      _ref.read(playbackProvider.notifier).setQueue(state);
+    if (_ref != null) {
+      final playback = _ref.read(playbackProvider);
+      if (playback.queue.isEmpty) {
+        _ref.read(playbackProvider.notifier).setQueue(state);
+      }
     }
   }
 
@@ -214,21 +224,125 @@ final tracksCatalogProvider =
 /// Selected Cloud Filter on Home / Library ('all' or CloudProviderType.id or 'offline')
 final selectedCloudFilterProvider = StateProvider<String>((ref) => 'all');
 
+/// Selected Artist Filter on Home ('all' / null or specific artist name)
+final selectedArtistFilterProvider = StateProvider<String?>((ref) => null);
+
+/// Selected Album Filter on Home ('all' / null or specific album name)
+final selectedAlbumFilterProvider = StateProvider<String?>((ref) => null);
+
 /// Search query text in the Pixel Search Bar pill
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+/// Represents an artist item discovered in the user's catalog
+class ArtistInfo {
+  final String name;
+  final int trackCount;
+  final Track representativeTrack;
+
+  const ArtistInfo({
+    required this.name,
+    required this.trackCount,
+    required this.representativeTrack,
+  });
+}
+
+/// Represents an album item discovered in the user's catalog
+class AlbumInfo {
+  final String title;
+  final String artist;
+  final int trackCount;
+  final Track representativeTrack;
+
+  const AlbumInfo({
+    required this.title,
+    required this.artist,
+    required this.trackCount,
+    required this.representativeTrack,
+  });
+}
+
+/// Dynamic list of artists discovered in the user's catalog
+final availableArtistsProvider = Provider<List<ArtistInfo>>((ref) {
+  final tracks = ref.watch(tracksCatalogProvider);
+  final map = <String, List<Track>>{};
+  for (final t in tracks) {
+    final artist = t.artist.trim().isEmpty ? 'Unknown Artist' : t.artist.trim();
+    map.putIfAbsent(artist, () => []).add(t);
+  }
+  final list = map.entries.map((e) {
+    return ArtistInfo(
+      name: e.key,
+      trackCount: e.value.length,
+      representativeTrack: e.value.first,
+    );
+  }).toList();
+  list.sort((a, b) => b.trackCount.compareTo(a.trackCount));
+  return list;
+});
+
+/// Dynamic list of albums discovered in the user's catalog
+final availableAlbumsProvider = Provider<List<AlbumInfo>>((ref) {
+  final tracks = ref.watch(tracksCatalogProvider);
+  final map = <String, List<Track>>{};
+  for (final t in tracks) {
+    final album = t.album.trim().isEmpty ? 'Unknown Album' : t.album.trim();
+    map.putIfAbsent(album, () => []).add(t);
+  }
+  final list = map.entries.map((e) {
+    return AlbumInfo(
+      title: e.key,
+      artist: e.value.first.artist,
+      trackCount: e.value.length,
+      representativeTrack: e.value.first,
+    );
+  }).toList();
+  list.sort((a, b) => b.trackCount.compareTo(a.trackCount));
+  return list;
+});
+
+/// Seed for daily Top Picks shuffle
+final topPicksSeedProvider = StateProvider<int>((ref) => DateTime.now().day);
+
+/// Top Picks for Today: Curated randomized selection from user's library
+final topPicksProvider = Provider<List<Track>>((ref) {
+  final allTracks = ref.watch(tracksCatalogProvider);
+  if (allTracks.isEmpty) return const [];
+  if (allTracks.length <= 6) return allTracks;
+
+  final seed = ref.watch(topPicksSeedProvider);
+  final random = Random(seed);
+  final copy = List<Track>.from(allTracks);
+  copy.shuffle(random);
+  return copy.take(8).toList();
+});
+
 final filteredTracksProvider = Provider<List<Track>>((ref) {
   final allTracks = ref.watch(tracksCatalogProvider);
-  final filter = ref.watch(selectedCloudFilterProvider);
+  final cloudFilter = ref.watch(selectedCloudFilterProvider);
+  final artistFilter = ref.watch(selectedArtistFilterProvider);
+  final albumFilter = ref.watch(selectedAlbumFilterProvider);
   final query = ref.watch(searchQueryProvider).trim().toLowerCase();
 
   return allTracks.where((track) {
-    final matchesFilter = filter == 'all'
+    // 1. Cloud filter
+    final matchesCloud = cloudFilter == 'all'
         ? true
-        : filter == 'offline'
+        : cloudFilter == 'offline'
             ? track.isPinnedOffline
-            : track.providerType.id == filter;
-    if (!matchesFilter) return false;
+            : track.providerType.id == cloudFilter;
+    if (!matchesCloud) return false;
+
+    // 2. Artist filter
+    if (artistFilter != null && artistFilter.isNotEmpty) {
+      if (track.artist.toLowerCase() != artistFilter.toLowerCase()) return false;
+    }
+
+    // 3. Album filter
+    if (albumFilter != null && albumFilter.isNotEmpty) {
+      if (track.album.toLowerCase() != albumFilter.toLowerCase()) return false;
+    }
+
+    // 4. Search query
     if (query.isEmpty) return true;
     return track.title.toLowerCase().contains(query) ||
         track.artist.toLowerCase().contains(query) ||
