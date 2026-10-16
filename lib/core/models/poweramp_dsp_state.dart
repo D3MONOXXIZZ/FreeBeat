@@ -36,6 +36,8 @@ class EqBandConfig {
     return '${frequencyHz.toInt()}';
   }
 
+  String get label => frequencyLabel;
+
   EqBandConfig copyWith({
     int? index,
     double? frequencyHz,
@@ -101,6 +103,8 @@ class DspPreset {
   final double trebleTone;
   final double stereoExpansion;
   final bool isCustom;
+
+  String get description => '$category Preset • Preamp: ${preampDb >= 0 ? "+" : ""}${preampDb.toStringAsFixed(1)} dB';
 }
 
 /// Built-in audiophile & Poweramp-style presets.
@@ -230,6 +234,11 @@ class PowerampDspState {
   final ReverbPresetType reverbPreset;
   final double reverbMix; // 0.0 to 1.0
   final String activePresetId;
+
+  double get toneFrequencyHz => bassFreqHz;
+  double get bassGainDb => (bassGain * 20.0) - 10.0;
+  double get trebleGainDb => (trebleGain * 20.0) - 10.0;
+  double get stereoXAmount => stereoExpansion;
 
   factory PowerampDspState.initial() {
     final preset = kBuiltInDspPresets[1]; // Poweramp Bass & Treble

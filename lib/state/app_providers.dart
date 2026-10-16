@@ -449,6 +449,31 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     _syncToHardware();
   }
 
+  void setBassGain(double db) {
+    final normalized = ((db + 10.0) / 20.0).clamp(0.0, 1.0);
+    setBassTone(normalized);
+  }
+
+  void setTrebleGain(double db) {
+    final normalized = ((db + 10.0) / 20.0).clamp(0.0, 1.0);
+    setTrebleTone(normalized);
+  }
+
+  void setStereoXAmount(double amount) {
+    setStereoExpansion(amount.clamp(0.0, 1.0));
+  }
+
+  void loadPresetById(String id) {
+    final match = allPresets.firstWhere(
+      (p) => p.id == id,
+      orElse: () => allPresets.firstWhere(
+        (p) => p.id.contains(id) || id.contains(p.id),
+        orElse: () => kBuiltInDspPresets.first,
+      ),
+    );
+    applyPreset(match);
+  }
+
   void resetFlat() {
     applyPreset(kBuiltInDspPresets.first);
   }

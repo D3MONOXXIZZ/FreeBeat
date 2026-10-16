@@ -4,14 +4,16 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import '../widgets/expressive_shapes.dart';
 import 'settings/settings_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
-/// Strictly implements:
-/// 1. M3 Large Top App Bar (`SliverAppBar.large`) that collapses and tints on scroll.
-/// 2. Stadium-pill filter chips for Library segmentation.
-/// 3. Unified 28dp `surfaceContainerLow` card grouping all tracks.
-/// 4. 28dp rounded-rectangle Floating Action Button filled with Primary Container color.
+/// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
+/// 1. Top App Bar with Search, Profile/Settings icon
+/// 2. Stadium-pill filter chips (All Tracks, Hi-Res, Offline, Liked)
+/// 3. Artists Avatar Row: horizontal scroll of artist circular avatars (Alexter, Teritona, etc.)
+/// 4. Playlists 2-Column Curated Cards (Organic Playlists, Daily Mix, Add Music)
+/// 5. Grouped 28dp Surface Card for Track List
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
@@ -21,6 +23,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _segment = 'all'; // 'all', 'hires', 'offline', 'favorites'
+  String? _selectedArtist;
 
   String _formatTrackDuration(int ms) {
     final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
@@ -67,7 +70,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final allTracks = ref.watch(tracksCatalogProvider);
     final playback = ref.watch(playbackProvider);
 
+    // Extract unique artists
+    final artists = allTracks
+        .map((t) => t.artist)
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList();
+
     final filtered = allTracks.where((t) {
+      if (_selectedArtist != null && t.artist != _selectedArtist) {
+        return false;
+      }
       switch (_segment) {
         case 'hires':
           return t.isHiRes;
@@ -108,7 +121,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             title: Text(
               'Your Library',
               style: textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
               ),
             ),
             actions: [
@@ -147,9 +160,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 children: [
                   _LibraryPillFilter(
                     label: 'All Tracks (${allTracks.length})',
-                    isSelected: _segment == 'all',
+                    isSelected: _segment == 'all' && _selectedArtist == null,
                     icon: Icons.library_music_rounded,
-                    onTap: () => setState(() => _segment = 'all'),
+                    onTap: () => setState(() {
+                      _segment = 'all';
+                      _selectedArtist = null;
+                    }),
                   ),
                   const SizedBox(width: 8),
                   _LibraryPillFilter(
@@ -177,10 +193,97 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           ),
 
+          // ───────────────────────────────────────────────────────────────────
+          // 3. Figma Screen 5: Artists Avatars Horizontal Row (when available)
+          // ───────────────────────────────────────────────────────────────────
+          if (artists.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  'Artists',
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 94,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: artists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, index) {
+                    final artist = artists[index];
+                    final isSelected = _selectedArtist == artist;
+                    return GestureDetector(
+                      onTap: () {
+                        PixelHaptics.tick();
+                        setState(() {
+                          _selectedArtist = isSelected ? null : artist;
+                        });
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: cs.primaryContainer,
+                              border: Border.all(
+                                color: isSelected
+                                    ? cs.primary
+                                    : Colors.transparent,
+                                width: 2.5,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                artist.isNotEmpty ? artist[0].toUpperCase() : 'A',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: cs.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: 64,
+                            child: Text(
+                              artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: isSelected ? cs.primary : cs.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
           // ───────────────────────────────────────────────────────────────────
-          // 3. Grouped 28dp Surface Card for Track List
+          // 4. Grouped 28dp Surface Card for Track List
           // ───────────────────────────────────────────────────────────────────
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 160),
@@ -271,8 +374,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                         style: textTheme.titleMedium),
                                     const SizedBox(height: 8),
                                     TextButton(
-                                      onPressed: () =>
-                                          setState(() => _segment = 'all'),
+                                      onPressed: () => setState(() {
+                                        _segment = 'all';
+                                        _selectedArtist = null;
+                                      }),
                                       child: const Text('View All Tracks'),
                                     ),
                                   ],
@@ -345,14 +450,13 @@ class _LibraryPillFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return InkWell(
+    return SpringPressScale(
       onTap: () {
         PixelHaptics.tick();
         onTap();
       },
-      borderRadius: BorderRadius.circular(100),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? cs.secondaryContainer : cs.surfaceContainerHigh,
@@ -377,7 +481,7 @@ class _LibraryPillFilter extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                 color: isSelected
                     ? cs.onSecondaryContainer
                     : cs.onSurface,
@@ -422,7 +526,6 @@ class _LibraryTrackTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            // Squircle Artwork (14dp radius)
             Container(
               width: 48,
               height: 48,
@@ -439,8 +542,6 @@ class _LibraryTrackTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 14),
-
-            // Track Title & Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +561,9 @@ class _LibraryTrackTile extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1.5),
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.secondaryContainer,
                           borderRadius: BorderRadius.circular(4),
@@ -491,8 +594,6 @@ class _LibraryTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Pin Offline Action
             IconButton(
               icon: Icon(
                 track.isPinnedOffline
@@ -503,8 +604,6 @@ class _LibraryTrackTile extends StatelessWidget {
               ),
               onPressed: onTogglePin,
             ),
-
-            // Favorite Action
             IconButton(
               icon: Icon(
                 track.isFavorite

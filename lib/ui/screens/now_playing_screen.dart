@@ -3,16 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
+import '../widgets/pixel_artwork.dart';
 import '../widgets/signal_path_sheet.dart';
-import '../widgets/squiggly_slider.dart';
+import '../widgets/waveform_seekbar.dart';
+import 'fullscreen_lyrics_screen.dart';
 
-/// Full-Screen Google Pixel Material 3 Expressive Now Playing Sheet.
-/// Features:
-/// - Album-art-seeded adaptive gradient
-/// - Live Hi-Fi / Bitrate Signal Path Badge (opens [SignalPathSheet])
-/// - Interactive Time-Synced LRC Lyrics View (tap any line to seek)
-/// - Animated Pixel [SquigglySlider] seekbar
-/// - Morphing Play/Pause squircle button with custom Pixel LRA haptics
+/// Full-Screen Google Pixel Material 3 Expressive Now Playing Screen.
+/// Strictly implements Screen 2 in Figma inspiration:
+/// 1. Ambient blurred colored aura derived from current track artwork
+/// 2. Top Bar: Collapse chevron, Connected Output Chip (`Pixel Buds Optimized`), and EQ icon
+/// 3. Hero 32dp Squircle Artwork with ambient colored drop glow
+/// 4. Track title & artist in bold Google Sans with favorite toggle
+/// 5. Dynamic Multi-Bar Waveform Seekbar with micro-haptic scrubbing
+/// 6. Large circular Play/Pause button with spring scale & tactile pulses
+/// 7. Bottom Peekable Lyrics Drawer expanding into Fullscreen Karaoke Lyrics
 class NowPlayingScreen extends ConsumerStatefulWidget {
   const NowPlayingScreen({
     super.key,
@@ -26,8 +30,6 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 }
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
-  bool _showSyncedLyrics = false;
-
   String _formatDuration(int ms) {
     final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -35,456 +37,465 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     return '$minutes:$seconds';
   }
 
+  void _openFullscreenLyrics() {
+    PixelHaptics.sheetExpand();
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const FullscreenLyricsScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.25),
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(opacity: curved, child: child),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final playback = ref.watch(playbackProvider);
     final track = playback.currentTrack;
+    final route = ref.watch(audioRouteInfoProvider);
     final quality = ref.watch(audioQualityProvider).effectiveStreamingTier;
-    final dsp = ref.watch(powerampDspProvider);
+    final lyrics = track.syncedLyrics;
     final activeLyricIdx = playback.activeLyricIndex;
+    final activeLyricText = (activeLyricIdx >= 0 && activeLyricIdx < lyrics.length)
+        ? lyrics[activeLyricIdx].text
+        : (lyrics.isNotEmpty ? lyrics.first.text : '');
 
     return Scaffold(
-      body: AnimatedContainer(
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              track.dominantColor.withValues(alpha: 0.45),
-              cs.surface,
-              cs.surfaceContainerLowest,
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      body: Stack(
+        children: [
+          // 1. Ambient Dynamic Gradient Background
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.0, -0.45),
+                radius: 1.35,
+                colors: [
+                  track.dominantColor.withValues(alpha: 0.40),
+                  cs.surface.withValues(alpha: 0.95),
+                  cs.surfaceContainerLowest,
+                ],
+                stops: const [0.0, 0.65, 1.0],
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Column(
-              children: [
-                // 1. Top Bar: Collapse, Cloud Source Pill, Lyrics & EQ Toggles
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            'STREAMING FROM ${track.providerType.displayName.toUpperCase()}',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.1,
-                              color: cs.primary,
+
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Column(
+                children: [
+                  // 2. Top Bar: Collapse, Connected Output Chip, EQ Action
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 32,
+                        ),
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                      // Connected Output Chip
+                      SpringPressScale(
+                        onTap: () {
+                          PixelHaptics.sheetExpand();
+                          showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) => const SignalPathSheet(),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHigh.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(100),
+                            border: Border.all(
+                              color: cs.outlineVariant.withValues(alpha: 0.4),
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            track.album,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: cs.onSurfaceVariant,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                route.isBluetooth
+                                    ? Icons.headphones_rounded
+                                    : Icons.graphic_eq_rounded,
+                                size: 15,
+                                color: cs.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                route.isBluetooth
+                                    ? '${route.deviceName} (${route.bluetoothCodecName})'
+                                    : (quality.isLossless
+                                        ? 'Hi-Fi 24-Bit / 96k Direct'
+                                        : '${quality.kbps}k Direct Play'),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        _showSyncedLyrics
-                            ? Icons.album_rounded
-                            : Icons.lyrics_rounded,
-                        color: _showSyncedLyrics ? cs.primary : cs.onSurface,
+                      IconButton(
+                        icon: const Icon(Icons.tune_rounded, size: 24),
+                        tooltip: 'Poweramp EQ',
+                        onPressed: () {
+                          PixelHaptics.sheetExpand();
+                          Navigator.of(context).pop();
+                          widget.onOpenDspStudio();
+                        },
                       ),
-                      tooltip: 'Toggle Synced Lyrics',
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        setState(() => _showSyncedLyrics = !_showSyncedLyrics);
-                      },
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // 2. Center Stage: Expressive Album Art OR Interactive Synced Lyrics
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
-                    child: _showSyncedLyrics
-                        ? _buildSyncedLyricsView(context, playback, activeLyricIdx)
-                        : _buildExpressiveArtworkCard(context, track),
+                    ],
                   ),
-                ),
 
-                const SizedBox(height: 16),
+                  const Spacer(flex: 1),
 
-                // 3. Interactive Hi-Fi / Bitrate Signal Path Badge
-                SpringPressScale(
-                  onTap: () {
-                    PixelHaptics.sheetExpand();
-                    showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => const SignalPathSheet(),
-                    );
-                  },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: cs.primary.withValues(alpha: 0.45),
+                  // 3. Hero Album Artwork Card with Ambient Colored Drop Glow
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: track.dominantColor.withValues(alpha: 0.35),
+                              blurRadius: 36,
+                              spreadRadius: 4,
+                              offset: const Offset(0, 16),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(32),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              PixelOrganicArtwork(
+                                style: PixelArtStyle.desertSun,
+                                borderRadius: 32,
+                                primaryColor: track.dominantColor,
+                              ),
+                              // Subtle format badge overlay
+                              Positioned(
+                                top: 16,
+                                right: 16,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${track.bitDepth}-BIT FLAC',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
+                  ),
+
+                  const Spacer(flex: 1),
+
+                  // 4. Track Title, Artist & Actions
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.title.isEmpty ? 'Ready to Stream' : track.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.5,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              track.artist.isEmpty
+                                  ? 'Connect cloud storage or import songs'
+                                  : track.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w500,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          track.isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                          size: 26,
+                        ),
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          if (track.id.isNotEmpty) {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .toggleFavorite(track.id);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // 5. Dynamic Audio Waveform Seekbar
+                  WaveformSeekbar(
+                    progress: playback.progressFraction,
+                    bufferedProgress: track.durationMs > 0
+                        ? (playback.bufferedPositionMs / track.durationMs)
+                            .clamp(0.0, 1.0)
+                        : 0.0,
+                    isPlaying: playback.isPlaying,
+                    primaryColor: cs.primary,
+                    onSeek: (frac) {
+                      if (track.durationMs > 0) {
+                        final targetMs = (frac * track.durationMs).round();
+                        ref.read(playbackProvider.notifier).seekToMs(targetMs);
+                      }
+                    },
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  // Duration text
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(
-                          Icons.graphic_eq_rounded,
-                          size: 16,
-                          color: cs.primary,
-                        ),
-                        const SizedBox(width: 8),
                         Text(
-                          quality.isLossless
-                              ? track.qualityBadgeText
-                              : '${quality.label.toUpperCase()} • ${quality.kbps} KBPS ${quality.codec}',
+                          _formatDuration(playback.positionMs),
                           style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.4,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '• DSP ${dsp.eqEnabled ? "10-BAND" : "DIRECT"}',
-                          style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: cs.primary,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 16,
-                          color: cs.onSurfaceVariant,
+                        Text(
+                          _formatDuration(track.durationMs),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-                // 4. Track Title, Artist & Favorite / Pin Actions
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            track.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                  // 6. Expressive Transport Controls
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          Icons.shuffle_rounded,
+                          color: playback.isShuffle
+                              ? cs.primary
+                              : cs.onSurfaceVariant,
+                        ),
+                        onPressed: () =>
+                            ref.read(playbackProvider.notifier).toggleShuffle(),
+                      ),
+                      IconButton(
+                        iconSize: 42,
+                        icon: const Icon(Icons.skip_previous_rounded),
+                        onPressed: () =>
+                            ref.read(playbackProvider.notifier).skipPrevious(),
+                      ),
+                      // Large Circular Play/Pause Button (72dp)
+                      SpringPressScale(
+                        onTap: () =>
+                            ref.read(playbackProvider.notifier).togglePlayPause(),
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: cs.primaryContainer,
+                            boxShadow: [
+                              BoxShadow(
+                                color: cs.primary.withValues(alpha: 0.25),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${track.artist} • ${track.album}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          child: Icon(
+                            playback.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 38,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        iconSize: 42,
+                        icon: const Icon(Icons.skip_next_rounded),
+                        onPressed: () =>
+                            ref.read(playbackProvider.notifier).skipNext(),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          playback.repeatMode == 2
+                              ? Icons.repeat_one_rounded
+                              : Icons.repeat_rounded,
+                          color: playback.repeatMode > 0
+                              ? cs.primary
+                              : cs.onSurfaceVariant,
+                        ),
+                        onPressed: () =>
+                            ref.read(playbackProvider.notifier).cycleRepeatMode(),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 7. Bottom Peekable Lyrics Drawer
+                  SpringPressScale(
+                    onTap: _openFullscreenLyrics,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHigh.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lyrics_rounded, size: 20, color: cs.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'Lyrics',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 1.5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: cs.secondaryContainer,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'LIVE',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          color: cs.onSecondaryContainer,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeLyricText.isNotEmpty
+                                      ? activeLyricText
+                                      : 'Tap to expand Google Style music typography',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 24,
+                            color: cs.onSurfaceVariant,
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(
-                        track.isPinnedOffline
-                            ? Icons.offline_pin_rounded
-                            : Icons.download_for_offline_outlined,
-                        color: track.isPinnedOffline
-                            ? cs.primary
-                            : cs.onSurfaceVariant,
-                      ),
-                      onPressed: () {
-                        ref
-                            .read(tracksCatalogProvider.notifier)
-                            .togglePinOffline(track.id);
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        track.isFavorite
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        color: track.isFavorite
-                            ? cs.error
-                            : cs.onSurfaceVariant,
-                      ),
-                      onPressed: () {
-                        ref
-                            .read(tracksCatalogProvider.notifier)
-                            .toggleFavorite(track.id);
-                      },
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // 5. Signature Pixel Squiggly Seekbar
-                SquigglySlider(
-                  value: playback.progressFraction,
-                  bufferedValue:
-                      (playback.bufferedPositionMs / track.durationMs)
-                          .clamp(0.0, 1.0),
-                  isPlaying: playback.isPlaying,
-                  onChanged: (fraction) {
-                    final targetMs = (fraction * track.durationMs).round();
-                    ref
-                        .read(playbackProvider.notifier)
-                        .seekToMs(targetMs);
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _formatDuration(playback.positionMs),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      Text(
-                        _formatDuration(track.durationMs),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
 
-                const SizedBox(height: 16),
-
-                // 6. Expressive Transport Controls
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.shuffle_rounded,
-                        color: playback.isShuffle
-                            ? cs.primary
-                            : cs.onSurfaceVariant,
-                      ),
-                      onPressed: () =>
-                          ref.read(playbackProvider.notifier).toggleShuffle(),
-                    ),
-                    IconButton(
-                      iconSize: 38,
-                      icon: const Icon(Icons.skip_previous_rounded),
-                      onPressed: () =>
-                          ref.read(playbackProvider.notifier).skipPrevious(),
-                    ),
-                    MorphingPlayPauseButton(
-                      isPlaying: playback.isPlaying,
-                      size: 74,
-                      onPressed: () =>
-                          ref.read(playbackProvider.notifier).togglePlayPause(),
-                    ),
-                    IconButton(
-                      iconSize: 38,
-                      icon: const Icon(Icons.skip_next_rounded),
-                      onPressed: () =>
-                          ref.read(playbackProvider.notifier).skipNext(),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        playback.repeatMode == 2
-                            ? Icons.repeat_one_rounded
-                            : Icons.repeat_rounded,
-                        color: playback.repeatMode > 0
-                            ? cs.primary
-                            : cs.onSurfaceVariant,
-                      ),
-                      onPressed: () =>
-                          ref.read(playbackProvider.notifier).cycleRepeatMode(),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // 7. Bottom Quick Actions: Synced Lyrics & Poweramp 10-Band EQ Studio
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        setState(() => _showSyncedLyrics = !_showSyncedLyrics);
-                      },
-                      icon: Icon(
-                        Icons.lyrics_outlined,
-                        size: 18,
-                        color: _showSyncedLyrics ? cs.primary : cs.onSurfaceVariant,
-                      ),
-                      label: Text(
-                        _showSyncedLyrics ? 'Show Artwork' : 'Synced Lyrics (.LRC)',
-                      ),
-                    ),
-                    FilledButton.tonalIcon(
-                      onPressed: () {
-                        PixelHaptics.sheetExpand();
-                        Navigator.of(context).pop();
-                        widget.onOpenDspStudio();
-                      },
-                      icon: const Icon(Icons.equalizer_rounded, size: 18),
-                      label: const Text('Poweramp 10-Band EQ'),
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExpressiveArtworkCard(BuildContext context, dynamic track) {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      key: const ValueKey('artwork_view'),
-      child: AspectRatio(
-        aspectRatio: 1.0,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            color: cs.surfaceContainerHigh,
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-              width: 1,
-            ),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              ClipPath(
-                clipper: ScallopedBadgeClipper(lobes: 12, depth: 0.07),
-                child: Container(
-                  width: 170,
-                  height: 170,
-                  color: cs.primaryContainer,
-                  child: Icon(
-                    track.providerType.icon,
-                    size: 74,
-                    color: cs.onPrimaryContainer,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 18,
-                right: 18,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.secondaryContainer,
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Text(
-                    '${track.bitDepth}-BIT / ${(track.sampleRateHz / 1000).toInt()}kHz',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSecondaryContainer,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSyncedLyricsView(
-    BuildContext context,
-    PlaybackViewState playback,
-    int activeIdx,
-  ) {
-    final cs = Theme.of(context).colorScheme;
-    final lyrics = playback.currentTrack.syncedLyrics;
-
-    return Container(
-      key: const ValueKey('lyrics_view'),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.35),
-          width: 1,
-        ),
-      ),
-      child: ListView.separated(
-        physics: const BouncingScrollPhysics(),
-        itemCount: lyrics.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 14),
-        itemBuilder: (context, index) {
-          final line = lyrics[index];
-          final isActive = index == activeIdx;
-          return GestureDetector(
-            onTap: () {
-              PixelHaptics.tick(intensity: 0.7);
-              ref
-                  .read(playbackProvider.notifier)
-                  .seekToMs(line.timestampMs);
-            },
-            child: AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 240),
-              style: TextStyle(
-                fontSize: isActive ? 20 : 15.5,
-                fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
-                color: isActive
-                    ? cs.primary
-                    : cs.onSurfaceVariant.withValues(alpha: 0.65),
-              ),
-              child: Text(line.text),
-            ),
-          );
-        },
+        ],
       ),
     );
   }

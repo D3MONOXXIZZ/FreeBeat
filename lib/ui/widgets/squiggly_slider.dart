@@ -44,7 +44,10 @@ class _SquigglySliderState extends State<SquigglySlider>
     _phaseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat();
+    );
+    if (widget.isPlaying) {
+      _phaseController.repeat();
+    }
 
     _amplitudeController = AnimationController(
       vsync: this,
@@ -56,6 +59,13 @@ class _SquigglySliderState extends State<SquigglySlider>
   @override
   void didUpdateWidget(covariant SquigglySlider oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _phaseController.repeat();
+      } else {
+        _phaseController.stop();
+      }
+    }
     final shouldSquiggle = widget.isPlaying && !_isDragging;
     if (shouldSquiggle) {
       _amplitudeController.forward();

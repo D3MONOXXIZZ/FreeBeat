@@ -5,18 +5,19 @@ import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
+import '../widgets/pixel_artwork.dart';
 import '../widgets/signal_path_sheet.dart';
 import 'settings/settings_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Home Screen.
-/// Strictly implements:
-/// 1. M3 Large Top App Bar (`SliverAppBar.large`) that collapses and tints on scroll.
-/// 2. Stadium-pill filter chips with Monet accent indicators.
-/// 3. Spotify-style 2-column quick access grid with 28dp tonal cards.
-/// 4. "Your Mix" editorial hero carousel with 28dp squircle curvature and tonal elevation.
-/// 5. "Jump back in" track collection grouped inside a unified 28dp `surfaceContainerLow` card
-///    (matching Google Pixel Settings / Clock grouped item layout).
-class HomeScreen extends ConsumerWidget {
+/// Strictly implements Screen 1 ("Home 3.0 / For You") in Figma inspiration:
+/// 1. Time-aware header with user profile avatar, greeting, weather badge, and Hi-Fi pill
+/// 2. "Your Daily Soundtrack" Hero Carousel with procedural organic vector artwork
+///    and animated stadium pagination dots
+/// 3. "Pixel Playlists" 2-column squircle cards with fluid artwork thumbnails
+/// 4. Stadium-pill filter chips (Focus, Chill, Hi-Fi, Offline)
+/// 5. "Jump back in" track collection in unified 28dp surface container
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
     super.key,
     required this.onOpenNowPlaying,
@@ -26,6 +27,20 @@ class HomeScreen extends ConsumerWidget {
   final VoidCallback onOpenNowPlaying;
   final ValueChanged<int> onNavigateToTab;
 
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final PageController _carouselController = PageController();
+  int _activeCarouselPage = 0;
+
+  @override
+  void dispose() {
+    _carouselController.dispose();
+    super.dispose();
+  }
+
   String _formatTrackDuration(int ms) {
     final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
     final minutes = totalSeconds ~/ 60;
@@ -33,7 +48,14 @@ class HomeScreen extends ConsumerWidget {
     return '$minutes:$seconds';
   }
 
-  Future<void> _pickLocalAudio(BuildContext context, WidgetRef ref) async {
+  String _getTimeGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  Future<void> _pickLocalAudio() async {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
     const safAccount = CloudAccount(
@@ -48,7 +70,7 @@ class HomeScreen extends ConsumerWidget {
       await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
       await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(picked);
       await PixelHaptics.hifiConfirm();
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content:
@@ -61,7 +83,7 @@ class HomeScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final tracks = ref.watch(filteredTracksProvider);
@@ -74,17 +96,91 @@ class HomeScreen extends ConsumerWidget {
       physics: const BouncingScrollPhysics(),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
-        // 1. Collapsing M3 Large Top App Bar (Pixel System App Header)
+        // 1. Collapsing M3 Large Top App Bar with Greeting & Weather Pill
         // ─────────────────────────────────────────────────────────────────────
         SliverAppBar.large(
-          title: Text(
-            'Your Mix',
-            style: textTheme.headlineLarge?.copyWith(
-              fontWeight: FontWeight.w700,
+          expandedHeight: 130,
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Center(
+              child: SpringPressScale(
+                onTap: () {
+                  PixelHaptics.tick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                },
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: cs.primaryContainer,
+                  child: Icon(
+                    Icons.person_rounded,
+                    color: cs.onPrimaryContainer,
+                    size: 22,
+                  ),
+                ),
+              ),
             ),
           ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${_getTimeGreeting()}, Alex',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Your Mix',
+                style: textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
+          ),
           actions: [
-            // Hi-Fi Quality Status Tonal Pill
+            // Weather / Temp Pill (Figma Screen 1: 32° ☀️)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(
+                    color: cs.outlineVariant.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.wb_sunny_rounded,
+                      size: 15,
+                      color: Color(0xFFF9AB00),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '32°',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Hi-Fi Lossless Status Pill
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: FilledButton.tonal(
@@ -116,22 +212,12 @@ class HomeScreen extends ConsumerWidget {
                       quality.isLossless ? 'HI-FI' : '${quality.kbps}K',
                       style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-
-            // Poweramp EQ Quick Launch Button
-            IconButton(
-              icon: Icon(Icons.tune_rounded, color: cs.onSurface),
-              tooltip: 'Poweramp 10-Band EQ',
-              onPressed: () {
-                PixelHaptics.tick();
-                onNavigateToTab(2);
-              },
             ),
 
             // Settings Screen Button
@@ -150,69 +236,241 @@ class HomeScreen extends ConsumerWidget {
         ),
 
         // ─────────────────────────────────────────────────────────────────────
-        // 2. M3 Expressive Pill Filters Row (Stadium Shapes, Zero Shadows)
+        // 2. "Your Daily Soundtrack" Hero Carousel with Organic Art & Dot Indicator
         // ─────────────────────────────────────────────────────────────────────
         SliverToBoxAdapter(
-          child: SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-              physics: const BouncingScrollPhysics(),
-              children: [
-                _PixelPillFilter(
-                  label: 'All Tracks',
-                  isSelected: selectedFilter == 'all',
-                  icon: Icons.all_inclusive_rounded,
-                  onTap: () => ref
-                      .read(selectedCloudFilterProvider.notifier)
-                      .state = 'all',
-                ),
-                const SizedBox(width: 8),
-                _PixelPillFilter(
-                  label: 'Lossless Hi-Fi',
-                  isSelected: selectedFilter == 'hifi',
-                  icon: Icons.graphic_eq_rounded,
-                  onTap: () => ref
-                      .read(selectedCloudFilterProvider.notifier)
-                      .state = selectedFilter == 'hifi' ? 'all' : 'hifi',
-                ),
-                const SizedBox(width: 8),
-                _PixelPillFilter(
-                  label: 'Pinned Offline',
-                  isSelected: selectedFilter == 'offline',
-                  icon: Icons.download_done_rounded,
-                  onTap: () => ref
-                      .read(selectedCloudFilterProvider.notifier)
-                      .state = selectedFilter == 'offline' ? 'all' : 'offline',
-                ),
-                const SizedBox(width: 8),
-                for (final provider in [
-                  CloudProviderType.googleDrive,
-                  CloudProviderType.jellyfin,
-                  CloudProviderType.s3,
-                  CloudProviderType.oneDrive,
-                  CloudProviderType.subsonic,
-                ]) ...[
-                  _PixelPillFilter(
-                    label: provider.displayName,
-                    isSelected: selectedFilter == provider.id,
-                    icon: provider.icon,
-                    onTap: () => ref
-                        .read(selectedCloudFilterProvider.notifier)
-                        .state = selectedFilter == provider.id
-                            ? 'all'
-                            : provider.id,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Text(
+                  'Your Daily Soundtrack',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
-                  const SizedBox(width: 8),
-                ],
+                ),
+              ),
+              SizedBox(
+                height: 180,
+                child: PageView(
+                  controller: _carouselController,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: (page) {
+                    setState(() => _activeCarouselPage = page);
+                    PixelHaptics.lowTick(intensity: 0.35);
+                  },
+                  children: [
+                    _HeroSoundtrackCard(
+                      title: 'Your Daily Soundtrack',
+                      subtitle: 'Lossless Flow & Synced Lyrics',
+                      artStyle: PixelArtStyle.dailySoundtrack,
+                      onTap: () {
+                        if (allTracks.isNotEmpty) {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playTrack(allTracks.first);
+                          widget.onOpenNowPlaying();
+                        }
+                      },
+                    ),
+                    _HeroSoundtrackCard(
+                      title: 'Organic Playlists',
+                      subtitle: 'Warm Analogue & Lo-Fi Beats',
+                      artStyle: PixelArtStyle.organicWaves,
+                      onTap: () {
+                        if (allTracks.length > 1) {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playTrack(allTracks[1]);
+                          widget.onOpenNowPlaying();
+                        }
+                      },
+                    ),
+                    _HeroSoundtrackCard(
+                      title: 'Desert Sun Hi-Fi',
+                      subtitle: '24-Bit / 96kHz Master Quality',
+                      artStyle: PixelArtStyle.desertSun,
+                      onTap: () {
+                        if (allTracks.isNotEmpty) {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playTrack(allTracks.first);
+                          widget.onOpenNowPlaying();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Animated Pagination Pill Dots
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (idx) {
+                    final isActive = idx == _activeCarouselPage;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOutCubic,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: isActive ? 22 : 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? cs.primary
+                            : cs.outlineVariant.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 3. "Pixel Playlists" 2-Column Curated Grid
+        // ─────────────────────────────────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Pixel Playlists',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => widget.onNavigateToTab(1),
+                  child: const Text('See all'),
+                ),
               ],
             ),
           ),
         ),
 
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 154,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            delegate: SliverChildListDelegate([
+              _PixelPlaylistCard(
+                title: 'Organic Playlists',
+                subtitle: 'Acoustic & Ambient',
+                artStyle: PixelArtStyle.organicWaves,
+                onTap: () {
+                  if (allTracks.isNotEmpty) {
+                    ref.read(playbackProvider.notifier).playTrack(allTracks[0]);
+                    widget.onOpenNowPlaying();
+                  }
+                },
+              ),
+              _PixelPlaylistCard(
+                title: 'Your Daily Mix',
+                subtitle: 'Adaptive Audiophile',
+                artStyle: PixelArtStyle.dailySoundtrack,
+                onTap: () {
+                  if (allTracks.length > 1) {
+                    ref.read(playbackProvider.notifier).playTrack(allTracks[1]);
+                    widget.onOpenNowPlaying();
+                  }
+                },
+              ),
+              _PixelPlaylistCard(
+                title: 'Desert Sun Masters',
+                subtitle: 'FLAC 24-Bit Vault',
+                artStyle: PixelArtStyle.desertSun,
+                onTap: () {
+                  ref.read(selectedCloudFilterProvider.notifier).state =
+                      CloudProviderType.googleDrive.id;
+                },
+              ),
+              _PixelPlaylistCard(
+                title: 'Poweramp DSP Studio',
+                subtitle: '10-Band EQ & Knobs',
+                icon: Icons.graphic_eq_rounded,
+                onTap: () => widget.onNavigateToTab(2),
+              ),
+            ]),
+          ),
+        ),
+
         // ─────────────────────────────────────────────────────────────────────
-        // 3. Hero Empty State OR Spotify-Style Quick Grid + Carousel
+        // 4. M3 Expressive Pill Filters Row (Stadium Shapes, Zero Shadows)
+        // ─────────────────────────────────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  _PixelPillFilter(
+                    label: 'Focus',
+                    isSelected: selectedFilter == 'focus',
+                    icon: Icons.center_focus_strong_rounded,
+                    onTap: () => ref
+                        .read(selectedCloudFilterProvider.notifier)
+                        .state = selectedFilter == 'focus' ? 'all' : 'focus',
+                  ),
+                  const SizedBox(width: 8),
+                  _PixelPillFilter(
+                    label: 'Chill',
+                    isSelected: selectedFilter == 'chill',
+                    icon: Icons.spa_rounded,
+                    onTap: () => ref
+                        .read(selectedCloudFilterProvider.notifier)
+                        .state = selectedFilter == 'chill' ? 'all' : 'chill',
+                  ),
+                  const SizedBox(width: 8),
+                  _PixelPillFilter(
+                    label: 'Workout',
+                    isSelected: selectedFilter == 'workout',
+                    icon: Icons.fitness_center_rounded,
+                    onTap: () => ref
+                        .read(selectedCloudFilterProvider.notifier)
+                        .state = selectedFilter == 'workout' ? 'all' : 'workout',
+                  ),
+                  const SizedBox(width: 8),
+                  _PixelPillFilter(
+                    label: 'Hi-Fi 24-Bit',
+                    isSelected: selectedFilter == 'hifi',
+                    icon: Icons.high_quality_rounded,
+                    onTap: () => ref
+                        .read(selectedCloudFilterProvider.notifier)
+                        .state = selectedFilter == 'hifi' ? 'all' : 'hifi',
+                  ),
+                  const SizedBox(width: 8),
+                  _PixelPillFilter(
+                    label: 'Pinned Offline',
+                    isSelected: selectedFilter == 'offline',
+                    icon: Icons.download_done_rounded,
+                    onTap: () => ref
+                        .read(selectedCloudFilterProvider.notifier)
+                        .state = selectedFilter == 'offline' ? 'all' : 'offline',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 5. Hero Empty State OR "Jump Back In" Track List
         // ─────────────────────────────────────────────────────────────────────
         if (allTracks.isEmpty) ...[
           SliverPadding(
@@ -248,7 +506,7 @@ class HomeScreen extends ConsumerWidget {
                       'Your Music, Everywhere',
                       textAlign: TextAlign.center,
                       style: textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -263,7 +521,7 @@ class HomeScreen extends ConsumerWidget {
                     FilledButton.icon(
                       onPressed: () {
                         PixelHaptics.tick();
-                        onNavigateToTab(3);
+                        widget.onNavigateToTab(3);
                       },
                       icon: const Icon(Icons.add_to_drive_rounded, size: 20),
                       label: const Text('Connect Cloud Storage'),
@@ -277,7 +535,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     FilledButton.tonalIcon(
-                      onPressed: () => _pickLocalAudio(context, ref),
+                      onPressed: _pickLocalAudio,
                       icon: const Icon(Icons.folder_open_rounded, size: 20),
                       label: const Text('Import from Device Storage'),
                       style: FilledButton.styleFrom(
@@ -308,189 +566,7 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
         ] else ...[
-          // Spotify-Style 2-Column Quick Access Grid (24-28dp Tonal Cards)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisExtent: 64,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              delegate: SliverChildListDelegate([
-                // 1. Liked Songs
-                _PixelQuickCard(
-                  title: 'Liked Songs',
-                  subtitle:
-                      '${allTracks.where((t) => t.isFavorite).length} favorites',
-                  icon: Icons.favorite_rounded,
-                  accentColor: cs.tertiary,
-                  onTap: () {
-                    final fav = allTracks.firstWhere(
-                      (t) => t.isFavorite,
-                      orElse: () => allTracks.first,
-                    );
-                    ref.read(playbackProvider.notifier).playTrack(fav);
-                    onOpenNowPlaying();
-                  },
-                ),
-                // 2. Track 1
-                if (allTracks.isNotEmpty)
-                  _PixelQuickCard(
-                    title: allTracks[0].title,
-                    subtitle: allTracks[0].artist,
-                    icon: Icons.music_note_rounded,
-                    accentColor: cs.primary,
-                    isPlaying: playback.currentTrack.id == allTracks[0].id &&
-                        playback.isPlaying,
-                    onTap: () {
-                      ref
-                          .read(playbackProvider.notifier)
-                          .playTrack(allTracks[0]);
-                    },
-                  ),
-                // 3. Track 2
-                if (allTracks.length > 1)
-                  _PixelQuickCard(
-                    title: allTracks[1].title,
-                    subtitle: allTracks[1].artist,
-                    icon: Icons.album_rounded,
-                    accentColor: cs.secondary,
-                    isPlaying: playback.currentTrack.id == allTracks[1].id &&
-                        playback.isPlaying,
-                    onTap: () {
-                      ref
-                          .read(playbackProvider.notifier)
-                          .playTrack(allTracks[1]);
-                    },
-                  ),
-                // 4. Google Drive Masters
-                _PixelQuickCard(
-                  title: 'Google Drive',
-                  subtitle: '24-Bit FLAC Vault',
-                  icon: Icons.add_to_drive_rounded,
-                  accentColor: const Color(0xFF4285F4),
-                  onTap: () {
-                    ref.read(selectedCloudFilterProvider.notifier).state =
-                        CloudProviderType.googleDrive.id;
-                  },
-                ),
-                // 5. Jellyfin Server
-                _PixelQuickCard(
-                  title: 'Jellyfin Server',
-                  subtitle: 'Direct Play • 192k',
-                  icon: Icons.dns_rounded,
-                  accentColor: const Color(0xFFAA5CC3),
-                  onTap: () {
-                    ref.read(selectedCloudFilterProvider.notifier).state =
-                        CloudProviderType.jellyfin.id;
-                  },
-                ),
-                // 6. Poweramp EQ
-                _PixelQuickCard(
-                  title: 'Poweramp EQ',
-                  subtitle: '10-Band DSP Studio',
-                  icon: Icons.graphic_eq_rounded,
-                  accentColor: cs.primary,
-                  onTap: () => onNavigateToTab(2),
-                ),
-              ]),
-            ),
-          ),
-
-          // "Your Mix" Carousel Section (28dp Corner Radius, Tonal Elevation)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Your Mix',
-                        style: textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: cs.secondaryContainer,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          'Hi-Fi',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Circular Play Button
-                  SpringPressScale(
-                    onTap: () {
-                      if (allTracks.isNotEmpty) {
-                        ref
-                            .read(playbackProvider.notifier)
-                            .playTrack(allTracks.first);
-                      }
-                    },
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: cs.primary,
-                      ),
-                      child: Icon(
-                        playback.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        color: cs.onPrimary,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Horizontal Carousel of 28dp Rounded Mix Cards
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 236,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: allTracks.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder: (context, index) {
-                  final track = allTracks[index];
-                  final isCurrent = playback.currentTrack.id == track.id;
-                  return _PixelMixCard(
-                    track: track,
-                    isCurrent: isCurrent,
-                    isPlaying: isCurrent && playback.isPlaying,
-                    onTap: () {
-                      ref.read(playbackProvider.notifier).playTrack(track);
-                      onOpenNowPlaying();
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // "Jump Back In" Grouped Card (Stock Pixel Settings / Clock Style)
+          // "Jump Back In" Header
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
@@ -500,7 +576,7 @@ class HomeScreen extends ConsumerWidget {
                   Text(
                     'Jump back in',
                     style: textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   Text(
@@ -595,8 +671,193 @@ class HomeScreen extends ConsumerWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components: Strictly styled for Material 3 Expressive
+// Subcomponents
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _HeroSoundtrackCard extends StatelessWidget {
+  const _HeroSoundtrackCard({
+    required this.title,
+    required this.subtitle,
+    required this.artStyle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final PixelArtStyle artStyle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SpringPressScale(
+        onTap: () {
+          PixelHaptics.tick();
+          onTap();
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              PixelOrganicArtwork(
+                style: artStyle,
+                borderRadius: 28,
+              ),
+              // Gradient scrim for text legibility
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.65),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 16,
+                left: 20,
+                right: 70,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                bottom: 14,
+                right: 18,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.black,
+                    size: 26,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PixelPlaylistCard extends StatelessWidget {
+  const _PixelPlaylistCard({
+    required this.title,
+    required this.subtitle,
+    this.artStyle,
+    this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final PixelArtStyle? artStyle;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: () {
+        PixelHaptics.tick();
+        onTap();
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.35),
+            width: 1,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: artStyle != null
+                    ? PixelOrganicArtwork(
+                        style: artStyle!,
+                        borderRadius: 0,
+                      )
+                    : Container(
+                        color: cs.surfaceContainerHigh,
+                        child: Center(
+                          child: Icon(icon, color: cs.primary, size: 36),
+                        ),
+                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _PixelPillFilter extends StatelessWidget {
   const _PixelPillFilter({
@@ -621,7 +882,7 @@ class _PixelPillFilter extends StatelessWidget {
         onTap();
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? cs.secondaryContainer : cs.surfaceContainerHigh,
@@ -646,212 +907,10 @@ class _PixelPillFilter extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                 color: isSelected
                     ? cs.onSecondaryContainer
                     : cs.onSurface,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PixelQuickCard extends StatelessWidget {
-  const _PixelQuickCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.accentColor,
-    this.isPlaying = false,
-    required this.onTap,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color accentColor;
-  final bool isPlaying;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return SpringPressScale(
-      onTap: () {
-        PixelHaptics.tick();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isPlaying
-                ? cs.primary
-                : cs.outlineVariant.withValues(alpha: 0.35),
-            width: isPlaying ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // Icon squircle (14dp radius)
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Icon(
-                  isPlaying ? Icons.equalizer_rounded : icon,
-                  color: accentColor,
-                  size: 22,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PixelMixCard extends StatelessWidget {
-  const _PixelMixCard({
-    required this.track,
-    required this.isCurrent,
-    required this.isPlaying,
-    required this.onTap,
-  });
-
-  final Track track;
-  final bool isCurrent;
-  final bool isPlaying;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return SpringPressScale(
-      onTap: () {
-        PixelHaptics.tick();
-        onTap();
-      },
-      child: SizedBox(
-        width: 156,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 28dp Rounded Card (Tonal Elevation, NO Black Drop Shadow)
-            Container(
-              width: 156,
-              height: 156,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                color: cs.surfaceContainerHigh,
-                border: Border.all(
-                  color: isCurrent
-                      ? cs.primary
-                      : cs.outlineVariant.withValues(alpha: 0.4),
-                  width: isCurrent ? 2 : 1,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Icon(
-                        isPlaying
-                            ? Icons.equalizer_rounded
-                            : track.providerType.icon,
-                        color: cs.onPrimaryContainer,
-                        size: 30,
-                      ),
-                    ),
-                  ),
-                  // Hi-Res Badge
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: cs.secondaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${track.bitDepth}-BIT',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSecondaryContainer,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              track.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: cs.onSurfaceVariant,
               ),
             ),
           ],
@@ -891,7 +950,6 @@ class _PixelTrackTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            // Album art squircle (14dp radius)
             Container(
               width: 48,
               height: 48,
@@ -908,8 +966,6 @@ class _PixelTrackTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 14),
-
-            // Title & Artist
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -929,7 +985,9 @@ class _PixelTrackTile extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1),
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.secondaryContainer,
                           borderRadius: BorderRadius.circular(4),
@@ -960,8 +1018,6 @@ class _PixelTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Favorite Button
             IconButton(
               icon: Icon(
                 track.isFavorite
