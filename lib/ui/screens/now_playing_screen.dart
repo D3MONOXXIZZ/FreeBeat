@@ -4,6 +4,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/nav_pill.dart';
 import '../widgets/signal_path_sheet.dart';
 import '../widgets/waveform_seekbar.dart';
 import 'artist_details_screen.dart';
@@ -509,7 +510,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  const AndroidGestureHandle(
+                    margin: EdgeInsets.only(top: 6, bottom: 8),
+                  ),
                 ],
               ),
             ),
