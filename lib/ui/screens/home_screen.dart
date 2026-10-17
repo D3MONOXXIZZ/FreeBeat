@@ -299,7 +299,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions
         // ─────────────────────────────────────────────────────────────────────
         SliverAppBar.large(
-          expandedHeight: 130,
+          expandedHeight: 148,
+          pinned: true,
           leading: Padding(
             padding: const EdgeInsets.only(left: 16),
             child: Center(
@@ -311,40 +312,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 },
                 child: CircleAvatar(
-                  radius: 20,
+                  radius: 19,
                   backgroundColor: cs.primaryContainer,
                   child: Icon(
                     Icons.person_rounded,
                     color: cs.onPrimaryContainer,
-                    size: 22,
+                    size: 20,
                   ),
                 ),
               ),
             ),
           ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${_getTimeGreeting()}, Alex',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurfaceVariant,
+          title: Text(
+            selectedArtist ?? selectedAlbum ?? 'Your Mix',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+          ),
+          flexibleSpace: FlexibleSpaceBar(
+            titlePadding: const EdgeInsetsDirectional.only(start: 64, bottom: 14),
+            title: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_getTimeGreeting()}, Alex',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                selectedArtist ?? selectedAlbum ?? 'Your Mix',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.headlineLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
+                const SizedBox(height: 1),
+                Text(
+                  selectedArtist ?? selectedAlbum ?? 'Your Mix',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             // Search toggle icon
@@ -358,41 +368,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 PixelHaptics.tick();
                 setState(() => _showSearchBar = !_showSearchBar);
               },
-            ),
-
-            // Weather / Temp Pill (32° ☀️)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(100),
-                  border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.wb_sunny_rounded,
-                      size: 15,
-                      color: Color(0xFFF9AB00),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      '32°',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
 
             // Hi-Fi Lossless Status Pill

@@ -227,14 +227,16 @@ class NativeCloudAuthService {
           type: FileType.custom,
           allowedExtensions: supportedAudioExtensions,
           allowMultiple: true,
-          withData: true,
+          withData: false,
+          withReadStream: true,
         );
       } catch (_) {
         // Fallback to FileType.any if custom throws on OEM Android picker
         result = await FilePicker.platform.pickFiles(
           type: FileType.any,
           allowMultiple: true,
-          withData: true,
+          withData: false,
+          withReadStream: true,
         );
       }
 
@@ -265,80 +267,92 @@ class NativeCloudAuthService {
         '.dff',
       };
 
+      int fileIndex = 0;
       for (final file in result.files) {
-        final name = file.name;
-        final ext = p.extension(name).toLowerCase();
-        if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) continue;
+        fileIndex++;
+        try {
+          final name = file.name;
+          final ext = p.extension(name).toLowerCase();
+          if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) continue;
 
-        String finalPath = file.path ?? '';
+          String finalPath = file.path ?? '';
 
-        // If file.path is null or in a temporary cache, persist it to app documents
-        if (appMusicDir != null) {
-          try {
-            final destFile = File(p.join(appMusicDir.path, name));
-            if (file.bytes != null && file.bytes!.isNotEmpty) {
-              await destFile.writeAsBytes(file.bytes!);
-              finalPath = destFile.path;
-            } else if (file.path != null && File(file.path!).existsSync()) {
-              if (!destFile.existsSync() || destFile.lengthSync() == 0) {
-                await File(file.path!).copy(destFile.path);
+          // If file.path is null or in a temporary cache, persist it to app documents
+          if (appMusicDir != null) {
+            try {
+              final destFile = File(p.join(appMusicDir.path, name));
+              if (file.path != null && File(file.path!).existsSync()) {
+                if (!destFile.existsSync() || destFile.lengthSync() == 0) {
+                  await File(file.path!).copy(destFile.path);
+                }
+                finalPath = destFile.existsSync() ? destFile.path : file.path!;
+              } else if (file.readStream != null) {
+                final sink = destFile.openWrite();
+                await sink.addStream(file.readStream!);
+                await sink.close();
+                finalPath = destFile.existsSync() ? destFile.path : (file.path ?? '');
+              } else if (file.bytes != null && file.bytes!.isNotEmpty) {
+                await destFile.writeAsBytes(file.bytes!);
+                finalPath = destFile.path;
+              } else if (file.identifier != null && file.identifier!.isNotEmpty) {
+                finalPath = file.identifier!;
               }
-              finalPath = destFile.existsSync() ? destFile.path : file.path!;
-            } else if (file.identifier != null && file.identifier!.isNotEmpty) {
-              finalPath = file.identifier!;
+            } catch (_) {
+              finalPath = file.path ?? file.identifier ?? '';
             }
-          } catch (_) {
+          }
+
+          if (finalPath.isEmpty) {
             finalPath = file.path ?? file.identifier ?? '';
           }
-        }
+          if (finalPath.isEmpty) continue;
 
-        if (finalPath.isEmpty) {
-          finalPath = file.path ?? file.identifier ?? '';
-        }
-        if (finalPath.isEmpty) continue;
+          final parsed = RangeTagParser.parseFromFilename(name);
+          final cleanTitle = parsed.title ??
+              name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+          final providerLabel = account.displayName.isNotEmpty
+              ? account.displayName
+              : account.providerType.displayName;
+          final trackId =
+              'drive_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
 
-        final parsed = RangeTagParser.parseFromFilename(name);
-        final cleanTitle = parsed.title ??
-            name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-        final providerLabel = account.displayName.isNotEmpty
-            ? account.displayName
-            : account.providerType.displayName;
-        final trackId =
-            'drive_${name.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}';
+          String? embeddedArt;
+          if (File(finalPath).existsSync()) {
+            embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
+              File(finalPath),
+              trackId,
+            );
+          }
 
-        String? embeddedArt;
-        if (File(finalPath).existsSync()) {
-          embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
-            File(finalPath),
-            trackId,
+          tracks.add(
+            Track(
+              id: trackId,
+              accountId: account.id,
+              providerType: account.providerType,
+              remotePathOrId: finalPath,
+              title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+              artist: parsed.artist ?? providerLabel,
+              album: parsed.album ?? providerLabel,
+              durationMs: 210000,
+              streamUrl: finalPath,
+              artworkUrl: embeddedArt,
+              codec: parsed.codec ??
+                  (ext.isNotEmpty
+                      ? ext.replaceAll('.', '').toUpperCase()
+                      : 'FLAC'),
+              bitDepth: parsed.bitDepth ?? 24,
+              sampleRateHz: parsed.sampleRateHz ?? 96000,
+              bitrateKbps: parsed.bitrateKbps ?? 1411,
+              sizeBytes: file.size > 0 ? file.size : 25000000,
+              dominantColorValue: account.providerType.accentColorValue,
+              isPinnedOffline: true,
+              localCachePath: finalPath,
+            ),
           );
+        } catch (_) {
+          // If one file fails in batch, continue importing remaining files
+          continue;
         }
-
-        tracks.add(
-          Track(
-            id: trackId,
-            accountId: account.id,
-            providerType: account.providerType,
-            remotePathOrId: finalPath,
-            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: parsed.artist ?? providerLabel,
-            album: parsed.album ?? providerLabel,
-            durationMs: 210000,
-            streamUrl: finalPath,
-            artworkUrl: embeddedArt,
-            codec: parsed.codec ??
-                (ext.isNotEmpty
-                    ? ext.replaceAll('.', '').toUpperCase()
-                    : 'FLAC'),
-            bitDepth: parsed.bitDepth ?? 24,
-            sampleRateHz: parsed.sampleRateHz ?? 96000,
-            bitrateKbps: parsed.bitrateKbps ?? 1411,
-            sizeBytes: file.size > 0 ? file.size : 25000000,
-            dominantColorValue: account.providerType.accentColorValue,
-            isPinnedOffline: true,
-            localCachePath: finalPath,
-          ),
-        );
       }
 
       return tracks;
@@ -388,48 +402,54 @@ class NativeCloudAuthService {
           : account.providerType.displayName;
 
       final tracks = <Track>[];
+      int folderFileIndex = 0;
       for (final file in audioFiles) {
-        final name = p.basename(file.path);
-        final ext = p.extension(name).toLowerCase();
-        final parsed = RangeTagParser.parseFromFilename(name);
-        final cleanTitle = parsed.title ??
-            name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-        final parentFolder = p.basename(p.dirname(file.path));
-        final trackId =
-            'folder_${file.path.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}';
+        folderFileIndex++;
+        try {
+          final name = p.basename(file.path);
+          final ext = p.extension(name).toLowerCase();
+          final parsed = RangeTagParser.parseFromFilename(name);
+          final cleanTitle = parsed.title ??
+              name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+          final parentFolder = p.basename(p.dirname(file.path));
+          final trackId =
+              'folder_${file.path.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$folderFileIndex';
 
-        String? embeddedArt;
-        if (file.existsSync()) {
-          embeddedArt =
-              await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
+          String? embeddedArt;
+          if (file.existsSync()) {
+            embeddedArt =
+                await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
+          }
+
+          tracks.add(
+            Track(
+              id: trackId,
+              accountId: account.id,
+              providerType: account.providerType,
+              remotePathOrId: file.path,
+              title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+              artist: parsed.artist ?? providerLabel,
+              album: parsed.album ??
+                  (parentFolder.isNotEmpty ? parentFolder : providerLabel),
+              durationMs: 210000,
+              streamUrl: file.path,
+              artworkUrl: embeddedArt,
+              codec: parsed.codec ??
+                  (ext.isNotEmpty
+                      ? ext.replaceAll('.', '').toUpperCase()
+                      : 'FLAC'),
+              bitDepth: parsed.bitDepth ?? 24,
+              sampleRateHz: parsed.sampleRateHz ?? 96000,
+              bitrateKbps: parsed.bitrateKbps ?? 1411,
+              sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
+              dominantColorValue: account.providerType.accentColorValue,
+              isPinnedOffline: true,
+              localCachePath: file.path,
+            ),
+          );
+        } catch (_) {
+          continue;
         }
-
-        tracks.add(
-          Track(
-            id: trackId,
-            accountId: account.id,
-            providerType: account.providerType,
-            remotePathOrId: file.path,
-            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: parsed.artist ?? providerLabel,
-            album: parsed.album ??
-                (parentFolder.isNotEmpty ? parentFolder : providerLabel),
-            durationMs: 210000,
-            streamUrl: file.path,
-            artworkUrl: embeddedArt,
-            codec: parsed.codec ??
-                (ext.isNotEmpty
-                    ? ext.replaceAll('.', '').toUpperCase()
-                    : 'FLAC'),
-            bitDepth: parsed.bitDepth ?? 24,
-            sampleRateHz: parsed.sampleRateHz ?? 96000,
-            bitrateKbps: parsed.bitrateKbps ?? 1411,
-            sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
-            dominantColorValue: account.providerType.accentColorValue,
-            isPinnedOffline: true,
-            localCachePath: file.path,
-          ),
-        );
       }
       return tracks;
     } catch (_) {

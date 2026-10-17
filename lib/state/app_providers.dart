@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import '../core/models/audio_quality_settings.dart';
 import '../core/models/cloud_account.dart';
 import '../core/models/poweramp_dsp_state.dart';
@@ -240,7 +241,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     state = map.values.toList();
     if (_ref != null) {
       final playback = _ref.read(playbackProvider);
-      if (playback.queue.isEmpty) {
+      if (playback.queue.isEmpty || playback.currentTrack.id.isEmpty) {
         _ref.read(playbackProvider.notifier).setQueue(state);
       }
       _enrichMissingArtwork(newTracks);
@@ -888,6 +889,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     try {
       final proxy = _ref.read(cloudStreamProxyProvider);
       await proxy.start();
+
+      // Configure system AudioSession for USAGE_MEDIA & CONTENT_TYPE_MUSIC to guarantee speaker output
+      try {
+        final session = await AudioSession.instance;
+        await session.configure(const AudioSessionConfiguration.music());
+      } catch (e) {
+        debugPrint('AudioSession configuration notice: $e');
+      }
+
       final player = AudioPlayer();
       await player.setVolume(1.0);
 
@@ -981,13 +991,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           activeTier: quality,
         );
         if (_audioPlayer != null) {
+          await _audioPlayer!.setVolume(1.0);
           if (_audioPlayer!.audioSource == null) {
             await _loadAndPlayTrack(state.currentTrack);
           } else {
             await _audioPlayer!.play();
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Toggle play error: $e');
+      }
     } else {
       _progressTicker?.cancel();
       try {
@@ -1003,6 +1016,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final cachedPath = await cacheSvc.getCachedFilePath(track);
       final effectiveSource = cachedPath ?? track.streamUrl;
 
+      // Always guarantee 100% full hardware output volume
+      await _audioPlayer!.setVolume(1.0);
+
       if (state.playbackSpeed != 1.0) {
         try {
           await _audioPlayer!.setSpeed(state.playbackSpeed);
@@ -1016,6 +1032,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
       if (cachedPath != null && File(cachedPath).existsSync()) {
         await _audioPlayer!.setFilePath(cachedPath);
+        await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
         return;
       }
@@ -1036,6 +1053,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _audioPlayer!.setAudioSource(
           AudioSource.uri(Uri.parse(effectiveSource), headers: headers),
         );
+        await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
 
         // Stream directly while caching in background
@@ -1046,18 +1064,32 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _audioPlayer!.setAudioSource(
           AudioSource.uri(Uri.parse(effectiveSource)),
         );
+        await _audioPlayer!.setVolume(1.0);
+        await _audioPlayer!.play();
+      } else if (effectiveSource.startsWith('file://')) {
+        await _audioPlayer!.setAudioSource(
+          AudioSource.uri(Uri.parse(effectiveSource)),
+        );
+        await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
       } else {
         if (File(effectiveSource).existsSync()) {
           await _audioPlayer!.setFilePath(effectiveSource);
         } else {
-          await _audioPlayer!.setAudioSource(
-            AudioSource.uri(Uri.parse(effectiveSource)),
-          );
+          try {
+            await _audioPlayer!.setFilePath(effectiveSource);
+          } catch (_) {
+            await _audioPlayer!.setAudioSource(
+              AudioSource.uri(Uri.file(effectiveSource)),
+            );
+          }
         }
+        await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Error playing track "${track.title}": $e\n$st');
+    }
   }
 
   void setQueue(List<Track> tracks, {Track? startTrack}) {

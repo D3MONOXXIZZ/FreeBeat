@@ -11,6 +11,7 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
 import android.os.Build
+import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -39,6 +40,49 @@ class MainActivity : FlutterActivity() {
     private val isoBandFrequencies = floatArrayOf(
         31f, 62f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f
     )
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enablePeakDisplayRefreshRate()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enablePeakDisplayRefreshRate()
+    }
+
+    private fun enablePeakDisplayRefreshRate() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+
+                val supportedModes = currentDisplay?.supportedModes ?: emptyArray()
+                if (supportedModes.isNotEmpty()) {
+                    // Pick the mode with the highest refresh rate (e.g. 90Hz, 120Hz, 144Hz)
+                    val peakMode = supportedModes.maxWithOrNull(
+                        compareBy<android.view.Display.Mode> { it.refreshRate }
+                            .thenBy { it.physicalWidth * it.physicalHeight }
+                    )
+
+                    if (peakMode != null && peakMode.refreshRate > 60f) {
+                        val params = window.attributes
+                        params.preferredDisplayModeId = peakMode.modeId
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            params.preferredRefreshRate = peakMode.refreshRate
+                        }
+                        window.attributes = params
+                    }
+                }
+            } catch (_: Throwable) {
+                // Ignore if device OEM restricts custom display mode
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -99,6 +143,19 @@ class MainActivity : FlutterActivity() {
                             result.success(false)
                         }
                     }
+                    "getDisplayRefreshRate" -> {
+                        val rate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            display?.refreshRate ?: 60f
+                        } else {
+                            @Suppress("DEPRECATION")
+                            windowManager.defaultDisplay?.refreshRate ?: 60f
+                        }
+                        result.success(rate.toDouble())
+                    }
+                    "setHighRefreshRate" -> {
+                        enablePeakDisplayRefreshRate()
+                        result.success(true)
+                    }
                     "getAppSha1Fingerprint" -> {
                         val sha1 = try {
                             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -139,19 +196,28 @@ class MainActivity : FlutterActivity() {
         // Attempt Tier 1: Hardware 10-Band DynamicsProcessing (API 28+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
+                // Pre-EQ 10-Band enabled, MBC disabled, Post-EQ disabled (prevents uninitialized filter muting), Limiter enabled
                 val config = DynamicsProcessing.Config.Builder(
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     2, // Stereo channels
                     true, // Pre-EQ enabled
                     10, // 10 Pre-EQ bands
-                    false, // MBC disabled unless needed
+                    false, // MBC disabled
                     0,
-                    true, // Post-EQ enabled for Tone shelves
-                    10, // 10 Post-EQ bands
+                    false, // Post-EQ disabled (fixes speaker audio muting)
+                    0,
                     true // Hardware Limiter enabled
                 ).build()
 
                 val dp = DynamicsProcessing(0, sessionId, config)
+                // Initialize default flat 0dB pass-through bands immediately upon session attachment
+                for (i in 0 until 10) {
+                    val cutoff = if (i < 9) (isoBandFrequencies[i] + isoBandFrequencies[i + 1]) / 2f else 20000f
+                    dp.setPreEqBandAllChannelsTo(i, DynamicsProcessing.EqBand(true, cutoff, 0.0f))
+                }
+                dp.setInputGainAllChannelsTo(0.0f)
+                val limiter = DynamicsProcessing.Limiter(true, true, 0, 1.0f, 60.0f, 10.0f, -0.1f, 0.0f)
+                dp.setLimiterAllChannelsTo(limiter)
                 dp.enabled = true
                 dynamicsProcessing = dp
                 dspEngineMode = "DynamicsProcessing 64-bit Hardware (10-Band)"

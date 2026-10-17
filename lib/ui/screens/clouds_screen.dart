@@ -20,9 +20,11 @@ class CloudsScreen extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final accounts = ref.watch(cloudAccountsProvider);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
-      physics: const BouncingScrollPhysics(),
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
+        physics: const BouncingScrollPhysics(),
       children: [
         // 1. Header with Title, Settings Icon & Add Cloud Button
         Row(
@@ -303,7 +305,8 @@ class CloudsScreen extends ConsumerWidget {
           ),
         ),
       ],
-    );
+    ),
+  );
   }
 
   Future<void> _pickLocalAudioFiles(BuildContext context, WidgetRef ref) async {

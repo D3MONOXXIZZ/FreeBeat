@@ -14,7 +14,9 @@ import '../widgets/rotary_knob.dart';
 /// 4. 10-Band vertical faders with Preamp fader and double-tap reset
 /// 5. Rotary Tone Knobs & Stereo X spatial expander
 class PowerampDspScreen extends ConsumerStatefulWidget {
-  const PowerampDspScreen({super.key});
+  const PowerampDspScreen({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   ConsumerState<PowerampDspScreen> createState() => _PowerampDspScreenState();
@@ -50,7 +52,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     final playback = ref.watch(playbackProvider);
     final route = ref.watch(audioRouteInfoProvider);
 
-    if (playback.isPlaying && _animatedSpectrum) {
+    if (widget.isActive && playback.isPlaying && _animatedSpectrum) {
       if (!_spectrumAnimController.isAnimating) {
         _spectrumAnimController.repeat(reverse: true);
       }
