@@ -105,29 +105,14 @@ class _MainShellState extends ConsumerState<MainShell> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      track.title.isEmpty
-                                          ? 'FreeBeat'
-                                          : track.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  if (playback.isPlaying) ...[
-                                    const SizedBox(width: 4),
-                                    PixelPlayingEqualizerAnimation(
-                                      size: 13,
-                                      color: cs.primary,
-                                    ),
-                                  ],
-                                ],
+                              Text(
+                                track.title.isEmpty ? 'FreeBeat' : track.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                               const SizedBox(height: 1),
                               Text(

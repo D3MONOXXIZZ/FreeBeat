@@ -154,26 +154,12 @@ class MaterialYouAlbumCover extends StatelessWidget {
                   ),
                 ),
 
-              // 5. Centered Playing Animation on Album Art
+              // 5. Centered Playing Animation on Album Art (without dark shadow)
               if (isPlaying)
                 Center(
-                  child: Container(
-                    padding: EdgeInsets.all((size * 0.12).clamp(4.0, 10.0)),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.65),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: PixelPlayingEqualizerAnimation(
-                      size: (size * 0.36).clamp(16.0, 32.0),
-                      color: cs.primaryContainer,
-                    ),
+                  child: PixelPlayingEqualizerAnimation(
+                    size: (size * 0.36).clamp(16.0, 32.0),
+                    color: Colors.white,
                   ),
                 )
               else if (showPlayButton)

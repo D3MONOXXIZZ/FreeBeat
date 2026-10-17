@@ -480,9 +480,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
+    final hasActiveTrack =
+        ref.watch(playbackProvider).currentTrack.id.isNotEmpty;
+    final bottomFabPadding = hasActiveTrack ? 120.0 : 60.0;
+
     return Scaffold(
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 74, right: 8),
+        padding: EdgeInsets.only(bottom: bottomFabPadding, right: 8),
         child: FloatingActionButton.extended(
           onPressed: _segment == 'playlists'
               ? _showCreatePlaylistDialog
@@ -519,6 +523,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.add_rounded),
+                tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
+                onPressed: () {
+                  PixelHaptics.tick();
+                  if (_segment == 'playlists') {
+                    _showCreatePlaylistDialog();
+                  } else {
+                    _pickLocalFiles();
+                  }
+                },
+              ),
               IconButton(
                 icon: const Icon(Icons.search_rounded),
                 tooltip: 'Search Library',

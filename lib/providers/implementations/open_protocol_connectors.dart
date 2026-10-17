@@ -71,7 +71,10 @@ class WebDavConnector implements CloudProviderConnector {
           providerType: CloudProviderType.webdav,
           remotePathOrId: href,
           title: parsed.title ?? filename,
-          artist: parsed.artist ?? 'WebDAV Cloud Artist',
+          artist: parsed.artist ??
+              (account.displayName.isNotEmpty
+                  ? account.displayName
+                  : 'Unknown Artist'),
           album: parsed.album ?? account.displayName,
           durationMs: 230000,
           streamUrl: fullUrl,

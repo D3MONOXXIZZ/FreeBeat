@@ -48,6 +48,74 @@ void main() {
       expect(meta.album, 'Monet Expressions');
     });
 
+    test('Parses ID3v2.2 header frames (TT2, TP1, TAL)', () {
+      List<int> makeV2Frame(String id, String text) {
+        final textBytes = [3, ...utf8.encode(text)]; // UTF-8
+        final len = textBytes.length;
+        return [
+          ...id.codeUnits,
+          (len >> 16) & 0xFF,
+          (len >> 8) & 0xFF,
+          len & 0xFF,
+          ...textBytes,
+        ];
+      }
+
+      final payload = <int>[
+        ...makeV2Frame('TT2', 'Retro Synth'),
+        ...makeV2Frame('TP1', 'Vintage Wave'),
+        ...makeV2Frame('TAL', 'Neon Nights'),
+      ];
+
+      final size = payload.length;
+      final header = <int>[
+        0x49, 0x44, 0x33, // 'ID3'
+        0x02, 0x00, // v2.2
+        0x00, // flags
+        (size >> 21) & 0x7F,
+        (size >> 14) & 0x7F,
+        (size >> 7) & 0x7F,
+        size & 0x7F,
+        ...payload,
+      ];
+
+      final meta = RangeTagParser.parseHeaderBytes(Uint8List.fromList(header));
+      expect(meta.title, 'Retro Synth');
+      expect(meta.artist, 'Vintage Wave');
+      expect(meta.album, 'Neon Nights');
+    });
+
+    test('Parses trailing 128-byte ID3v1 tag accurately', () {
+      final v1Bytes = Uint8List(128);
+      // 'TAG'
+      v1Bytes[0] = 0x54;
+      v1Bytes[1] = 0x41;
+      v1Bytes[2] = 0x47;
+      // Title: "Don Diablo Track" at offset 3 (30 bytes)
+      final titleBytes = ascii.encode('Don Diablo Track');
+      v1Bytes.setRange(3, 3 + titleBytes.length, titleBytes);
+      // Artist: "Don Diablo" at offset 33 (30 bytes)
+      final artistBytes = ascii.encode('Don Diablo');
+      v1Bytes.setRange(33, 33 + artistBytes.length, artistBytes);
+      // Album: "FUTURE" at offset 63 (30 bytes)
+      final albumBytes = ascii.encode('FUTURE');
+      v1Bytes.setRange(63, 63 + albumBytes.length, albumBytes);
+
+      final meta = RangeTagParser.parseId3v1Bytes(v1Bytes);
+      expect(meta.title, 'Don Diablo Track');
+      expect(meta.artist, 'Don Diablo');
+      expect(meta.album, 'FUTURE');
+    });
+
+    test('Filename parser does not hardcode Cloud Artist for non-hyphenated names', () {
+      final parsed = RangeTagParser.parseFromFilename(
+        '01 Put It On For Me (feat. Nina Nesbitt).mp3',
+      );
+      expect(parsed.title, 'Put It On For Me (feat. Nina Nesbitt)');
+      expect(parsed.artist, isNull);
+      expect(parsed.album, isNull);
+    });
+
     test('Parses filename fallback accurately for Hi-Res FLAC', () {
       final parsed = RangeTagParser.parseFromFilename(
         '04 - Boards of Canada - Olson.flac',

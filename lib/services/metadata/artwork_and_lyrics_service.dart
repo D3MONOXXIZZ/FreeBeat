@@ -69,15 +69,24 @@ class ArtworkAndLyricsService {
     return track.syncedLyrics;
   }
 
-  /// Resolves high-resolution 600x600 cover art URL via iTunes Search API fallback.
-  Future<String?> lookupHighResArtwork({
+  /// Searches iTunes for song metadata (real artist, album, high-res artwork).
+  Future<({String? artworkUrl, String? artist, String? album})?> lookupSongMetadata({
     required String artist,
     required String title,
   }) async {
     try {
-      final cleanArtist = artist.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
-      final cleanTitle = title.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
-      final query = cleanArtist.isNotEmpty ? '$cleanArtist $cleanTitle' : cleanTitle;
+      final isGenericArtist = artist.isEmpty ||
+          artist == 'Cloud Artist' ||
+          artist == 'Unknown Artist' ||
+          artist.toLowerCase().contains('cloud');
+
+      final cleanArtist = isGenericArtist
+          ? ''
+          : artist.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
+      final cleanTitle =
+          title.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
+      final query =
+          cleanArtist.isNotEmpty ? '$cleanArtist $cleanTitle' : cleanTitle;
       if (query.isEmpty) return null;
 
       final uri = Uri.https('itunes.apple.com', '/search', {
@@ -94,44 +103,86 @@ class ArtworkAndLyricsService {
         if (results.isNotEmpty) {
           final first = results.first as Map<String, dynamic>;
           final art100 = first['artworkUrl100'] as String?;
-          if (art100 != null) {
-            return art100.replaceAll('100x100bb', '600x600bb');
-          }
+          final itunesArtist = first['artistName'] as String?;
+          final itunesAlbum = first['collectionName'] as String?;
+          final art600 = art100?.replaceAll('100x100bb', '600x600bb');
+          return (
+            artworkUrl: art600,
+            artist: itunesArtist,
+            album: itunesAlbum,
+          );
         }
       }
     } catch (_) {}
     return null;
   }
 
+  /// Resolves high-resolution 600x600 cover art URL via iTunes Search API fallback.
+  Future<String?> lookupHighResArtwork({
+    required String artist,
+    required String title,
+  }) async {
+    final meta = await lookupSongMetadata(artist: artist, title: title);
+    return meta?.artworkUrl;
+  }
+
   /// Enriches [track] with high-res artwork from:
   /// 1. Embedded tags in local file (MP3 APIC or FLAC PICTURE)
   /// 2. iTunes Search API fallback, downloaded and cached locally
-  /// Also extracts true artwork dominant and edge color palette.
+  /// Also extracts true artwork dominant and edge color palette,
+  /// and heals generic artist/album names (e.g. "Cloud Artist").
   Future<Track> enrichTrackArtwork(Track track) async {
-    // If artwork is already a valid existing file, sanitize palette if needed
-    if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
-      if (!track.artworkUrl!.startsWith('http://') &&
-          !track.artworkUrl!.startsWith('https://')) {
-        if (File(track.artworkUrl!).existsSync()) {
+    Track currentTrack = track;
+
+    // 0. If artist or album is generic, query iTunes for real metadata
+    final isGeneric = currentTrack.artist.isEmpty ||
+        currentTrack.artist == 'Cloud Artist' ||
+        currentTrack.artist == 'Unknown Artist' ||
+        currentTrack.album == 'Cloud Library';
+
+    String? itunesArtUrl;
+    if (isGeneric) {
+      final meta = await lookupSongMetadata(
+        artist: currentTrack.artist,
+        title: currentTrack.title,
+      );
+      if (meta != null) {
+        currentTrack = currentTrack.copyWith(
+          artist: (meta.artist != null && meta.artist!.isNotEmpty)
+              ? meta.artist
+              : currentTrack.artist,
+          album: (meta.album != null && meta.album!.isNotEmpty)
+              ? meta.album
+              : currentTrack.album,
+        );
+        itunesArtUrl = meta.artworkUrl;
+      }
+    }
+
+    // 1. If artwork is already a valid existing file, sanitize palette if needed
+    if (currentTrack.artworkUrl != null && currentTrack.artworkUrl!.isNotEmpty) {
+      if (!currentTrack.artworkUrl!.startsWith('http://') &&
+          !currentTrack.artworkUrl!.startsWith('https://')) {
+        if (File(currentTrack.artworkUrl!).existsSync()) {
           // If legacy green or default seed, re-extract palette
-          if (track.dominantColorValue == 0xFF3DDC84 ||
-              track.dominantColorValue == 0xFF1DB954 ||
-              track.dominantColorValue == 0xFF6750A4) {
+          if (currentTrack.dominantColorValue == 0xFF3DDC84 ||
+              currentTrack.dominantColorValue == 0xFF1DB954 ||
+              currentTrack.dominantColorValue == 0xFF6750A4) {
             final palette =
-                await ArtworkPaletteExtractor.extractPalette(track.artworkUrl);
-            return track.copyWith(
+                await ArtworkPaletteExtractor.extractPalette(currentTrack.artworkUrl);
+            return currentTrack.copyWith(
                 dominantColorValue: palette.dominantColor.toARGB32());
           }
-          return track;
+          return currentTrack;
         }
       }
     }
 
-    // 1. Try local embedded artwork extraction
+    // 2. Try local embedded artwork extraction
     final potentialLocalPaths = [
-      track.localCachePath,
-      track.remotePathOrId,
-      track.streamUrl,
+      currentTrack.localCachePath,
+      currentTrack.remotePathOrId,
+      currentTrack.streamUrl,
     ];
 
     for (final path in potentialLocalPaths) {
@@ -139,11 +190,11 @@ class ArtworkAndLyricsService {
         final file = File(path);
         if (file.existsSync()) {
           final extracted =
-              await ArtworkExtractor.extractEmbeddedArtwork(file, track.id);
+              await ArtworkExtractor.extractEmbeddedArtwork(file, currentTrack.id);
           if (extracted != null && File(extracted).existsSync()) {
             final palette =
                 await ArtworkPaletteExtractor.extractPalette(extracted);
-            return track.copyWith(
+            return currentTrack.copyWith(
               artworkUrl: extracted,
               dominantColorValue: palette.dominantColor.toARGB32(),
             );
@@ -152,11 +203,12 @@ class ArtworkAndLyricsService {
       }
     }
 
-    // 2. Query iTunes Search API for 600x600 cover
-    final netUrl = await lookupHighResArtwork(
-      artist: track.artist,
-      title: track.title,
-    );
+    // 3. Fallback to iTunes Search API for 600x600 cover
+    final netUrl = itunesArtUrl ??
+        await lookupHighResArtwork(
+          artist: currentTrack.artist,
+          title: currentTrack.title,
+        );
 
     if (netUrl != null && netUrl.isNotEmpty) {
       try {
@@ -165,27 +217,30 @@ class ArtworkAndLyricsService {
         if (!artDir.existsSync()) {
           artDir.createSync(recursive: true);
         }
-        final sanitizedId = track.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final sanitizedId =
+            currentTrack.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
         final targetFile = File(p.join(artDir.path, '$sanitizedId.jpg'));
 
-        final imgResp = await _client.get(Uri.parse(netUrl)).timeout(const Duration(seconds: 6));
+        final imgResp = await _client
+            .get(Uri.parse(netUrl))
+            .timeout(const Duration(seconds: 6));
         if (imgResp.statusCode == 200 && imgResp.bodyBytes.length > 500) {
           await targetFile.writeAsBytes(imgResp.bodyBytes);
           final palette =
               await ArtworkPaletteExtractor.extractPalette(targetFile.path);
-          return track.copyWith(
+          return currentTrack.copyWith(
             artworkUrl: targetFile.path,
             dominantColorValue: palette.dominantColor.toARGB32(),
           );
         }
       } catch (_) {}
       final palette = await ArtworkPaletteExtractor.extractPalette(netUrl);
-      return track.copyWith(
+      return currentTrack.copyWith(
         artworkUrl: netUrl,
         dominantColorValue: palette.dominantColor.toARGB32(),
       );
     }
 
-    return track;
+    return currentTrack;
   }
 }

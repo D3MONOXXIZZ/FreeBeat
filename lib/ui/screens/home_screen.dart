@@ -328,6 +328,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         SliverAppBar.large(
           expandedHeight: 120,
           pinned: true,
+          flexibleSpace: const FlexibleSpaceBar(),
           leading: Padding(
             padding: const EdgeInsets.only(left: 16),
             child: Center(
@@ -354,18 +355,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             selectedArtist ?? selectedAlbum ?? 'Your Mix',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-          ),
-          flexibleSpace: FlexibleSpaceBar(
-            titlePadding: const EdgeInsetsDirectional.only(start: 64, bottom: 14),
-            title: Text(
-              selectedArtist ?? selectedAlbum ?? 'Your Mix',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
+            style: textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
             ),
           ),
           actions: [

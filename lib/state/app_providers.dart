@@ -20,6 +20,7 @@ import '../services/auth/native_cloud_auth_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 import '../services/metadata/artwork_and_lyrics_service.dart';
+import '../services/metadata/range_tag_parser.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core Infrastructure Providers
@@ -180,14 +181,33 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     if (_db == null) return;
     final loaded = await _db.loadTracks();
     if (loaded.isNotEmpty) {
-      // Auto-sanitize any legacy tracks with SAF or Spotify green
-      final sanitized = loaded.map((t) {
-        if (t.dominantColorValue == 0xFF3DDC84 ||
-            t.dominantColorValue == 0xFF1DB954) {
-          return t.copyWith(dominantColorValue: 0xFF1E293B);
+      final sanitized = <Track>[];
+      for (final t in loaded) {
+        var clean = t;
+        if (clean.dominantColorValue == 0xFF3DDC84 ||
+            clean.dominantColorValue == 0xFF1DB954) {
+          clean = clean.copyWith(dominantColorValue: 0xFF1E293B);
         }
-        return t;
-      }).toList();
+        if (clean.artist == 'Cloud Artist' || clean.album == 'Cloud Library') {
+          final file = File(clean.streamUrl);
+          if (file.existsSync()) {
+            try {
+              final parsed = await RangeTagParser.parseLocalFile(file);
+              if (parsed.artist != null && parsed.artist!.isNotEmpty) {
+                clean = clean.copyWith(
+                  artist: parsed.artist,
+                  album: parsed.album ?? clean.album,
+                  title: (parsed.title != null && parsed.title!.isNotEmpty)
+                      ? parsed.title
+                      : clean.title,
+                );
+                await _db.upsertTracks([clean]);
+              }
+            } catch (_) {}
+          }
+        }
+        sanitized.add(clean);
+      }
 
       state = sanitized;
       if (_ref != null) {
@@ -233,7 +253,14 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
         final needsPalette = t.dominantColorValue == 0xFF1E293B ||
             t.dominantColorValue == 0xFF3DDC84 ||
             t.dominantColorValue == 0xFF1DB954;
-        if (t.artworkUrl == null || t.artworkUrl!.isEmpty || needsPalette) {
+        final needsMetadata = t.artist == 'Cloud Artist' ||
+            t.artist == 'Unknown Artist' ||
+            t.artist.isEmpty ||
+            t.album == 'Cloud Library';
+        if (t.artworkUrl == null ||
+            t.artworkUrl!.isEmpty ||
+            needsPalette ||
+            needsMetadata) {
           try {
             final enriched = await artworkSvc.enrichTrackArtwork(t);
             if (enriched != t) {

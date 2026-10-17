@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
@@ -99,13 +100,59 @@ class RangeTagParser {
     return parseFromFilename(fallbackFilename);
   }
 
-  /// Parses binary ID3v2.3 / ID3v2.4 or native FLAC STREAMINFO + VORBIS_COMMENT headers.
+  /// Parses a local audio file by reading its initial header (up to 128 KB)
+  /// and trailing 128 bytes (for ID3v1) without loading whole multi-megabyte files into memory.
+  static Future<ParsedAudioMetadata> parseLocalFile(File file) async {
+    if (!await file.exists()) {
+      return parseFromFilename(file.path);
+    }
+    try {
+      final len = await file.length();
+      if (len == 0) return parseFromFilename(file.path);
+
+      final raf = await file.open(mode: FileMode.read);
+      try {
+        final headerSize = len < 131072 ? len : 131072;
+        final headerBytes = await raf.read(headerSize);
+
+        Uint8List? v1Bytes;
+        if (len >= 128) {
+          await raf.setPosition(len - 128);
+          v1Bytes = await raf.read(128);
+        }
+
+        var parsed = parseHeaderBytes(
+          headerBytes,
+          fallbackFilename: file.path,
+          id3v1Bytes: v1Bytes,
+        );
+
+        if (v1Bytes != null && (parsed.artist == null || parsed.album == null)) {
+          parsed = parseId3v1Bytes(v1Bytes, current: parsed);
+        }
+
+        return parsed;
+      } finally {
+        await raf.close();
+      }
+    } catch (_) {
+      return parseFromFilename(file.path);
+    }
+  }
+
+  /// Parses binary ID3v2.2 / ID3v2.3 / ID3v2.4 or native FLAC STREAMINFO + VORBIS_COMMENT headers.
   static ParsedAudioMetadata parseHeaderBytes(
     Uint8List bytes, {
     String fallbackFilename = '',
+    Uint8List? id3v1Bytes,
   }) {
     final fallback = parseFromFilename(fallbackFilename);
-    if (bytes.length < 10) return fallback;
+    if (bytes.length < 10) {
+      if (id3v1Bytes != null) {
+        return parseId3v1Bytes(id3v1Bytes, current: fallback);
+      }
+      return fallback;
+    }
 
     // 1. Check for 'fLaC' magic header (0x66 0x4C 0x61 0x43)
     if (bytes[0] == 0x66 &&
@@ -117,7 +164,16 @@ class RangeTagParser {
 
     // 2. Check for 'ID3' magic header (0x49 0x44 0x33)
     if (bytes[0] == 0x49 && bytes[1] == 0x44 && bytes[2] == 0x33) {
-      return _parseId3v2Header(bytes, fallback);
+      final id3 = _parseId3v2Header(bytes, fallback);
+      if ((id3.artist == null || id3.album == null) && id3v1Bytes != null) {
+        return parseId3v1Bytes(id3v1Bytes, current: id3);
+      }
+      return id3;
+    }
+
+    // 3. Fallback to ID3v1 if present
+    if (id3v1Bytes != null) {
+      return parseId3v1Bytes(id3v1Bytes, current: fallback);
     }
 
     return fallback;
@@ -150,7 +206,6 @@ class RangeTagParser {
 
       if (blockType == 0 && blockLen >= 18) {
         // STREAMINFO block (34 bytes standard)
-        // Bytes 10..17 contain 20-bit sample rate, 3-bit channels-1, 5-bit bitsPerSample-1, 36-bit total samples
         final b10 = bytes[offset + 10];
         final b11 = bytes[offset + 11];
         final b12 = bytes[offset + 12];
@@ -191,7 +246,10 @@ class RangeTagParser {
                 final key = comment.substring(0, eqIdx).toUpperCase();
                 final val = comment.substring(eqIdx + 1).trim();
                 if (key == 'TITLE' && val.isNotEmpty) title = val;
-                if (key == 'ARTIST' && val.isNotEmpty) artist = val;
+                if ((key == 'ARTIST' || key == 'ALBUMARTIST' || key == 'ALBUM_ARTIST' || key == 'PERFORMER') &&
+                    val.isNotEmpty) {
+                  if (key == 'ARTIST' || artist == null) artist = val;
+                }
                 if (key == 'ALBUM' && val.isNotEmpty) album = val;
               }
             }
@@ -223,7 +281,7 @@ class RangeTagParser {
     Uint8List bytes,
     ParsedAudioMetadata fallback,
   ) {
-    final versionMajor = bytes[3]; // 3 = ID3v2.3, 4 = ID3v2.4
+    final versionMajor = bytes[3]; // 2 = ID3v2.2, 3 = ID3v2.3, 4 = ID3v2.4
     final tagSize = ((bytes[6] & 0x7F) << 21) |
         ((bytes[7] & 0x7F) << 14) |
         ((bytes[8] & 0x7F) << 7) |
@@ -237,35 +295,63 @@ class RangeTagParser {
     String? album = fallback.album;
     Uint8List? artwork;
 
-    while (pos + 10 <= limit) {
-      final frameId = String.fromCharCodes(bytes.sublist(pos, pos + 4));
-      if (!RegExp(r'^[A-Z0-9]{4}$').hasMatch(frameId)) break;
+    if (versionMajor == 2) {
+      // ID3v2.2: 3-character frame ID + 3-byte size
+      while (pos + 6 <= limit) {
+        final frameId = String.fromCharCodes(bytes.sublist(pos, pos + 3));
+        if (!RegExp(r'^[A-Z0-9]{3}$').hasMatch(frameId)) break;
+        final frameSize =
+            (bytes[pos + 3] << 16) | (bytes[pos + 4] << 8) | bytes[pos + 5];
+        pos += 6;
+        if (frameSize <= 0 || pos + frameSize > limit) break;
 
-      final frameSize = versionMajor == 4
-          ? (((bytes[pos + 4] & 0x7F) << 21) |
-              ((bytes[pos + 5] & 0x7F) << 14) |
-              ((bytes[pos + 6] & 0x7F) << 7) |
-              (bytes[pos + 7] & 0x7F))
-          : ((bytes[pos + 4] << 24) |
-              (bytes[pos + 5] << 16) |
-              (bytes[pos + 6] << 8) |
-              bytes[pos + 7]);
-
-      pos += 10;
-      if (frameSize <= 0 || pos + frameSize > limit) break;
-
-      final frameBytes = bytes.sublist(pos, pos + frameSize);
-      if (frameId == 'TIT2') {
-        title = _decodeId3Text(frameBytes) ?? title;
-      } else if (frameId == 'TPE1') {
-        artist = _decodeId3Text(frameBytes) ?? artist;
-      } else if (frameId == 'TALB') {
-        album = _decodeId3Text(frameBytes) ?? album;
-      } else if (frameId == 'APIC' && frameBytes.length > 16) {
-        artwork = frameBytes;
+        final frameBytes = bytes.sublist(pos, pos + frameSize);
+        if (frameId == 'TT2') {
+          title = _decodeId3Text(frameBytes) ?? title;
+        } else if (frameId == 'TP1' || (frameId == 'TP2' && artist == null)) {
+          artist = _decodeId3Text(frameBytes) ?? artist;
+        } else if (frameId == 'TAL') {
+          album = _decodeId3Text(frameBytes) ?? album;
+        } else if (frameId == 'PIC' && frameBytes.length > 10) {
+          artwork = frameBytes;
+        }
+        pos += frameSize;
       }
+    } else {
+      // ID3v2.3 / ID3v2.4: 4-character frame ID + 4-byte size + 2 bytes flags
+      while (pos + 10 <= limit) {
+        final frameId = String.fromCharCodes(bytes.sublist(pos, pos + 4));
+        if (!RegExp(r'^[A-Z0-9]{4}$').hasMatch(frameId)) break;
 
-      pos += frameSize;
+        final frameSize = versionMajor == 4
+            ? (((bytes[pos + 4] & 0x7F) << 21) |
+                ((bytes[pos + 5] & 0x7F) << 14) |
+                ((bytes[pos + 6] & 0x7F) << 7) |
+                (bytes[pos + 7] & 0x7F))
+            : ((bytes[pos + 4] << 24) |
+                (bytes[pos + 5] << 16) |
+                (bytes[pos + 6] << 8) |
+                bytes[pos + 7]);
+
+        pos += 10;
+        if (frameSize <= 0 || pos + frameSize > limit) break;
+
+        final frameBytes = bytes.sublist(pos, pos + frameSize);
+        if (frameId == 'TIT2' || (frameId == 'TIT1' && title == null)) {
+          title = _decodeId3Text(frameBytes) ?? title;
+        } else if (frameId == 'TPE1') {
+          artist = _decodeId3Text(frameBytes) ?? artist;
+        } else if ((frameId == 'TPE2' || frameId == 'TOPE' || frameId == 'TCOM') &&
+            artist == null) {
+          artist = _decodeId3Text(frameBytes) ?? artist;
+        } else if (frameId == 'TALB') {
+          album = _decodeId3Text(frameBytes) ?? album;
+        } else if (frameId == 'APIC' && frameBytes.length > 16) {
+          artwork = frameBytes;
+        }
+
+        pos += frameSize;
+      }
     }
 
     return ParsedAudioMetadata(
@@ -286,17 +372,98 @@ class RangeTagParser {
     final encoding = frameBytes[0];
     final payload = frameBytes.sublist(1);
     String decoded;
-    if (encoding == 0) {
-      decoded = latin1.decode(payload, allowInvalid: true);
-    } else if (encoding == 3) {
-      decoded = utf8.decode(payload, allowMalformed: true);
-    } else {
-      // UTF-16 with or without BOM
-      final filtered = payload.where((b) => b != 0).toList();
-      decoded = utf8.decode(filtered, allowMalformed: true);
+    try {
+      if (encoding == 0) {
+        decoded = latin1.decode(payload, allowInvalid: true);
+      } else if (encoding == 3) {
+        decoded = utf8.decode(payload, allowMalformed: true);
+      } else if (encoding == 1) {
+        // UTF-16 with BOM (0xFF 0xFE for LE, 0xFE 0xFF for BE)
+        if (payload.length >= 2) {
+          final isLE = payload[0] == 0xFF && payload[1] == 0xFE;
+          final isBE = payload[0] == 0xFE && payload[1] == 0xFF;
+          final start = (isLE || isBE) ? 2 : 0;
+          final littleEndian = !isBE;
+          final codeUnits = <int>[];
+          for (int i = start; i + 1 < payload.length; i += 2) {
+            final cu = littleEndian
+                ? payload[i] | (payload[i + 1] << 8)
+                : (payload[i] << 8) | payload[i + 1];
+            if (cu != 0) codeUnits.add(cu);
+          }
+          decoded = String.fromCharCodes(codeUnits);
+        } else {
+          decoded = '';
+        }
+      } else if (encoding == 2) {
+        // UTF-16BE without BOM
+        final codeUnits = <int>[];
+        for (int i = 0; i + 1 < payload.length; i += 2) {
+          final cu = (payload[i] << 8) | payload[i + 1];
+          if (cu != 0) codeUnits.add(cu);
+        }
+        decoded = String.fromCharCodes(codeUnits);
+      } else {
+        decoded = utf8.decode(payload, allowMalformed: true);
+      }
+    } catch (_) {
+      decoded = utf8.decode(
+        payload.where((b) => b != 0).toList(),
+        allowMalformed: true,
+      );
     }
     final cleaned = decoded.replaceAll('\u0000', '').trim();
     return cleaned.isEmpty ? null : cleaned;
+  }
+
+  /// Parses standard 128-byte ID3v1 / ID3v1.1 tag at the end of MP3 files.
+  static ParsedAudioMetadata parseId3v1Bytes(
+    Uint8List bytes, {
+    ParsedAudioMetadata? current,
+  }) {
+    if (bytes.length < 128) return current ?? const ParsedAudioMetadata();
+    final start = bytes.length - 128;
+    if (bytes[start] == 0x54 &&
+        bytes[start + 1] == 0x41 &&
+        bytes[start + 2] == 0x47) {
+      // 'TAG'
+      String readField(int offset, int len) {
+        final sub = bytes.sublist(start + offset, start + offset + len);
+        return latin1
+            .decode(sub, allowInvalid: true)
+            .replaceAll('\u0000', '')
+            .trim();
+      }
+
+      final title = readField(3, 30);
+      final artist = readField(33, 30);
+      final album = readField(63, 30);
+
+      final cur = current ?? const ParsedAudioMetadata();
+      return ParsedAudioMetadata(
+        title: (cur.title != null && cur.title!.isNotEmpty)
+            ? cur.title
+            : (title.isNotEmpty ? title : null),
+        artist: (cur.artist != null &&
+                cur.artist!.isNotEmpty &&
+                cur.artist != 'Cloud Artist')
+            ? cur.artist
+            : (artist.isNotEmpty ? artist : null),
+        album: (cur.album != null &&
+                cur.album!.isNotEmpty &&
+                cur.album != 'Cloud Library')
+            ? cur.album
+            : (album.isNotEmpty ? album : null),
+        sampleRateHz: cur.sampleRateHz ?? 48000,
+        bitDepth: cur.bitDepth ?? 16,
+        channels: cur.channels ?? 2,
+        durationMs: cur.durationMs,
+        bitrateKbps: cur.bitrateKbps ?? 320,
+        codec: cur.codec ?? 'MP3',
+        embeddedArtworkBytes: cur.embeddedArtworkBytes,
+      );
+    }
+    return current ?? const ParsedAudioMetadata();
   }
 
   static int _readUint32LE(Uint8List bytes, int pos) {
@@ -325,7 +492,7 @@ class RangeTagParser {
       return ParsedAudioMetadata(
         artist: parts.first.trim(),
         title: parts.sublist(1).join(' - ').trim(),
-        album: 'Cloud Hi-Fi Collection',
+        album: null,
         codec: ext,
         bitDepth: isLosslessExt ? 24 : 16,
         sampleRateHz: isLosslessExt ? 96000 : 48000,
@@ -334,9 +501,9 @@ class RangeTagParser {
     }
 
     return ParsedAudioMetadata(
-      title: stripped.isEmpty ? 'Untitled Cloud Track' : stripped,
-      artist: 'Cloud Artist',
-      album: 'Cloud Library',
+      title: stripped.isEmpty ? 'Unknown Track' : stripped,
+      artist: null,
+      album: null,
       codec: ext,
       bitDepth: isLosslessExt ? 24 : 16,
       sampleRateHz: isLosslessExt ? 96000 : 48000,

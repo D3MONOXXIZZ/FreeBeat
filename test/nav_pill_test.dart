@@ -69,6 +69,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selectedIndex, 3);
+
+    // Verify nav pill has been scaled down to 50dp height
+    final container = tester.widget<Container>(
+      find.descendant(
+        of: find.byType(MaterialYouNavPill),
+        matching: find.byType(Container),
+      ).first,
+    );
+    expect(container.constraints?.maxHeight ?? (tester.getSize(find.byType(MaterialYouNavPill)).height), 50.0);
   });
 
   testWidgets('AndroidGestureHandle renders signature Pixel home bar pill', (tester) async {

@@ -318,12 +318,63 @@ class NativeCloudAuthService {
             continue;
           }
 
-          final parsed = RangeTagParser.parseFromFilename(name);
-          final cleanTitle = parsed.title ??
-              name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-          final providerLabel = account.displayName.isNotEmpty
-              ? account.displayName
-              : account.providerType.displayName;
+          ParsedAudioMetadata parsed;
+          if (File(finalPath).existsSync()) {
+            parsed = await RangeTagParser.parseLocalFile(File(finalPath));
+          } else {
+            parsed = RangeTagParser.parseFromFilename(name);
+          }
+
+          final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
+              ? parsed.title!
+              : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+
+          String? artist = parsed.artist;
+          String? album = parsed.album;
+
+          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
+            final fnParsed = RangeTagParser.parseFromFilename(name);
+            if (fnParsed.artist != null && fnParsed.artist!.isNotEmpty) {
+              artist = fnParsed.artist;
+            }
+          }
+
+          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
+            final parentDir = p.dirname(finalPath);
+            final parentName = p.basename(parentDir);
+            final grandParentName = p.basename(p.dirname(parentDir));
+            if (parentName.isNotEmpty &&
+                parentName != '.' &&
+                parentName != 'Music' &&
+                parentName != 'Download') {
+              if (grandParentName.isNotEmpty &&
+                  grandParentName != '.' &&
+                  grandParentName != 'Music' &&
+                  grandParentName != 'Download') {
+                artist = grandParentName;
+                album ??= parentName;
+              } else {
+                artist = parentName;
+              }
+            }
+          }
+
+          final effectiveArtist = (artist != null &&
+                  artist.isNotEmpty &&
+                  artist != 'Cloud Artist')
+              ? artist
+              : (account.displayName.isNotEmpty
+                  ? account.displayName
+                  : 'Unknown Artist');
+
+          final effectiveAlbum = (album != null &&
+                  album.isNotEmpty &&
+                  album != 'Cloud Library')
+              ? album
+              : (account.displayName.isNotEmpty
+                  ? account.displayName
+                  : 'Local Library');
+
           final trackId =
               'drive_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
 
@@ -348,9 +399,9 @@ class NativeCloudAuthService {
             providerType: account.providerType,
             remotePathOrId: finalPath,
             title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: parsed.artist ?? providerLabel,
-            album: parsed.album ?? providerLabel,
-            durationMs: 210000,
+            artist: effectiveArtist,
+            album: effectiveAlbum,
+            durationMs: parsed.durationMs ?? 210000,
             streamUrl: finalPath,
             artworkUrl: embeddedArt,
             codec: parsed.codec ??
@@ -417,10 +468,6 @@ class NativeCloudAuthService {
 
       if (audioFiles.isEmpty) return [];
 
-      final providerLabel = account.displayName.isNotEmpty
-          ? account.displayName
-          : account.providerType.displayName;
-
       final totalFiles = audioFiles.length;
       onProgress?.call(0, totalFiles, null);
 
@@ -431,10 +478,63 @@ class NativeCloudAuthService {
         try {
           final name = p.basename(file.path);
           final ext = p.extension(name).toLowerCase();
-          final parsed = RangeTagParser.parseFromFilename(name);
-          final cleanTitle = parsed.title ??
-              name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-          final parentFolder = p.basename(p.dirname(file.path));
+          ParsedAudioMetadata parsed;
+          if (file.existsSync()) {
+            parsed = await RangeTagParser.parseLocalFile(file);
+          } else {
+            parsed = RangeTagParser.parseFromFilename(name);
+          }
+
+          final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
+              ? parsed.title!
+              : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+
+          String? artist = parsed.artist;
+          String? album = parsed.album;
+
+          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
+            final fnParsed = RangeTagParser.parseFromFilename(name);
+            if (fnParsed.artist != null && fnParsed.artist!.isNotEmpty) {
+              artist = fnParsed.artist;
+            }
+          }
+
+          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
+            final parentFolder = p.basename(p.dirname(file.path));
+            final grandParentFolder =
+                p.basename(p.dirname(p.dirname(file.path)));
+            if (parentFolder.isNotEmpty &&
+                parentFolder != '.' &&
+                parentFolder != 'Music' &&
+                parentFolder != 'Download') {
+              if (grandParentFolder.isNotEmpty &&
+                  grandParentFolder != '.' &&
+                  grandParentFolder != 'Music' &&
+                  grandParentFolder != 'Download') {
+                artist = grandParentFolder;
+                album ??= parentFolder;
+              } else {
+                artist = parentFolder;
+              }
+            }
+          }
+
+          final effectiveArtist = (artist != null &&
+                  artist.isNotEmpty &&
+                  artist != 'Cloud Artist')
+              ? artist
+              : (account.displayName.isNotEmpty
+                  ? account.displayName
+                  : 'Unknown Artist');
+
+          final effectiveAlbum = (album != null &&
+                  album.isNotEmpty &&
+                  album != 'Cloud Library')
+              ? album
+              : (account.displayName.isNotEmpty
+                  ? account.displayName
+                  : 'Local Library');
+
           final trackId =
               'folder_${file.path.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$folderFileIndex';
 
@@ -457,10 +557,9 @@ class NativeCloudAuthService {
             providerType: account.providerType,
             remotePathOrId: file.path,
             title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: parsed.artist ?? providerLabel,
-            album: parsed.album ??
-                (parentFolder.isNotEmpty ? parentFolder : providerLabel),
-            durationMs: 210000,
+            artist: effectiveArtist,
+            album: effectiveAlbum,
+            durationMs: parsed.durationMs ?? 210000,
             streamUrl: file.path,
             artworkUrl: embeddedArt,
             codec: parsed.codec ??

@@ -40,7 +40,7 @@ class MaterialYouNavPill extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      height: 66,
+      height: 50,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(100),
@@ -97,7 +97,7 @@ class _NavPillItem extends StatelessWidget {
         onTap: onTap,
         child: Container(
           color: Colors.transparent, // Expand touch target
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -105,8 +105,8 @@ class _NavPillItem extends StatelessWidget {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                width: isSelected ? 56 : 40,
-                height: 30,
+                width: isSelected ? 44 : 32,
+                height: 24,
                 decoration: BoxDecoration(
                   color: isSelected ? cs.primaryContainer : Colors.transparent,
                   borderRadius: BorderRadius.circular(100),
@@ -114,17 +114,17 @@ class _NavPillItem extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     isSelected ? destination.selectedIcon : destination.icon,
-                    size: 21,
+                    size: 16.5,
                     color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                   ),
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
                 style: TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 8.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                   color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
                   letterSpacing: -0.2,
