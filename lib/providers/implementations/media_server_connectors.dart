@@ -79,7 +79,7 @@ class JellyfinConnector implements CloudProviderConnector {
           bitDepth: container == 'FLAC' ? 24 : 16,
           sampleRateHz: container == 'FLAC' ? 96000 : 48000,
           bitrateKbps: container == 'FLAC' ? 1850 : 320,
-          dominantColorValue: type.accentColorValue,
+          dominantColorValue: 0xFF1E293B,
         );
       }).toList();
     } catch (_) {

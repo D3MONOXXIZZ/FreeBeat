@@ -180,13 +180,22 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     if (_db == null) return;
     final loaded = await _db.loadTracks();
     if (loaded.isNotEmpty) {
-      state = loaded;
+      // Auto-sanitize any legacy tracks with SAF or Spotify green
+      final sanitized = loaded.map((t) {
+        if (t.dominantColorValue == 0xFF3DDC84 ||
+            t.dominantColorValue == 0xFF1DB954) {
+          return t.copyWith(dominantColorValue: 0xFF1E293B);
+        }
+        return t;
+      }).toList();
+
+      state = sanitized;
       if (_ref != null) {
         final playback = _ref.read(playbackProvider);
         if (playback.queue.isEmpty) {
-          _ref.read(playbackProvider.notifier).setQueue(loaded);
+          _ref.read(playbackProvider.notifier).setQueue(sanitized);
         }
-        _enrichMissingArtwork(loaded);
+        _enrichMissingArtwork(sanitized);
       }
     }
   }
@@ -200,6 +209,9 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     if (_db != null) {
       await _db.upsertTracks([updated]);
     }
+    if (_ref != null) {
+      _ref.read(playbackProvider.notifier).updateCurrentTrack(updated);
+    }
   }
 
   Future<void> enrichTrackArtwork(Track track) async {
@@ -207,7 +219,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     try {
       final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
       final enriched = await artworkSvc.enrichTrackArtwork(track);
-      if (enriched.artworkUrl != null && enriched.artworkUrl!.isNotEmpty) {
+      if (enriched != track) {
         await updateTrack(enriched);
       }
     } catch (_) {}
@@ -218,10 +230,13 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     unawaited(() async {
       final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
       for (final t in tracks) {
-        if (t.artworkUrl == null || t.artworkUrl!.isEmpty) {
+        final needsPalette = t.dominantColorValue == 0xFF1E293B ||
+            t.dominantColorValue == 0xFF3DDC84 ||
+            t.dominantColorValue == 0xFF1DB954;
+        if (t.artworkUrl == null || t.artworkUrl!.isEmpty || needsPalette) {
           try {
             final enriched = await artworkSvc.enrichTrackArtwork(t);
-            if (enriched.artworkUrl != null && enriched.artworkUrl!.isNotEmpty) {
+            if (enriched != t) {
               await updateTrack(enriched);
             }
           } catch (_) {}
@@ -1103,24 +1118,44 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   void setQueue(List<Track> tracks, {Track? startTrack}) {
     if (tracks.isEmpty) return;
+    final sanitizedTracks = tracks.map((t) {
+      if (t.dominantColorValue == 0xFF3DDC84 ||
+          t.dominantColorValue == 0xFF1DB954) {
+        return t.copyWith(dominantColorValue: 0xFF1E293B);
+      }
+      return t;
+    }).toList();
+
     final current = startTrack ??
-        (tracks.any((t) => t.id == state.currentTrack.id)
+        (sanitizedTracks.any((t) => t.id == state.currentTrack.id)
             ? state.currentTrack
-            : tracks.first);
-    state = state.copyWith(queue: tracks, currentTrack: current);
+            : sanitizedTracks.first);
+    state = state.copyWith(queue: sanitizedTracks, currentTrack: current);
+  }
+
+  void updateCurrentTrack(Track updated) {
+    if (state.currentTrack.id == updated.id) {
+      state = state.copyWith(currentTrack: updated);
+    }
   }
 
   Future<void> playTrack(Track track, {List<Track>? newQueue}) async {
     await PixelHaptics.playPauseToggle();
+    final effectiveTrack = (track.dominantColorValue == 0xFF3DDC84 ||
+            track.dominantColorValue == 0xFF1DB954)
+        ? track.copyWith(dominantColorValue: 0xFF1E293B)
+        : track;
+
     final List<Track> effectiveQueue = newQueue ??
         (state.queue.isEmpty ? _ref.read(tracksCatalogProvider) : state.queue);
-    final hasTrack = effectiveQueue.any((t) => t.id == track.id);
-    final queueToUse = hasTrack ? effectiveQueue : [track, ...effectiveQueue];
+    final hasTrack = effectiveQueue.any((t) => t.id == effectiveTrack.id);
+    final queueToUse =
+        hasTrack ? effectiveQueue : [effectiveTrack, ...effectiveQueue];
 
     // Record session history
     final prevTrack = state.currentTrack;
     List<Track> updatedHistory = state.sessionHistory;
-    if (prevTrack.id.isNotEmpty && prevTrack.id != track.id) {
+    if (prevTrack.id.isNotEmpty && prevTrack.id != effectiveTrack.id) {
       updatedHistory = [
         prevTrack,
         ...state.sessionHistory.where((t) => t.id != prevTrack.id)
@@ -1128,11 +1163,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
 
     state = state.copyWith(
-      currentTrack: track,
+      currentTrack: effectiveTrack,
       queue: queueToUse,
       sessionHistory: updatedHistory,
       positionMs: 0,
-      bufferedPositionMs: (track.durationMs * 0.35).round(),
+      bufferedPositionMs: (effectiveTrack.durationMs * 0.35).round(),
       isPlaying: true,
     );
     _startTicker();
@@ -1140,12 +1175,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     await _ensureAudioPlayerInitialized();
     try {
       if (_audioPlayer != null) {
-        await _loadAndPlayTrack(track);
+        await _loadAndPlayTrack(effectiveTrack);
       }
     } catch (_) {}
 
-    if (track.artworkUrl == null || track.artworkUrl!.isEmpty) {
-      _ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(track);
+    final needsPalette = effectiveTrack.dominantColorValue == 0xFF1E293B ||
+        effectiveTrack.dominantColorValue == 0xFF3DDC84 ||
+        effectiveTrack.dominantColorValue == 0xFF1DB954;
+    if (effectiveTrack.artworkUrl == null ||
+        effectiveTrack.artworkUrl!.isEmpty ||
+        needsPalette) {
+      _ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(effectiveTrack);
     }
   }
 

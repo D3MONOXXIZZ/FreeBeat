@@ -33,15 +33,17 @@ class MaterialYouAlbumCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final trackColor = track.dominantColorValue != 0
+    final isStaleGreen = track.dominantColorValue == 0xFF3DDC84 ||
+        track.dominantColorValue == 0xFF1DB954;
+    final trackColor = (!isStaleGreen && track.dominantColorValue != 0)
         ? Color(track.dominantColorValue)
         : cs.primary;
 
     return SpringPressScale(
       onTap: onPlayTap,
       child: Container(
-        width: size,
-        height: size,
+        width: size.isFinite ? size : null,
+        height: size.isFinite ? size : null,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(borderRadius),
           color: cs.surfaceContainerHigh,
@@ -244,6 +246,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
     final artistInitial = track.artist.trim().isNotEmpty
         ? track.artist.trim()[0].toUpperCase()
         : '';
+    final effectiveSize = size.isFinite ? size : 280.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -273,8 +276,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: size * 0.38,
-                  height: size * 0.38,
+                  width: effectiveSize * 0.38,
+                  height: effectiveSize * 0.38,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.18),
                     shape: BoxShape.circle,
@@ -288,7 +291,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
                       '$titleInitial$artistInitial',
                       style: TextStyle(
                         fontFamily: 'GoogleSans',
-                        fontSize: size * 0.16,
+                        fontSize: effectiveSize * 0.16,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                         letterSpacing: -0.5,

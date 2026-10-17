@@ -79,7 +79,7 @@ class WebDavConnector implements CloudProviderConnector {
           bitDepth: parsed.bitDepth ?? 24,
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1650,
-          dominantColorValue: CloudProviderType.webdav.accentColorValue,
+          dominantColorValue: 0xFF1E293B,
         ),
       );
     }

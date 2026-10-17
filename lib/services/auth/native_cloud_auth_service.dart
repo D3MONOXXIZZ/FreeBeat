@@ -10,6 +10,7 @@ import '../../core/models/track.dart';
 import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/metadata/range_tag_parser.dart';
 import '../metadata/artwork_extractor.dart';
+import '../metadata/artwork_palette_extractor.dart';
 
 /// Result object for Native Google Sign-In operations.
 class NativeGoogleAuthResult {
@@ -334,6 +335,13 @@ class NativeCloudAuthService {
             );
           }
 
+          int dominantColor = 0xFF1E293B;
+          if (embeddedArt != null && embeddedArt.isNotEmpty) {
+            final palette =
+                await ArtworkPaletteExtractor.extractPalette(embeddedArt);
+            dominantColor = palette.dominantColor.toARGB32();
+          }
+
           final newTrack = Track(
             id: trackId,
             accountId: account.id,
@@ -353,7 +361,7 @@ class NativeCloudAuthService {
             sampleRateHz: parsed.sampleRateHz ?? 96000,
             bitrateKbps: parsed.bitrateKbps ?? 1411,
             sizeBytes: file.size > 0 ? file.size : 25000000,
-            dominantColorValue: account.providerType.accentColorValue,
+            dominantColorValue: dominantColor,
             isPinnedOffline: true,
             localCachePath: finalPath,
           );
@@ -436,6 +444,13 @@ class NativeCloudAuthService {
                 await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
           }
 
+          int dominantColor = 0xFF1E293B;
+          if (embeddedArt != null && embeddedArt.isNotEmpty) {
+            final palette =
+                await ArtworkPaletteExtractor.extractPalette(embeddedArt);
+            dominantColor = palette.dominantColor.toARGB32();
+          }
+
           final newTrack = Track(
             id: trackId,
             accountId: account.id,
@@ -456,7 +471,7 @@ class NativeCloudAuthService {
             sampleRateHz: parsed.sampleRateHz ?? 96000,
             bitrateKbps: parsed.bitrateKbps ?? 1411,
             sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
-            dominantColorValue: account.providerType.accentColorValue,
+            dominantColorValue: dominantColor,
             isPinnedOffline: true,
             localCachePath: file.path,
           );

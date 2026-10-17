@@ -1,6 +1,10 @@
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/metadata/artwork_palette_extractor.dart';
 import '../../state/app_providers.dart';
 import '../widgets/ab_loop_modal.dart';
 import '../widgets/expressive_shapes.dart';
@@ -38,6 +42,48 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 }
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
+  ArtworkPalette? _palette;
+  String? _lastArtworkKey;
+
+  void _resolvePalette(Track track) {
+    final artKey = '${track.id}_${track.artworkUrl}';
+    if (_lastArtworkKey == artKey) return;
+    _lastArtworkKey = artKey;
+
+    final cached = ArtworkPaletteExtractor.getCached(track.artworkUrl);
+    if (cached != null) {
+      _palette = cached;
+      return;
+    }
+
+    ArtworkPaletteExtractor.extractPalette(track.artworkUrl).then((pal) {
+      if (mounted) {
+        setState(() {
+          _palette = pal;
+        });
+      }
+    });
+  }
+
+  Widget _buildArtworkBackdrop(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    final file = File(url);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   String _formatDuration(int ms) {
     final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -74,6 +120,30 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final playback = ref.watch(playbackProvider);
     final track = playback.currentTrack;
     final lyrics = track.syncedLyrics;
+    _resolvePalette(track);
+
+    final isStaleGreen = track.dominantColorValue == 0xFF3DDC84 ||
+        track.dominantColorValue == 0xFF1DB954;
+    final effectiveDominant = (_palette != null && _palette!.isExtracted)
+        ? _palette!.dominantColor
+        : (!isStaleGreen && track.dominantColorValue != 0
+            ? track.dominantColor
+            : cs.primary);
+    final effectiveEdge = (_palette != null && _palette!.isExtracted)
+        ? _palette!.edgeColor
+        : effectiveDominant;
+    final effectiveTopEdge = (_palette != null && _palette!.isExtracted)
+        ? _palette!.topEdgeColor
+        : effectiveDominant;
+    final effectiveBottomEdge = (_palette != null && _palette!.isExtracted)
+        ? _palette!.bottomEdgeColor
+        : effectiveEdge;
+    final effectiveLeftEdge = (_palette != null && _palette!.isExtracted)
+        ? _palette!.leftEdgeColor
+        : effectiveDominant;
+    final effectiveRightEdge = (_palette != null && _palette!.isExtracted)
+        ? _palette!.rightEdgeColor
+        : effectiveDominant;
 
     return Scaffold(
       body: Stack(
@@ -84,14 +154,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               gradient: RadialGradient(
-                center: const Alignment(0.0, -0.45),
-                radius: 1.35,
+                center: const Alignment(0.0, -0.42),
+                radius: 1.45,
                 colors: [
-                  track.dominantColor.withValues(alpha: 0.40),
+                  effectiveDominant.withValues(alpha: 0.42),
+                  effectiveEdge.withValues(alpha: 0.22),
                   cs.surface.withValues(alpha: 0.95),
                   cs.surfaceContainerLowest,
                 ],
-                stops: const [0.0, 0.65, 1.0],
+                stops: const [0.0, 0.40, 0.78, 1.0],
               ),
             ),
           ),
@@ -146,31 +217,106 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   const Spacer(flex: 1),
 
-                  // 3. Hero Album Artwork Card with Ambient Colored Drop Glow
+                  // 3. Hero Album Artwork Card with Ambient Edge-Matched Glow
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: AspectRatio(
                       aspectRatio: 1.0,
-                      child: GestureDetector(
-                        onTap: () {
-                          PixelHaptics.tick();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TrackDetailsScreen(track: track),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // 3a. Directional Edge Lighting Aura: Top, Bottom, Left, Right Blooms
+                          Positioned.fill(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 600),
+                              curve: Curves.easeOutCubic,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(36),
+                                boxShadow: [
+                                  // Top edge glow
+                                  BoxShadow(
+                                    color: effectiveTopEdge.withValues(alpha: 0.45),
+                                    blurRadius: 52,
+                                    spreadRadius: 10,
+                                    offset: const Offset(0, -14),
+                                  ),
+                                  // Bottom edge glow
+                                  BoxShadow(
+                                    color: effectiveBottomEdge.withValues(alpha: 0.50),
+                                    blurRadius: 56,
+                                    spreadRadius: 12,
+                                    offset: const Offset(0, 16),
+                                  ),
+                                  // Left edge glow
+                                  BoxShadow(
+                                    color: effectiveLeftEdge.withValues(alpha: 0.40),
+                                    blurRadius: 46,
+                                    spreadRadius: 8,
+                                    offset: const Offset(-12, 0),
+                                  ),
+                                  // Right edge glow
+                                  BoxShadow(
+                                    color: effectiveRightEdge.withValues(alpha: 0.40),
+                                    blurRadius: 46,
+                                    spreadRadius: 8,
+                                    offset: const Offset(12, 0),
+                                  ),
+                                  // Deep center dominant ambient bloom
+                                  BoxShadow(
+                                    color: effectiveDominant.withValues(alpha: 0.55),
+                                    blurRadius: 68,
+                                    spreadRadius: 16,
+                                  ),
+                                ],
+                              ),
                             ),
-                          );
-                        },
-                        child: Hero(
-                          tag: 'album_art_${track.id}',
-                          child: MaterialYouAlbumCover(
-                            track: track,
-                            size: double.infinity,
-                            borderRadius: 32,
-                            showQualityBadge: true,
-                            showSourceBadge: true,
-                            isPlaying: playback.isPlaying,
                           ),
-                        ),
+
+                          // 3b. Blurred scaled duplicate of actual artwork
+                          // Extends seamlessly 25-35dp past the card edges.
+                          // Because it's literally a blurred version of the artwork image,
+                          // every edge glows with the exact colors of that edge!
+                          if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty)
+                            Positioned.fill(
+                              child: Transform.scale(
+                                scale: 1.14,
+                                child: ImageFiltered(
+                                  imageFilter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
+                                  child: Opacity(
+                                    opacity: 0.75,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(32),
+                                      child: _buildArtworkBackdrop(track.artworkUrl!),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 3c. Crisp Hero Album Artwork Card
+                          GestureDetector(
+                            onTap: () {
+                              PixelHaptics.tick();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TrackDetailsScreen(track: track),
+                                ),
+                              );
+                            },
+                            child: Hero(
+                              tag: 'album_art_${track.id}',
+                              child: MaterialYouAlbumCover(
+                                track: track,
+                                size: double.infinity,
+                                borderRadius: 32,
+                                showQualityBadge: true,
+                                showSourceBadge: true,
+                                isPlaying: playback.isPlaying,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

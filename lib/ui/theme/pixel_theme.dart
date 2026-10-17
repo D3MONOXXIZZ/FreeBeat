@@ -166,10 +166,14 @@ class PixelTheme {
           brightness: Brightness.dark,
         );
 
-    if (activeTrackSeedColor != kSeedDeepViolet &&
+    final isStaleGreen = activeTrackSeedColor.toARGB32() == 0xFF3DDC84 ||
+        activeTrackSeedColor.toARGB32() == 0xFF1DB954;
+    final effectiveSeed = isStaleGreen ? kSeedDeepViolet : activeTrackSeedColor;
+
+    if (effectiveSeed != kSeedDeepViolet &&
         wallpaperDynamicScheme == null) {
       final trackScheme = ColorScheme.fromSeed(
-        seedColor: activeTrackSeedColor,
+        seedColor: effectiveSeed,
         brightness: Brightness.dark,
       );
       return baseScheme.copyWith(
@@ -194,10 +198,14 @@ class PixelTheme {
           brightness: Brightness.light,
         );
 
-    if (activeTrackSeedColor != kSeedDeepViolet &&
+    final isStaleGreen = activeTrackSeedColor.toARGB32() == 0xFF3DDC84 ||
+        activeTrackSeedColor.toARGB32() == 0xFF1DB954;
+    final effectiveSeed = isStaleGreen ? kSeedDeepViolet : activeTrackSeedColor;
+
+    if (effectiveSeed != kSeedDeepViolet &&
         wallpaperDynamicScheme == null) {
       final trackScheme = ColorScheme.fromSeed(
-        seedColor: activeTrackSeedColor,
+        seedColor: effectiveSeed,
         brightness: Brightness.light,
       );
       return baseScheme.copyWith(

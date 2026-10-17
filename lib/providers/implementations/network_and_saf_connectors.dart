@@ -128,7 +128,7 @@ class AndroidSafConnector implements CloudProviderConnector {
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1411,
           sizeBytes: file.size,
-          dominantColorValue: type.accentColorValue,
+          dominantColorValue: 0xFF1E293B,
           isPinnedOffline: true,
           localCachePath: file.path,
         );

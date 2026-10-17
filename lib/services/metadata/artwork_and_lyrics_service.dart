@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../core/models/track.dart';
 import 'artwork_extractor.dart';
+import 'artwork_palette_extractor.dart';
 
 /// Enriches missing high-resolution album art via embedded file tag extraction,
 /// iTunes Search API fallback, and fetches millisecond-accurate time-synced `.lrc`
@@ -105,12 +106,22 @@ class ArtworkAndLyricsService {
   /// Enriches [track] with high-res artwork from:
   /// 1. Embedded tags in local file (MP3 APIC or FLAC PICTURE)
   /// 2. iTunes Search API fallback, downloaded and cached locally
+  /// Also extracts true artwork dominant and edge color palette.
   Future<Track> enrichTrackArtwork(Track track) async {
-    // If artwork is already a valid existing file, keep it
+    // If artwork is already a valid existing file, sanitize palette if needed
     if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
       if (!track.artworkUrl!.startsWith('http://') &&
           !track.artworkUrl!.startsWith('https://')) {
         if (File(track.artworkUrl!).existsSync()) {
+          // If legacy green or default seed, re-extract palette
+          if (track.dominantColorValue == 0xFF3DDC84 ||
+              track.dominantColorValue == 0xFF1DB954 ||
+              track.dominantColorValue == 0xFF6750A4) {
+            final palette =
+                await ArtworkPaletteExtractor.extractPalette(track.artworkUrl);
+            return track.copyWith(
+                dominantColorValue: palette.dominantColor.toARGB32());
+          }
           return track;
         }
       }
@@ -127,9 +138,15 @@ class ArtworkAndLyricsService {
       if (path != null && path.isNotEmpty) {
         final file = File(path);
         if (file.existsSync()) {
-          final extracted = await ArtworkExtractor.extractEmbeddedArtwork(file, track.id);
+          final extracted =
+              await ArtworkExtractor.extractEmbeddedArtwork(file, track.id);
           if (extracted != null && File(extracted).existsSync()) {
-            return track.copyWith(artworkUrl: extracted);
+            final palette =
+                await ArtworkPaletteExtractor.extractPalette(extracted);
+            return track.copyWith(
+              artworkUrl: extracted,
+              dominantColorValue: palette.dominantColor.toARGB32(),
+            );
           }
         }
       }
@@ -154,10 +171,19 @@ class ArtworkAndLyricsService {
         final imgResp = await _client.get(Uri.parse(netUrl)).timeout(const Duration(seconds: 6));
         if (imgResp.statusCode == 200 && imgResp.bodyBytes.length > 500) {
           await targetFile.writeAsBytes(imgResp.bodyBytes);
-          return track.copyWith(artworkUrl: targetFile.path);
+          final palette =
+              await ArtworkPaletteExtractor.extractPalette(targetFile.path);
+          return track.copyWith(
+            artworkUrl: targetFile.path,
+            dominantColorValue: palette.dominantColor.toARGB32(),
+          );
         }
       } catch (_) {}
-      return track.copyWith(artworkUrl: netUrl);
+      final palette = await ArtworkPaletteExtractor.extractPalette(netUrl);
+      return track.copyWith(
+        artworkUrl: netUrl,
+        dominantColorValue: palette.dominantColor.toARGB32(),
+      );
     }
 
     return track;

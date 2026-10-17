@@ -143,7 +143,7 @@ class GoogleDriveConnector implements CloudProviderConnector {
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1411,
           sizeBytes: int.tryParse(f['size']?.toString() ?? '') ?? 32000000,
-          dominantColorValue: type.accentColorValue,
+          dominantColorValue: 0xFF1E293B,
         );
       }).toList();
     } catch (_) {
@@ -242,7 +242,7 @@ class OneDriveConnector implements CloudProviderConnector {
           bitDepth: parsed.bitDepth ?? 24,
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1411,
-          dominantColorValue: type.accentColorValue,
+          dominantColorValue: 0xFF1E293B,
         );
       }).toList();
     } catch (_) {
@@ -339,7 +339,7 @@ class DropboxConnector implements CloudProviderConnector {
             bitDepth: parsed.bitDepth ?? 24,
             sampleRateHz: parsed.sampleRateHz ?? 96000,
             bitrateKbps: parsed.bitrateKbps ?? 1411,
-            dominantColorValue: type.accentColorValue,
+            dominantColorValue: 0xFF1E293B,
           ),
         );
       }
