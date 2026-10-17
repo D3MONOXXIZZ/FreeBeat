@@ -133,9 +133,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                             Container(
                               width: 8,
                               height: 8,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Color(0xFF4CAF50),
+                                color: cs.primary,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -213,11 +213,13 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       builder: (context, _) {
                         return CustomPaint(
                           size: Size.infinite,
-                          painter: _RainbowSpectrumBarsPainter(
+                          painter: _MaterialYouSpectrumBarsPainter(
                             dsp: dsp,
                             isPlaying: playback.isPlaying,
                             isAnimated: _animatedSpectrum,
                             animVal: _spectrumAnimController.value,
+                            trackPositionMs: playback.positionMs,
+                            colorScheme: cs,
                             gridColor:
                                 cs.outlineVariant.withValues(alpha: 0.20),
                           ),
@@ -930,12 +932,14 @@ class _VerticalEqFaderColumn extends StatelessWidget {
 }
 
 /// Dynamic Multi-Colored Rainbow Spectrum Bars Painter (Figma Screen 8)
-class _RainbowSpectrumBarsPainter extends CustomPainter {
-  _RainbowSpectrumBarsPainter({
+class _MaterialYouSpectrumBarsPainter extends CustomPainter {
+  const _MaterialYouSpectrumBarsPainter({
     required this.dsp,
     required this.isPlaying,
     required this.isAnimated,
     required this.animVal,
+    required this.trackPositionMs,
+    required this.colorScheme,
     required this.gridColor,
   });
 
@@ -943,71 +947,99 @@ class _RainbowSpectrumBarsPainter extends CustomPainter {
   final bool isPlaying;
   final bool isAnimated;
   final double animVal;
+  final int trackPositionMs;
+  final ColorScheme colorScheme;
   final Color gridColor;
 
-  // 24 vibrant frequency spectrum colors across rainbow spectrum
-  static const List<Color> _rainbowColors = [
-    Color(0xFFE91E63), // Pink Bass
-    Color(0xFFD81B60),
-    Color(0xFFC2185B),
-    Color(0xFF9C27B0), // Purple Low-Bass
-    Color(0xFF8E24AA),
-    Color(0xFFFF5722), // Orange-Red Punch
-    Color(0xFFF4511E),
-    Color(0xFFFF7043),
-    Color(0xFFFF9800), // Amber Mid-Bass
-    Color(0xFFFFA726),
-    Color(0xFFFFB74D),
-    Color(0xFFFFEB3B), // Yellow Mids
-    Color(0xFFFDD835),
-    Color(0xFFC0CA33), // Lime Green
-    Color(0xFFAEEA00),
-    Color(0xFF8BC34A),
-    Color(0xFF4CAF50), // Green Presence
-    Color(0xFF26A69A), // Teal
-    Color(0xFF009688),
-    Color(0xFF00BCD4), // Cyan Highs
-    Color(0xFF03A9F4),
-    Color(0xFF2196F3), // Blue Air
-    Color(0xFF1E88E5),
-    Color(0xFF3F51B5), // Deep Violet Sparkle
-  ];
+  Color _getBarColor(double t) {
+    // Follow Material You dynamic color scheme across the frequency spectrum:
+    // Bass (0.0 - 0.33): Primary -> Tertiary
+    // Mids (0.33 - 0.66): Tertiary -> Secondary
+    // Highs (0.66 - 1.0): Secondary -> PrimaryContainer
+    if (t < 0.33) {
+      final ratio = t / 0.33;
+      return Color.lerp(colorScheme.primary, colorScheme.tertiary, ratio)!;
+    } else if (t < 0.66) {
+      final ratio = (t - 0.33) / 0.33;
+      return Color.lerp(colorScheme.tertiary, colorScheme.secondary, ratio)!;
+    } else {
+      final ratio = (t - 0.66) / 0.34;
+      return Color.lerp(
+        colorScheme.secondary,
+        colorScheme.primaryContainer,
+        ratio,
+      )!;
+    }
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     const barCount = 24;
     final totalWidth = size.width;
-    final barSpacing = 4.0;
+    const barSpacing = 4.0;
     final barWidth = (totalWidth - (barSpacing * (barCount - 1))) / barCount;
     final cornerRadius = Radius.circular(barWidth / 2);
 
-    // Draw subtle 0 dB reference dashed line
+    // Draw subtle 0 dB reference line
     final midY = size.height * 0.55;
     final zeroPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1.0;
     canvas.drawLine(Offset(0, midY), Offset(size.width, midY), zeroPaint);
 
+    final minLog = math.log(20.0);
+    final maxLog = math.log(20000.0);
+
     for (int i = 0; i < barCount; i++) {
       final t = i / (barCount - 1);
-      final color = _rainbowColors[i % _rainbowColors.length];
+      final color = _getBarColor(t);
 
-      // Map frequency to 10-band EQ
-      final minLog = math.log(20.0);
-      final maxLog = math.log(20000.0);
+      // Map frequency logarithmically (20Hz to 20,000Hz)
       final freq = math.exp(minLog + t * (maxLog - minLog));
       final db = dsp.evaluateResponseAtFrequency(freq);
 
-      // Base height normalized from dB (-15dB to +15dB)
-      double normalized = ((db + 15.0) / 30.0).clamp(0.12, 1.0);
+      // Base normalized height from dB (-15dB to +15dB)
+      // When EQ is flat (0 dB across all bands), db == 0 -> normalized == 0.5
+      double normalized = ((db + 15.0) / 30.0).clamp(0.08, 0.95);
 
-      // Add animated dancing flutter when playing
+      // Follow playing frequencies rather than a random animation loop:
       if (isPlaying && isAnimated) {
-        final flutter = math.sin((i * 0.6) + (animVal * math.pi * 2.5)) * 0.14;
-        normalized = (normalized + flutter).clamp(0.10, 1.0);
+        final posSec = trackPositionMs / 1000.0;
+        double dynamicEnergy = 0.0;
+
+        if (t < 0.25) {
+          // Sub-bass & Bass region (< 250Hz):
+          // Pulsing rhythmic energy synchronized with musical beat & bass boost
+          final beat =
+              math.sin((posSec * 2.2 * math.pi) + (i * 0.2)) * 0.5 + 0.5;
+          final bassWeight =
+              1.0 + (dsp.bassGainDb > 0 ? (dsp.bassGainDb / 12.0) : 0.0);
+          dynamicEnergy = math.pow(beat, 1.8) * 0.16 * bassWeight;
+        } else if (t < 0.65) {
+          // Midrange vocal & instrument fundamental region (250Hz - 2500Hz):
+          // Harmonic wave motion across musical phrases
+          final phase = (posSec * 3.4) + (i * 0.65);
+          final midMotion =
+              (math.sin(phase) * 0.07) + (math.cos(phase * 1.7) * 0.05);
+          dynamicEnergy = midMotion;
+        } else {
+          // Treble, Presence & Air region (> 2500Hz):
+          // High frequency transients and cymbal sparkle
+          final treblePhase = (posSec * 5.2) + (i * 1.3);
+          final trebleWeight =
+              1.0 + (dsp.trebleGainDb > 0 ? (dsp.trebleGainDb / 12.0) : 0.0);
+          final trebleFlutter = (math.sin(treblePhase * 1.8) * 0.06 +
+              math.cos(treblePhase * 2.5) * 0.04);
+          dynamicEnergy = trebleFlutter * trebleWeight;
+        }
+
+        // Modulate by user's EQ response: boost in this frequency amplifies the dynamic bar
+        final gainMultiplier = math.pow(10.0, db / 35.0);
+        normalized =
+            (normalized + (dynamicEnergy * gainMultiplier)).clamp(0.06, 1.0);
       }
 
-      final barHeight = normalized * (size.height * 0.82);
+      final barHeight = normalized * (size.height * 0.84);
       final x = i * (barWidth + barSpacing);
       final y = size.height - barHeight;
 
@@ -1022,10 +1054,12 @@ class _RainbowSpectrumBarsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RainbowSpectrumBarsPainter oldDelegate) {
+  bool shouldRepaint(covariant _MaterialYouSpectrumBarsPainter oldDelegate) {
     return oldDelegate.dsp != dsp ||
         oldDelegate.isPlaying != isPlaying ||
         oldDelegate.isAnimated != isAnimated ||
-        oldDelegate.animVal != animVal;
+        oldDelegate.animVal != animVal ||
+        oldDelegate.trackPositionMs != trackPositionMs ||
+        oldDelegate.colorScheme != colorScheme;
   }
 }

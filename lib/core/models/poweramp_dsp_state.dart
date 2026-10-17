@@ -201,18 +201,18 @@ class PowerampDspState {
     this.isParametricMode = false,
     this.preampDb = 0.0,
     required this.bands,
-    this.bassGain = 0.22,
+    this.bassGain = 0.0,
     this.bassFreqHz = 85.0,
-    this.trebleGain = 0.18,
+    this.trebleGain = 0.0,
     this.trebleFreqHz = 10000.0,
-    this.stereoExpansion = 0.15,
+    this.stereoExpansion = 0.0,
     this.balance = 0.0,
     this.monoMix = false,
     this.tempo = 1.0,
     this.pitchSemitones = 0.0,
     this.reverbPreset = ReverbPresetType.none,
     this.reverbMix = 0.0,
-    this.activePresetId = 'poweramp_bass_treble',
+    this.activePresetId = 'flat',
   });
 
   final bool eqEnabled;
@@ -241,7 +241,7 @@ class PowerampDspState {
   double get stereoXAmount => stereoExpansion;
 
   factory PowerampDspState.initial() {
-    final preset = kBuiltInDspPresets[1]; // Poweramp Bass & Treble
+    final preset = kBuiltInDspPresets[0]; // Flat / Bit-Perfect Reference
     return PowerampDspState(
       preampDb: preset.preampDb,
       bands: List.generate(

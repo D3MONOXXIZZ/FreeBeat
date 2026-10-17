@@ -1557,18 +1557,56 @@ final playbackProvider =
 // Real-Time Track Import Progress State & Provider
 // ─────────────────────────────────────────────────────────────────────────────
 
+class PendingImportTrack {
+  const PendingImportTrack({
+    required this.id,
+    required this.filename,
+    required this.title,
+    this.artist = 'Importing metadata...',
+    this.progress = 0.0,
+    this.isCompleted = false,
+  });
+
+  final String id;
+  final String filename;
+  final String title;
+  final String artist;
+  final double progress;
+  final bool isCompleted;
+
+  PendingImportTrack copyWith({
+    String? id,
+    String? filename,
+    String? title,
+    String? artist,
+    double? progress,
+    bool? isCompleted,
+  }) {
+    return PendingImportTrack(
+      id: id ?? this.id,
+      filename: filename ?? this.filename,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      progress: progress ?? this.progress,
+      isCompleted: isCompleted ?? this.isCompleted,
+    );
+  }
+}
+
 class ImportProgressState {
   const ImportProgressState({
     this.isImporting = false,
     this.current = 0,
     this.total = 0,
     this.currentItemName = '',
+    this.pendingTracks = const [],
   });
 
   final bool isImporting;
   final int current;
   final int total;
   final String currentItemName;
+  final List<PendingImportTrack> pendingTracks;
 
   double get progressFraction =>
       total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
@@ -1579,19 +1617,104 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
   ImportProgressNotifier() : super(const ImportProgressState());
 
   void start({required int total}) {
-    state = ImportProgressState(isImporting: true, current: 0, total: total);
+    state = ImportProgressState(
+      isImporting: true,
+      current: 0,
+      total: total,
+      pendingTracks: state.pendingTracks,
+    );
   }
 
-  void update({required int current, required int total, String name = ''}) {
+  void startWithFiles(List<String> filenames) {
+    final pending = filenames.asMap().entries.map((entry) {
+      final idx = entry.key;
+      final fn = entry.value;
+      final cleanTitle = fn.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+      return PendingImportTrack(
+        id: 'pending_${idx}_$fn',
+        filename: fn,
+        title: cleanTitle,
+        artist: 'Queued for import...',
+        progress: 0.0,
+        isCompleted: false,
+      );
+    }).toList();
+
+    state = ImportProgressState(
+      isImporting: true,
+      current: 0,
+      total: filenames.length,
+      pendingTracks: pending,
+    );
+  }
+
+  void update({
+    required int current,
+    required int total,
+    String name = '',
+    Track? track,
+  }) {
+    final updatedPending = List<PendingImportTrack>.from(state.pendingTracks);
+    if (updatedPending.isNotEmpty) {
+      for (int i = 0; i < updatedPending.length; i++) {
+        final item = updatedPending[i];
+        if (i < current - 1) {
+          if (!item.isCompleted) {
+            updatedPending[i] = item.copyWith(
+              progress: 1.0,
+              isCompleted: true,
+            );
+          }
+        } else if (i == current - 1) {
+          updatedPending[i] = item.copyWith(
+            title: track?.title.isNotEmpty == true ? track!.title : item.title,
+            artist:
+                track?.artist.isNotEmpty == true ? track!.artist : 'Imported',
+            progress: 1.0,
+            isCompleted: true,
+          );
+        } else if (i == current) {
+          updatedPending[i] = item.copyWith(
+            artist: 'Importing & analyzing audio...',
+            progress: 0.5,
+          );
+        }
+      }
+    }
+
     state = ImportProgressState(
       isImporting: true,
       current: current,
       total: total,
       currentItemName: name,
+      pendingTracks: updatedPending,
     );
   }
 
   void complete() {
+    final completedPending = state.pendingTracks
+        .map((p) => p.copyWith(
+              progress: 1.0,
+              isCompleted: true,
+            ))
+        .toList();
+
+    state = ImportProgressState(
+      isImporting: false,
+      current: state.total,
+      total: state.total,
+      pendingTracks: completedPending,
+    );
+
+    // Keep visible briefly for visual gratification, then clear
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (!state.isImporting) {
+        state = const ImportProgressState(isImporting: false);
+      }
+    });
+  }
+
+  void clearPending() {
     state = const ImportProgressState(isImporting: false);
   }
 }

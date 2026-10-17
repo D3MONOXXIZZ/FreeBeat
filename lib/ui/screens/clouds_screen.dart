@@ -321,11 +321,15 @@ class CloudsScreen extends ConsumerWidget {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final tracks = await authService.pickFromInstalledCloudApp(
       account: safAccount,
+      onFilesSelected: (filenames) {
+        progressNotifier.startWithFiles(filenames);
+      },
       onProgress: (current, total, track) {
         progressNotifier.update(
           current: current,
           total: total,
           name: track?.title ?? '',
+          track: track,
         );
         if (track != null) {
           ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
@@ -682,11 +686,15 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       final progressNotifier = ref.read(importProgressProvider.notifier);
       final tracks = await authService.pickFromInstalledCloudApp(
         account: account,
+        onFilesSelected: (filenames) {
+          progressNotifier.startWithFiles(filenames);
+        },
         onProgress: (current, total, track) {
           progressNotifier.update(
             current: current,
             total: total,
             name: track?.title ?? '',
+            track: track,
           );
           if (track != null) {
             ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);

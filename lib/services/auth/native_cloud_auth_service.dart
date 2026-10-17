@@ -220,6 +220,7 @@ class NativeCloudAuthService {
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
   Future<List<Track>> pickFromInstalledCloudApp({
     required CloudAccount account,
+    void Function(List<String> filenames)? onFilesSelected,
     void Function(int current, int total, Track? track)? onProgress,
   }) async {
     try {
@@ -243,6 +244,9 @@ class NativeCloudAuthService {
       }
 
       if (result == null || result.files.isEmpty) return [];
+
+      final filenames = result.files.map((f) => f.name).toList();
+      onFilesSelected?.call(filenames);
 
       Directory? appMusicDir;
       try {

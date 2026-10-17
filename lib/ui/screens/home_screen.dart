@@ -234,11 +234,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: driveAccount,
+      onFilesSelected: (filenames) {
+        progressNotifier.startWithFiles(filenames);
+      },
       onProgress: (current, total, track) {
         progressNotifier.update(
           current: current,
           total: total,
           name: track?.title ?? '',
+          track: track,
         );
         if (track != null) {
           ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
@@ -272,11 +276,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: safAccount,
+      onFilesSelected: (filenames) {
+        progressNotifier.startWithFiles(filenames);
+      },
       onProgress: (current, total, track) {
         progressNotifier.update(
           current: current,
           total: total,
           name: track?.title ?? '',
+          track: track,
         );
         if (track != null) {
           ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);

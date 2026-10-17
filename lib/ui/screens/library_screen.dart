@@ -57,11 +57,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: safAccount,
+      onFilesSelected: (filenames) {
+        progressNotifier.startWithFiles(filenames);
+      },
       onProgress: (current, total, track) {
         progressNotifier.update(
           current: current,
           total: total,
           name: track?.title ?? '',
+          track: track,
         );
         if (track != null) {
           ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
@@ -485,29 +489,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }).toList();
 
     final hasActiveTrack = activeTrackId.isNotEmpty;
-    final bottomFabPadding = hasActiveTrack ? 120.0 : 60.0;
+    final bottomFabPadding = MediaQuery.of(context).padding.bottom +
+        (hasActiveTrack ? 156.0 : 88.0);
 
     return Scaffold(
       floatingActionButton: Padding(
         padding: EdgeInsets.only(bottom: bottomFabPadding, right: 8),
-        child: FloatingActionButton.extended(
+        child: FloatingActionButton(
+          shape: const CircleBorder(),
+          backgroundColor: cs.primaryContainer,
+          foregroundColor: cs.onPrimaryContainer,
+          tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
           onPressed: _segment == 'playlists'
               ? _showCreatePlaylistDialog
               : _pickLocalFiles,
-          icon: Icon(
+          child: Icon(
             _segment == 'playlists'
                 ? Icons.playlist_add_rounded
                 : Icons.add_rounded,
-            size: 22,
-          ),
-          label: Text(
-            _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          backgroundColor: cs.primaryContainer,
-          foregroundColor: cs.onPrimaryContainer,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
+            size: 28,
           ),
         ),
       ),
@@ -946,86 +946,139 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
           // ───────────────────────────────────────────────────────────────────
-          // 4. Grouped 28dp Surface Card for Track List
+          // 4. Edge-to-Edge Surface Card for Track List
           // ───────────────────────────────────────────────────────────────────
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 160),
+            padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
             sliver: SliverToBoxAdapter(
               child: Container(
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha: 0.35),
-                    width: 1,
+                  border: Border(
+                    top: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                      width: 1,
+                    ),
+                    bottom: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                      width: 1,
+                    ),
                   ),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: allTracks.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    color: cs.primaryContainer,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Icon(
-                                    Icons.queue_music_rounded,
-                                    size: 32,
-                                    color: cs.onPrimaryContainer,
-                                  ),
+                child: allTracks.isEmpty && importProgress.pendingTracks.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Your Library is Empty',
-                                  style: textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                child: Icon(
+                                  Icons.queue_music_rounded,
+                                  size: 32,
+                                  color: cs.onPrimaryContainer,
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Add music files from your device or connect cloud storage to start listening.',
-                                  textAlign: TextAlign.center,
-                                  style: textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                  ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Your Library is Empty',
+                                style: textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
-                                const SizedBox(height: 20),
-                                FilledButton.icon(
-                                  onPressed: _pickLocalFiles,
-                                  icon: const Icon(Icons.add_rounded, size: 18),
-                                  label: const Text('Add Music from Device'),
-                                  style: FilledButton.styleFrom(
-                                    shape: const StadiumBorder(),
-                                  ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Add music files from your device or connect cloud storage to start listening.',
+                                textAlign: TextAlign.center,
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
                                 ),
-                                const SizedBox(height: 10),
-                                TextButton.icon(
-                                  onPressed: () {
-                                    PixelHaptics.tick();
-                                    ref
-                                        .read(cloudAccountsProvider.notifier)
-                                        .loadSampleDemoAccounts();
-                                    ref
-                                        .read(tracksCatalogProvider.notifier)
-                                        .loadSampleDemoTracks();
-                                  },
-                                  icon: const Icon(Icons.auto_awesome_rounded,
-                                      size: 16),
-                                  label: const Text('Load Demo Showcase'),
+                              ),
+                              const SizedBox(height: 20),
+                              FilledButton.icon(
+                                onPressed: _pickLocalFiles,
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('Add Music from Device'),
+                                style: FilledButton.styleFrom(
+                                  shape: const StadiumBorder(),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextButton.icon(
+                                onPressed: () {
+                                  PixelHaptics.tick();
+                                  ref
+                                      .read(cloudAccountsProvider.notifier)
+                                      .loadSampleDemoAccounts();
+                                  ref
+                                      .read(tracksCatalogProvider.notifier)
+                                      .loadSampleDemoTracks();
+                                },
+                                icon: const Icon(Icons.auto_awesome_rounded,
+                                    size: 16),
+                                label: const Text('Load Demo Showcase'),
+                              ),
+                            ],
                           ),
-                        )
-                      : filtered.isEmpty
-                          ? Padding(
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // 1. Pending Import Songs (all show up together, greyed out with filling circle indicators)
+                          if (importProgress.pendingTracks.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              color: cs.primaryContainer.withValues(alpha: 0.35),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Importing ${importProgress.pendingTracks.length} Songs (${importProgress.current}/${importProgress.total})',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            for (int p = 0;
+                                p < importProgress.pendingTracks.length;
+                                p++) ...[
+                              _PendingImportTrackTile(
+                                item: importProgress.pendingTracks[p],
+                              ),
+                              Divider(
+                                height: 1,
+                                indent: 74,
+                                endIndent: 16,
+                                color: cs.outlineVariant.withValues(alpha: 0.25),
+                              ),
+                            ],
+                          ],
+
+                          // 2. Existing tracks in view
+                          if (filtered.isEmpty &&
+                              importProgress.pendingTracks.isEmpty)
+                            Padding(
                               padding: const EdgeInsets.all(28),
                               child: Center(
                                 child: Column(
@@ -1047,49 +1100,50 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 ),
                               ),
                             )
-                          : Column(
-                              children: [
-                                for (int i = 0; i < filtered.length; i++) ...[
-                                  if (i > 0)
-                                    Divider(
-                                      height: 1,
-                                      indent: 74,
-                                      endIndent: 16,
-                                      color: cs.outlineVariant
-                                          .withValues(alpha: 0.25),
-                                    ),
-                                  SwipeToQueueWrapper(
-                                    track: filtered[i],
-                                    child: _LibraryTrackTile(
-                                      track: filtered[i],
-                                      isCurrent: activeTrackId == filtered[i].id,
-                                      isPlaying: activeTrackId == filtered[i].id &&
+                          else
+                            for (int i = 0; i < filtered.length; i++) ...[
+                              if (i > 0 &&
+                                  importProgress.pendingTracks.isEmpty)
+                                Divider(
+                                  height: 1,
+                                  indent: 74,
+                                  endIndent: 16,
+                                  color: cs.outlineVariant
+                                      .withValues(alpha: 0.25),
+                                ),
+                              SwipeToQueueWrapper(
+                                track: filtered[i],
+                                child: _LibraryTrackTile(
+                                  track: filtered[i],
+                                  isCurrent:
+                                      activeTrackId == filtered[i].id,
+                                  isPlaying:
+                                      activeTrackId == filtered[i].id &&
                                           isPlaybackActive,
-                                      durationText: _formatTrackDuration(
-                                          filtered[i].durationMs),
-                                      onTap: () {
-                                        ref
-                                            .read(playbackProvider.notifier)
-                                            .playTrack(filtered[i]);
-                                      },
-                                      onToggleFavorite: () {
-                                        ref
-                                            .read(tracksCatalogProvider.notifier)
-                                            .toggleFavorite(filtered[i].id);
-                                      },
-                                      onTogglePin: () {
-                                        ref
-                                            .read(tracksCatalogProvider.notifier)
-                                            .togglePinOffline(filtered[i].id);
-                                      },
-                                      onOptionsTap: () =>
-                                          _showTrackOptions(filtered[i]),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                ),
+                                  durationText: _formatTrackDuration(
+                                      filtered[i].durationMs),
+                                  onTap: () {
+                                    ref
+                                        .read(playbackProvider.notifier)
+                                        .playTrack(filtered[i]);
+                                  },
+                                  onToggleFavorite: () {
+                                    ref
+                                        .read(tracksCatalogProvider.notifier)
+                                        .toggleFavorite(filtered[i].id);
+                                  },
+                                  onTogglePin: () {
+                                    ref
+                                        .read(tracksCatalogProvider.notifier)
+                                        .togglePinOffline(filtered[i].id);
+                                  },
+                                  onOptionsTap: () =>
+                                      _showTrackOptions(filtered[i]),
+                                ),
+                              ),
+                            ],
+                        ],
+                      ),
               ),
             ),
           ),
@@ -1441,6 +1495,157 @@ class _PlaylistGridCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingImportTrackTile extends StatelessWidget {
+  const _PendingImportTrackTile({required this.item});
+
+  final PendingImportTrack item;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Opacity(
+      opacity: item.isCompleted ? 0.95 : 0.60,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            // Album art container with circular progress indicator
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: item.isCompleted
+                    ? cs.primaryContainer
+                    : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Center(
+                child: item.isCompleted
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        color: cs.onPrimaryContainer,
+                        size: 26,
+                      )
+                    : SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          value: item.progress > 0 ? item.progress : null,
+                          strokeWidth: 2.8,
+                          color: cs.primary,
+                          backgroundColor:
+                              cs.outlineVariant.withValues(alpha: 0.30),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: item.isCompleted
+                          ? cs.onSurface
+                          : cs.onSurface.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.isCompleted ? '${item.artist} • Ready' : item.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: item.isCompleted ? cs.primary : cs.onSurfaceVariant,
+                      fontWeight: item.isCompleted
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (item.isCompleted)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: cs.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Ready',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (item.progress > 0)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  '${(item.progress * 100).round()}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSecondaryContainer,
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  'Pending',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
