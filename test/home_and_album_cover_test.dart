@@ -242,8 +242,8 @@ void main() {
       expect(find.text('Top Picks for Today'), findsOneWidget);
       expect(find.text('Shuffle'), findsOneWidget);
       expect(find.text('Artists in Your Library'), findsOneWidget);
-      expect(find.text('Albums'), findsWidgets);
-      expect(find.text('Jump back in'), findsOneWidget);
+      expect(find.text('New Albums'), findsWidgets);
+      expect(find.text('Recently Added'), findsOneWidget);
       expect(find.text('Bohemian Rhapsody'), findsWidgets);
       expect(find.text('Hotel California'), findsWidgets);
 
@@ -270,7 +270,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Both tracks visible again
-      expect(find.text('Jump back in'), findsOneWidget);
+      expect(find.text('Recently Added'), findsOneWidget);
       expect(find.text('Hotel California'), findsWidgets);
     });
   });

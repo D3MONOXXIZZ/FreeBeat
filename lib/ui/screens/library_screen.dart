@@ -13,6 +13,7 @@ import 'track_details_screen.dart';
 import '../../core/models/playlist.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/generative_playlist_cover.dart';
+import '../widgets/material_you_download_button.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -452,7 +453,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final allTracks = ref.watch(tracksCatalogProvider);
-    final playback = ref.watch(playbackProvider);
+    final activeTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaybackActive =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
     final importProgress = ref.watch(importProgressProvider);
     final allPlaylists = ref.watch(smartPlaylistsProvider);
     final duplicateMap = ref.watch(duplicateTracksProvider);
@@ -480,8 +484,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
-    final hasActiveTrack =
-        ref.watch(playbackProvider).currentTrack.id.isNotEmpty;
+    final hasActiveTrack = activeTrackId.isNotEmpty;
     final bottomFabPadding = hasActiveTrack ? 120.0 : 60.0;
 
     return Scaffold(
@@ -1057,11 +1060,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                     ),
                                   _LibraryTrackTile(
                                     track: filtered[i],
-                                    isCurrent: playback.currentTrack.id ==
-                                        filtered[i].id,
-                                    isPlaying: playback.currentTrack.id ==
-                                            filtered[i].id &&
-                                        playback.isPlaying,
+                                    isCurrent: activeTrackId == filtered[i].id,
+                                    isPlaying: activeTrackId == filtered[i].id &&
+                                        isPlaybackActive,
                                     durationText: _formatTrackDuration(
                                         filtered[i].durationMs),
                                     onTap: () {
@@ -1264,15 +1265,9 @@ class _LibraryTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              icon: Icon(
-                track.isPinnedOffline
-                    ? Icons.download_done_rounded
-                    : Icons.download_rounded,
-                color: track.isPinnedOffline ? cs.primary : cs.onSurfaceVariant,
-                size: 20,
-              ),
-              onPressed: onTogglePin,
+            MaterialYouDownloadButton(
+              track: track,
+              size: 20,
             ),
             IconButton(
               icon: Icon(

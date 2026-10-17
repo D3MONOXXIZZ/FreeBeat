@@ -57,7 +57,7 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   Widget _buildMiniPlayerPill(
     ColorScheme cs,
-    PlaybackViewState playback,
+    bool isPlaying,
     Track track,
   ) {
     return Align(
@@ -97,7 +97,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                           borderRadius: 100,
                           showQualityBadge: false,
                           showSourceBadge: false,
-                          isPlaying: playback.isPlaying,
+                          isPlaying: isPlaying,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -143,7 +143,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                             foregroundColor: cs.onPrimaryContainer,
                           ),
                           child: Icon(
-                            playback.isPlaying
+                            isPlaying
                                 ? Icons.pause_rounded
                                 : Icons.play_arrow_rounded,
                             size: 20,
@@ -169,17 +169,15 @@ class _MainShellState extends ConsumerState<MainShell> {
                     ),
                   ),
 
-                  // Slim Track Progress Bar at bottom of mini player
+                  // Slim Track Progress Bar at bottom of mini player (isolated consumer)
                   Positioned(
                     left: 16,
                     right: 16,
                     bottom: 0,
-                    child: LinearProgressIndicator(
-                      value: playback.progressFraction,
-                      minHeight: 2,
+                    child: _MiniPlayerProgressBar(
+                      primaryColor: cs.primary,
                       backgroundColor:
                           cs.onSurfaceVariant.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
                     ),
                   ),
                 ],
@@ -194,8 +192,10 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final playback = ref.watch(playbackProvider);
-    final track = playback.currentTrack;
+    final track = ref.watch(playbackProvider.select((p) => p.currentTrack));
+    final isPlaying = ref.watch(playbackProvider.select((p) => p.isPlaying));
+    final hasActiveQueue =
+        ref.watch(playbackProvider.select((p) => p.queue.isNotEmpty));
     final importProgress = ref.watch(importProgressProvider);
 
     final pages = [
@@ -308,8 +308,8 @@ class _MainShellState extends ConsumerState<MainShell> {
               ],
 
               // Floating Docked Mini-Player Pill (Active playback only)
-              if (playback.queue.isNotEmpty && track.id.isNotEmpty) ...[
-                _buildMiniPlayerPill(cs, playback, track),
+              if (hasActiveQueue && track.id.isNotEmpty) ...[
+                _buildMiniPlayerPill(cs, isPlaying, track),
                 const SizedBox(height: 8),
               ],
 
@@ -349,6 +349,28 @@ class _MainShellState extends ConsumerState<MainShell> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MiniPlayerProgressBar extends ConsumerWidget {
+  const _MiniPlayerProgressBar({
+    required this.primaryColor,
+    required this.backgroundColor,
+  });
+
+  final Color primaryColor;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progress =
+        ref.watch(playbackProvider.select((p) => p.progressFraction));
+    return LinearProgressIndicator(
+      value: progress,
+      minHeight: 2,
+      backgroundColor: backgroundColor,
+      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
     );
   }
 }

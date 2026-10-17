@@ -9,6 +9,7 @@ import '../../state/app_providers.dart';
 import '../widgets/ab_loop_modal.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/material_you_download_button.dart';
 import '../widgets/nav_pill.dart';
 import '../widgets/playback_speed_modal.dart';
 import '../widgets/queue_bottom_sheet.dart';
@@ -84,13 +85,6 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     return const SizedBox.shrink();
   }
 
-  String _formatDuration(int ms) {
-    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
-    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   void _openFullscreenLyrics() {
     PixelHaptics.sheetExpand();
     Navigator.of(context).push(
@@ -117,8 +111,16 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final playback = ref.watch(playbackProvider);
-    final track = playback.currentTrack;
+    final track = ref.watch(playbackProvider.select((p) => p.currentTrack));
+    final isPlaying = ref.watch(playbackProvider.select((p) => p.isPlaying));
+    final isShuffle = ref.watch(playbackProvider.select((p) => p.isShuffle));
+    final repeatMode = ref.watch(playbackProvider.select((p) => p.repeatMode));
+    final queueLength = ref.watch(playbackProvider.select((p) => p.upNextQueue.length));
+    final hasActiveOptions = ref.watch(playbackProvider.select((p) =>
+        p.isSleepTimerActive ||
+        p.playbackSpeed != 1.0 ||
+        p.pitch != 1.0 ||
+        p.isLoopActive));
     final lyrics = track.syncedLyrics;
     _resolvePalette(track);
 
@@ -312,7 +314,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                 borderRadius: 32,
                                 showQualityBadge: true,
                                 showSourceBadge: true,
-                                isPlaying: playback.isPlaying,
+                                isPlaying: isPlaying,
                               ),
                             ),
                           ),
@@ -393,6 +395,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           ],
                         ),
                       ),
+                      if (track.id.isNotEmpty) ...[
+                        MaterialYouDownloadButton(
+                          track: track,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       IconButton(
                         icon: Icon(
                           track.isFavorite
@@ -415,50 +424,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   const SizedBox(height: 18),
 
-                  // 5. Dynamic Audio Waveform Seekbar
-                  WaveformSeekbar(
-                    progress: playback.progressFraction,
-                    bufferedProgress: track.durationMs > 0
-                        ? (playback.bufferedPositionMs / track.durationMs)
-                            .clamp(0.0, 1.0)
-                        : 0.0,
-                    isPlaying: playback.isPlaying,
-                    primaryColor: cs.primary,
-                    onSeek: (frac) {
-                      if (track.durationMs > 0) {
-                        final targetMs = (frac * track.durationMs).round();
-                        ref.read(playbackProvider.notifier).seekToMs(targetMs);
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  // Duration text
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _formatDuration(playback.positionMs),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          _formatDuration(track.durationMs),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // 5. Dynamic Audio Waveform Seekbar (Isolated to eliminate background blur repaints)
+                  _NowPlayingSeekSection(track: track),
 
                   const SizedBox(height: 14),
 
@@ -469,7 +436,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       IconButton(
                         icon: Icon(
                           Icons.shuffle_rounded,
-                          color: playback.isShuffle
+                          color: isShuffle
                               ? cs.primary
                               : cs.onSurfaceVariant,
                         ),
@@ -501,7 +468,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                             ],
                           ),
                           child: Icon(
-                            playback.isPlaying
+                            isPlaying
                                 ? Icons.pause_rounded
                                 : Icons.play_arrow_rounded,
                             size: 38,
@@ -517,10 +484,10 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       ),
                       IconButton(
                         icon: Icon(
-                          playback.repeatMode == 2
+                          repeatMode == 2
                               ? Icons.repeat_one_rounded
                               : Icons.repeat_rounded,
-                          color: playback.repeatMode > 0
+                          color: repeatMode > 0
                               ? cs.primary
                               : cs.onSurfaceVariant,
                         ),
@@ -532,39 +499,40 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Phase 1: Secondary Action Bar (Queue, Lyrics Button, Hamburger Menu)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildActionPill(
-                        context: context,
-                        icon: Icons.queue_music_rounded,
-                        label: playback.upNextQueue.isNotEmpty
-                            ? 'Queue (${playback.upNextQueue.length})'
-                            : 'Queue',
-                        isActive: playback.upNextQueue.isNotEmpty,
-                        onTap: () => showQueueBottomSheet(context),
-                      ),
-                      const SizedBox(width: 10),
-                      _buildActionPill(
-                        context: context,
-                        icon: Icons.lyrics_rounded,
-                        label: 'Lyrics',
-                        isActive: lyrics.isNotEmpty,
-                        onTap: _openFullscreenLyrics,
-                      ),
-                      const SizedBox(width: 10),
-                      _buildActionPill(
-                        context: context,
-                        icon: Icons.menu_rounded,
-                        label: 'More',
-                        isActive: playback.isSleepTimerActive ||
-                            playback.playbackSpeed != 1.0 ||
-                            playback.pitch != 1.0 ||
-                            playback.isLoopActive,
-                        onTap: () => _showPlaybackOptionsMenu(context),
-                      ),
-                    ],
+                  // Secondary Action Bar (Queue, Lyrics Button, Hamburger Menu)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildActionPill(
+                          context: context,
+                          icon: Icons.queue_music_rounded,
+                          label: queueLength > 0
+                              ? 'Queue ($queueLength)'
+                              : 'Queue',
+                          isActive: queueLength > 0,
+                          onTap: () => showQueueBottomSheet(context),
+                        ),
+                        const SizedBox(width: 10),
+                        _buildActionPill(
+                          context: context,
+                          icon: Icons.lyrics_rounded,
+                          label: 'Lyrics',
+                          isActive: lyrics.isNotEmpty,
+                          onTap: _openFullscreenLyrics,
+                        ),
+                        const SizedBox(width: 10),
+                        _buildActionPill(
+                          context: context,
+                          icon: Icons.menu_rounded,
+                          label: 'More',
+                          isActive: hasActiveOptions,
+                          onTap: () => _showPlaybackOptionsMenu(context),
+                        ),
+                      ],
+                    ),
                   ),
 
                   const Spacer(flex: 1),
@@ -763,7 +731,50 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     );
                   },
                 ),
-                if (track.id.isNotEmpty)
+                if (track.id.isNotEmpty) ...[
+                  ListTile(
+                    leading: Icon(
+                      track.isPinnedOffline
+                          ? Icons.check_circle_rounded
+                          : Icons.download_for_offline_rounded,
+                      color: track.isPinnedOffline ? cs.primary : null,
+                    ),
+                    title: Text(
+                      track.isPinnedOffline
+                          ? 'Downloaded to Device'
+                          : 'Download Track',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      track.isPinnedOffline
+                          ? 'Available offline • Tap to remove'
+                          : 'Save locally for offline high-fidelity playback',
+                    ),
+                    trailing: track.isPinnedOffline
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              'Saved',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onPrimaryContainer,
+                              ),
+                            ),
+                          )
+                        : null,
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      ref
+                          .read(tracksCatalogProvider.notifier)
+                          .togglePinOffline(track.id);
+                    },
+                  ),
                   ListTile(
                     leading: const Icon(Icons.playlist_add_rounded),
                     title: const Text('Add to Playlist',
@@ -774,6 +785,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       showAddToPlaylistModal(context, track);
                     },
                   ),
+                ],
               ],
             ),
           ),
@@ -826,6 +838,86 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dynamic Audio Waveform Seekbar extracted into an isolated ConsumerWidget.
+/// Re-evaluates ONLY on position/progress ticks so heavy background blurs & box shadows
+/// are NEVER re-blurred during playback.
+class _NowPlayingSeekSection extends ConsumerWidget {
+  const _NowPlayingSeekSection({
+    required this.track,
+  });
+
+  final Track track;
+
+  static String _formatDuration(int ms) {
+    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final progressFraction =
+        ref.watch(playbackProvider.select((p) => p.progressFraction));
+    final bufferedPositionMs =
+        ref.watch(playbackProvider.select((p) => p.bufferedPositionMs));
+    final positionMs =
+        ref.watch(playbackProvider.select((p) => p.positionMs));
+    final isPlaying =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
+
+    final bufferedProgress = track.durationMs > 0
+        ? (bufferedPositionMs / track.durationMs).clamp(0.0, 1.0)
+        : 0.0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        RepaintBoundary(
+          child: WaveformSeekbar(
+            progress: progressFraction,
+            bufferedProgress: bufferedProgress,
+            isPlaying: isPlaying,
+            primaryColor: cs.primary,
+            onSeek: (frac) {
+              if (track.durationMs > 0) {
+                final targetMs = (frac * track.durationMs).round();
+                ref.read(playbackProvider.notifier).seekToMs(targetMs);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _formatDuration(positionMs),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                _formatDuration(track.durationMs),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

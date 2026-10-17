@@ -293,9 +293,11 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
   Future<void> toggleFavorite(String trackId) async {
     await PixelHaptics.tick(intensity: 0.75);
+    Track? target;
     state = state.map((t) {
       if (t.id == trackId) {
         final updated = t.copyWith(isFavorite: !t.isFavorite);
+        target = updated;
         if (_db != null) {
           _db.upsertTracks([updated]);
         }
@@ -303,6 +305,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       }
       return t;
     }).toList();
+
+    if (_ref != null && target != null) {
+      _ref.read(playbackProvider.notifier).updateCurrentTrack(target!);
+    }
   }
 
   Future<void> togglePinOffline(String trackId) async {
@@ -319,11 +325,16 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       return t;
     }).toList();
 
-    if (_ref != null && target != null && target!.isPinnedOffline) {
+    if (_ref != null && target != null) {
+      _ref.read(playbackProvider.notifier).updateCurrentTrack(target!);
       final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
-      unawaited(cacheSvc.cacheTrack(target!, onComplete: (cachedTrack) {
-        updateTrack(cachedTrack);
-      }));
+      if (target!.isPinnedOffline) {
+        unawaited(cacheSvc.cacheTrack(target!, onComplete: (cachedTrack) {
+          updateTrack(cachedTrack);
+        }));
+      } else {
+        await cacheSvc.removeCachedTrack(target!);
+      }
     }
   }
 
@@ -971,6 +982,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       });
 
+      int lastEmittedPosMs = -1000;
       player.positionStream.listen((pos) {
         if (mounted && state.isPlaying) {
           final posMs = pos.inMilliseconds;
@@ -982,7 +994,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               return;
             }
           }
-          state = state.copyWith(positionMs: posMs);
+          if ((posMs - lastEmittedPosMs).abs() >= 150 || posMs == 0) {
+            lastEmittedPosMs = posMs;
+            state = state.copyWith(positionMs: posMs);
+          }
         }
       });
 

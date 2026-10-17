@@ -6,6 +6,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/material_you_download_button.dart';
 import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
@@ -56,13 +57,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  String _formatTrackDuration(int ms) {
-    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
-    final minutes = totalSeconds ~/ 60;
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
   }
 
   void _showTrackOptionsModal(Track track) {
@@ -316,7 +310,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final albums = ref.watch(availableAlbumsProvider);
     final selectedArtist = ref.watch(selectedArtistFilterProvider);
     final selectedAlbum = ref.watch(selectedAlbumFilterProvider);
-    final playback = ref.watch(playbackProvider);
+    final currentTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaying =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
     final importProgress = ref.watch(importProgressProvider);
 
     return CustomScrollView(
@@ -844,366 +841,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
 
         // ─────────────────────────────────────────────────────────────────────
-        // 5. "Top Picks for Today" Section with Material You Album Covers
-        // ─────────────────────────────────────────────────────────────────────
-        if (allTracks.isNotEmpty &&
-            selectedArtist == null &&
-            selectedAlbum == null) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: cs.primaryContainer,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 18,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            'Top Picks for Today',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: () {
-                      PixelHaptics.playPauseToggle();
-                      ref.read(topPicksSeedProvider.notifier).state++;
-                    },
-                    icon: const Icon(Icons.casino_rounded, size: 14),
-                    label: const Text('Shuffle',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      minimumSize: const Size(0, 32),
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 228,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
-                itemCount: topPicks.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder: (context, idx) {
-                  final track = topPicks[idx];
-                  final isCurrent = playback.currentTrack.id == track.id;
-                  final isPlaying = isCurrent && playback.isPlaying;
-
-                  return SizedBox(
-                    width: 154,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MaterialYouAlbumCover(
-                          track: track,
-                          size: 154,
-                          borderRadius: 24,
-                          showQualityBadge: true,
-                          showSourceBadge: true,
-                          showPlayButton: true,
-                          isPlaying: isPlaying,
-                          onPlayTap: () {
-                            ref
-                                .read(playbackProvider.notifier)
-                                .playTrack(track, newQueue: topPicks);
-                            widget.onOpenNowPlaying();
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          track.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          track.artist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-
-        // ─────────────────────────────────────────────────────────────────────
-        // 6. "Artists in Your Library" Row with Circular Avatars
-        // ─────────────────────────────────────────────────────────────────────
-        if (artists.length > 1 &&
-            selectedArtist == null &&
-            selectedAlbum == null) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_rounded, size: 20, color: cs.primary),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Artists in Your Library',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${artists.length} artists',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 114,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
-                itemCount: artists.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder: (context, idx) {
-                  final artist = artists[idx];
-                  return SpringPressScale(
-                    onTap: () {
-                      PixelHaptics.tick();
-                      if (ref.read(selectedArtistFilterProvider) == artist.name) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ArtistDetailsScreen(
-                              artistName: artist.name,
-                            ),
-                          ),
-                        );
-                      } else {
-                        ref
-                            .read(selectedArtistFilterProvider.notifier)
-                            .state = artist.name;
-                      }
-                    },
-                    onLongPress: () {
-                      PixelHaptics.tick();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ArtistDetailsScreen(
-                            artistName: artist.name,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 68,
-                          height: 68,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: cs.surfaceContainerHigh,
-                            border: Border.all(
-                              color: cs.primary.withValues(alpha: 0.35),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: ClipOval(
-                            child: MaterialYouAlbumCover(
-                              track: artist.representativeTrack,
-                              size: 68,
-                              borderRadius: 34,
-                              showQualityBadge: false,
-                              showSourceBadge: false,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          width: 74,
-                          child: Text(
-                            artist.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${artist.trackCount} songs',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-
-        // ─────────────────────────────────────────────────────────────────────
-        // 7. "Featured Albums" Row
-        // ─────────────────────────────────────────────────────────────────────
-        if (albums.length > 1 &&
-            selectedArtist == null &&
-            selectedAlbum == null) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(Icons.album_rounded, size: 20, color: cs.primary),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Albums',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${albums.length} albums',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 180,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
-                itemCount: albums.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder: (context, idx) {
-                  final album = albums[idx];
-                  return SizedBox(
-                    width: 120,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MaterialYouAlbumCover(
-                          track: album.representativeTrack,
-                          size: 120,
-                          borderRadius: 20,
-                          showQualityBadge: false,
-                          showSourceBadge: true,
-                          onPlayTap: () {
-                            PixelHaptics.tick();
-                            ref
-                                .read(selectedAlbumFilterProvider.notifier)
-                                .state = album.title;
-                          },
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          album.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          '${album.artist} • ${album.trackCount}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-
-        // ─────────────────────────────────────────────────────────────────────
-        // 8. Hero Empty State OR "Jump Back In" Track List
+        // 5. Hero Empty State (when no tracks exist in catalog)
         // ─────────────────────────────────────────────────────────────────────
         if (allTracks.isEmpty) ...[
           SliverPadding(
@@ -1311,22 +949,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-        ] else ...[
-          // "Jump Back In" Header
+        ] else if (selectedArtist != null || selectedAlbum != null) ...[
+          // ─────────────────────────────────────────────────────────────────
+          // Filtered Tracks Section (Pure Cover Art Horizontal Carousel)
+          // ─────────────────────────────────────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    selectedArtist != null
-                        ? 'Tracks by $selectedArtist'
-                        : selectedAlbum != null
-                            ? 'Tracks in $selectedAlbum'
-                            : 'Jump back in',
-                    style: textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+                  Expanded(
+                    child: Text(
+                      selectedArtist != null
+                          ? 'Tracks by $selectedArtist'
+                          : 'Tracks in $selectedAlbum',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
                     ),
                   ),
                   Text(
@@ -1339,99 +982,416 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-
-          // Grouped 28dp Surface Card for Track List
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 140),
-            sliver: SliverToBoxAdapter(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(28),
-                  child: tracks.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(28),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                Icon(Icons.filter_list_off_rounded,
-                                    color: cs.onSurfaceVariant, size: 36),
-                                const SizedBox(height: 10),
-                                Text('No tracks match this filter',
-                                    style: textTheme.titleMedium),
-                                const SizedBox(height: 8),
-                                FilledButton.tonal(
-                                  onPressed: () {
-                                    PixelHaptics.tick();
-                                    ref
-                                        .read(
-                                            selectedArtistFilterProvider.notifier)
-                                        .state = null;
-                                    ref
-                                        .read(
-                                            selectedAlbumFilterProvider.notifier)
-                                        .state = null;
-                                    ref
-                                        .read(
-                                            selectedCloudFilterProvider.notifier)
-                                        .state = 'all';
-                                    setState(() => _categoryFilter =
-                                        _HomeCategoryFilter.all);
-                                  },
-                                  child: const Text('Reset All Filters'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            for (int i = 0; i < tracks.length; i++) ...[
-                              if (i > 0)
-                                Divider(
-                                  height: 1,
-                                  indent: 76,
-                                  endIndent: 16,
-                                  color: cs.outlineVariant
-                                      .withValues(alpha: 0.25),
-                                ),
-                              _PixelTrackTile(
-                                track: tracks[i],
-                                isCurrent:
-                                    playback.currentTrack.id == tracks[i].id,
-                                isPlaying:
-                                    playback.currentTrack.id == tracks[i].id &&
-                                        playback.isPlaying,
-                                durationText:
-                                    _formatTrackDuration(tracks[i].durationMs),
-                                onTap: () {
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(tracks[i], newQueue: tracks);
-                                },
-                                onToggleFavorite: () {
-                                  ref
-                                      .read(tracksCatalogProvider.notifier)
-                                      .toggleFavorite(tracks[i].id);
-                                },
-                                onOpenOptions: () {
-                                  _showTrackOptionsModal(tracks[i]);
-                                },
-                              ),
-                            ],
-                          ],
-                        ),
-                ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 254,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                physics: const BouncingScrollPhysics(),
+                itemCount: tracks.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                itemBuilder: (context, idx) {
+                  final track = tracks[idx];
+                  final isCurrent = currentTrackId == track.id;
+                  return _PixelCoverCard(
+                    track: track,
+                    isCurrent: isCurrent,
+                    isPlaying: isCurrent && isPlaying,
+                    onTap: () {
+                      ref
+                          .read(playbackProvider.notifier)
+                          .playTrack(track, newQueue: tracks);
+                      widget.onOpenNowPlaying();
+                    },
+                    onToggleFavorite: () {
+                      ref
+                          .read(tracksCatalogProvider.notifier)
+                          .toggleFavorite(track.id);
+                    },
+                    onOpenOptions: () => _showTrackOptionsModal(track),
+                  );
+                },
               ),
             ),
           ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 140)),
+        ] else ...[
+          // ─────────────────────────────────────────────────────────────────
+          // 6. "New Albums" Section (Horizontally Scrollable Cover Art)
+          // ─────────────────────────────────────────────────────────────────
+          if (albums.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.album_rounded,
+                            size: 18,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'New Albums',
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        PixelHaptics.tick();
+                        setState(() => _categoryFilter = _HomeCategoryFilter.albums);
+                      },
+                      child: Text('${albums.length} albums'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 216,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: albums.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, idx) {
+                    final album = albums[idx];
+                    return _PixelAlbumCoverCard(
+                      album: album,
+                      onTap: () {
+                        PixelHaptics.tick();
+                        ref.read(selectedAlbumFilterProvider.notifier).state =
+                            album.title;
+                      },
+                      onPlay: () {
+                        final albumTracks = allTracks
+                            .where((t) => t.album == album.title)
+                            .toList();
+                        if (albumTracks.isNotEmpty) {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playTrack(albumTracks.first, newQueue: albumTracks);
+                          widget.onOpenNowPlaying();
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+          // ─────────────────────────────────────────────────────────────────
+          // 7. "Recently Added" Section (Horizontally Scrollable Cover Art)
+          // ─────────────────────────────────────────────────────────────────
+          if (allTracks.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.schedule_rounded,
+                            size: 18,
+                            color: cs.onSecondaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Recently Added',
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${allTracks.length} tracks',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 254,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: allTracks.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, idx) {
+                    final track = allTracks[allTracks.length - 1 - idx];
+                    final isCurrent = currentTrackId == track.id;
+                    return _PixelCoverCard(
+                      track: track,
+                      isCurrent: isCurrent,
+                      isPlaying: isCurrent && isPlaying,
+                      onTap: () {
+                        ref
+                            .read(playbackProvider.notifier)
+                            .playTrack(track, newQueue: allTracks);
+                        widget.onOpenNowPlaying();
+                      },
+                      onToggleFavorite: () {
+                        ref
+                            .read(tracksCatalogProvider.notifier)
+                            .toggleFavorite(track.id);
+                      },
+                      onOpenOptions: () => _showTrackOptionsModal(track),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+          // ─────────────────────────────────────────────────────────────────
+          // 8. "Top Picks for Today" Section (Horizontally Scrollable Cover Art)
+          // ─────────────────────────────────────────────────────────────────
+          if (topPicks.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 18,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Top Picks for Today',
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        PixelHaptics.playPauseToggle();
+                        ref.read(topPicksSeedProvider.notifier).state++;
+                      },
+                      icon: const Icon(Icons.casino_rounded, size: 14),
+                      label: const Text('Shuffle',
+                          style: TextStyle(
+                              fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        minimumSize: const Size(0, 32),
+                        shape: const StadiumBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 254,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: topPicks.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, idx) {
+                    final track = topPicks[idx];
+                    final isCurrent = currentTrackId == track.id;
+                    return _PixelCoverCard(
+                      track: track,
+                      isCurrent: isCurrent,
+                      isPlaying: isCurrent && isPlaying,
+                      onTap: () {
+                        ref
+                            .read(playbackProvider.notifier)
+                            .playTrack(track, newQueue: topPicks);
+                        widget.onOpenNowPlaying();
+                      },
+                      onToggleFavorite: () {
+                        ref
+                            .read(tracksCatalogProvider.notifier)
+                            .toggleFavorite(track.id);
+                      },
+                      onOpenOptions: () => _showTrackOptionsModal(track),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+          // ─────────────────────────────────────────────────────────────────
+          // 9. "Artists in Your Library" Section (Horizontally Scrollable Avatars)
+          // ─────────────────────────────────────────────────────────────────
+          if (artists.length > 1) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: cs.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.person_rounded,
+                            size: 18,
+                            color: cs.onTertiaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Artists in Your Library',
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${artists.length} artists',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 124,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: artists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, idx) {
+                    final artist = artists[idx];
+                    return SpringPressScale(
+                      onTap: () {
+                        PixelHaptics.tick();
+                        if (ref.read(selectedArtistFilterProvider) == artist.name) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ArtistDetailsScreen(
+                                artistName: artist.name,
+                              ),
+                            ),
+                          );
+                        } else {
+                          ref.read(selectedArtistFilterProvider.notifier).state =
+                              artist.name;
+                        }
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: cs.surfaceContainerHigh,
+                              border: Border.all(
+                                color: cs.primary.withValues(alpha: 0.35),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: ClipOval(
+                              child: MaterialYouAlbumCover(
+                                track: artist.representativeTrack,
+                                size: 68,
+                                borderRadius: 34,
+                                showQualityBadge: false,
+                                showSourceBadge: false,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: 78,
+                            child: Text(
+                              artist.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${artist.trackCount} ${artist.trackCount == 1 ? "track" : "tracks"}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+
+          const SliverPadding(padding: EdgeInsets.only(bottom: 140)),
         ],
       ],
     );
@@ -1489,131 +1449,6 @@ class _PixelCategoryPill extends StatelessWidget {
                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                 color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PixelTrackTile extends StatelessWidget {
-  const _PixelTrackTile({
-    required this.track,
-    required this.isCurrent,
-    required this.isPlaying,
-    required this.durationText,
-    required this.onTap,
-    required this.onToggleFavorite,
-    required this.onOpenOptions,
-  });
-
-  final Track track;
-  final bool isCurrent;
-  final bool isPlaying;
-  final String durationText;
-  final VoidCallback onTap;
-  final VoidCallback onToggleFavorite;
-  final VoidCallback onOpenOptions;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return InkWell(
-      onTap: () {
-        PixelHaptics.tick();
-        onTap();
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            // Material You Album Cover Thumbnail with Equalizer State
-            MaterialYouAlbumCover(
-              track: track,
-              size: 50,
-              borderRadius: 14,
-              showQualityBadge: false,
-              showSourceBadge: false,
-              isPlaying: isPlaying,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
-                      color: isCurrent ? cs.primary : cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.secondaryContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          track.codec,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '${track.artist} • $durationText',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              icon: Icon(
-                track.isFavorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
-                size: 20,
-              ),
-              onPressed: () {
-                PixelHaptics.tick();
-                onToggleFavorite();
-              },
-            ),
-            IconButton(
-              icon: const Icon(
-                Icons.more_vert_rounded,
-                size: 20,
-              ),
-              tooltip: 'Track Options',
-              onPressed: () {
-                PixelHaptics.tick();
-                onOpenOptions();
-              },
             ),
           ],
         ),
@@ -1712,3 +1547,178 @@ class _PixelPlaylistCard extends StatelessWidget {
     );
   }
 }
+
+/// Squircle Cover Art Card for tracks with Material You play button & download button.
+/// Strictly horizontally scrollable with spring press scale physics.
+class _PixelCoverCard extends StatelessWidget {
+  const _PixelCoverCard({
+    required this.track,
+    required this.isCurrent,
+    required this.isPlaying,
+    required this.onTap,
+    required this.onToggleFavorite,
+    required this.onOpenOptions,
+  });
+
+  final Track track;
+  final bool isCurrent;
+  final bool isPlaying;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFavorite;
+  final VoidCallback onOpenOptions;
+
+  static const double cardWidth = 154;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      onLongPress: onOpenOptions,
+      child: SizedBox(
+        width: cardWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MaterialYouAlbumCover(
+              track: track,
+              size: cardWidth,
+              borderRadius: 24,
+              showQualityBadge: true,
+              showSourceBadge: true,
+              showPlayButton: true,
+              isPlaying: isPlaying,
+              onPlayTap: onTap,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              track.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
+                color: isCurrent ? cs.primary : cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              track.artist,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                MaterialYouDownloadButton(
+                  track: track,
+                  size: 22,
+                ),
+                IconButton(
+                  iconSize: 20,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    track.isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                  ),
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onToggleFavorite();
+                  },
+                ),
+                IconButton(
+                  iconSize: 20,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: const Icon(Icons.more_vert_rounded),
+                  color: cs.onSurfaceVariant,
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onOpenOptions();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Squircle Album Cover Card for New Albums section with spring press physics.
+class _PixelAlbumCoverCard extends StatelessWidget {
+  const _PixelAlbumCoverCard({
+    required this.album,
+    required this.onTap,
+    required this.onPlay,
+  });
+
+  final AlbumInfo album;
+  final VoidCallback onTap;
+  final VoidCallback onPlay;
+
+  static const double cardWidth = 154;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      child: SizedBox(
+        width: cardWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MaterialYouAlbumCover(
+              track: album.representativeTrack,
+              size: cardWidth,
+              borderRadius: 24,
+              showQualityBadge: false,
+              showSourceBadge: true,
+              showPlayButton: true,
+              onPlayTap: onPlay,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              album.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${album.artist} • ${album.trackCount} ${album.trackCount == 1 ? "track" : "tracks"}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
