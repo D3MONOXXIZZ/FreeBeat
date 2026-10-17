@@ -48,10 +48,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         endpointOrFolder: 'Local Music Files',
       ),
     );
-    final picked =
-        await authService.pickFromInstalledCloudApp(account: safAccount);
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final picked = await authService.pickFromInstalledCloudApp(
+      account: safAccount,
+      onProgress: (current, total, track) {
+        progressNotifier.update(
+          current: current,
+          total: total,
+          name: track?.title ?? '',
+        );
+        if (track != null) {
+          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+        }
+      },
+    );
+    progressNotifier.complete();
     if (picked.isNotEmpty) {
-      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(picked);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -240,6 +252,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final textTheme = Theme.of(context).textTheme;
     final allTracks = ref.watch(tracksCatalogProvider);
     final playback = ref.watch(playbackProvider);
+    final importProgress = ref.watch(importProgressProvider);
 
     // Extract unique artists
     final artists = allTracks
@@ -316,6 +329,91 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               const SizedBox(width: 8),
             ],
           ),
+
+          // Real-Time Import Progress Loading Bar
+          if (importProgress.isImporting)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: cs.primary.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: cs.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Importing Music...',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: cs.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${importProgress.current} / ${importProgress.total} (${importProgress.progressPercentage})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (importProgress.currentItemName.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          importProgress.currentItemName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(100),
+                        child: LinearProgressIndicator(
+                          value: importProgress.total > 0
+                              ? importProgress.progressFraction
+                              : null,
+                          minHeight: 5,
+                          backgroundColor:
+                              cs.onPrimaryContainer.withValues(alpha: 0.2),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // ───────────────────────────────────────────────────────────────────
           // 2. M3 Expressive Pill Filters

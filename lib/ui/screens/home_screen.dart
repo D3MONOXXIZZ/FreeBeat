@@ -6,7 +6,6 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
-import '../widgets/signal_path_sheet.dart';
 import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
@@ -218,13 +217,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  String _getTimeGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
-
   Future<void> _pickGoogleDriveMusic() async {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
@@ -234,11 +226,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       displayName: 'Google Drive',
       endpointOrFolder: 'Google Drive App Storage',
     );
-    final picked =
-        await authService.pickFromInstalledCloudApp(account: driveAccount);
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final picked = await authService.pickFromInstalledCloudApp(
+      account: driveAccount,
+      onProgress: (current, total, track) {
+        progressNotifier.update(
+          current: current,
+          total: total,
+          name: track?.title ?? '',
+        );
+        if (track != null) {
+          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+        }
+      },
+    );
+    progressNotifier.complete();
     if (picked.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(driveAccount, {});
-      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(picked);
       await PixelHaptics.hifiConfirm();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -260,11 +264,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       displayName: 'Device Storage',
       endpointOrFolder: 'Local Music Files',
     );
-    final picked =
-        await authService.pickFromInstalledCloudApp(account: safAccount);
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final picked = await authService.pickFromInstalledCloudApp(
+      account: safAccount,
+      onProgress: (current, total, track) {
+        progressNotifier.update(
+          current: current,
+          total: total,
+          name: track?.title ?? '',
+        );
+        if (track != null) {
+          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+        }
+      },
+    );
+    progressNotifier.complete();
     if (picked.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
-      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(picked);
       await PixelHaptics.hifiConfirm();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -290,7 +306,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final selectedArtist = ref.watch(selectedArtistFilterProvider);
     final selectedAlbum = ref.watch(selectedAlbumFilterProvider);
     final playback = ref.watch(playbackProvider);
-    final quality = ref.watch(audioQualityProvider).effectiveStreamingTier;
+    final importProgress = ref.watch(importProgressProvider);
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -299,7 +315,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions
         // ─────────────────────────────────────────────────────────────────────
         SliverAppBar.large(
-          expandedHeight: 148,
+          expandedHeight: 120,
           pinned: true,
           leading: Padding(
             padding: const EdgeInsets.only(left: 16),
@@ -331,29 +347,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           flexibleSpace: FlexibleSpaceBar(
             titlePadding: const EdgeInsetsDirectional.only(start: 64, bottom: 14),
-            title: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_getTimeGreeting()}, Alex',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  selectedArtist ?? selectedAlbum ?? 'Your Mix',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ],
+            title: Text(
+              selectedArtist ?? selectedAlbum ?? 'Your Mix',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
             ),
           ),
           actions: [
@@ -370,46 +371,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
             ),
 
-            // Hi-Fi Lossless Status Pill
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: FilledButton.tonal(
-                onPressed: () {
-                  PixelHaptics.sheetExpand();
-                  showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (_) => const SignalPathSheet(),
-                  );
-                },
-                style: FilledButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: const StadiumBorder(),
-                  backgroundColor: cs.secondaryContainer,
-                  foregroundColor: cs.onSecondaryContainer,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.high_quality_rounded,
-                      size: 16,
-                      color: cs.onSecondaryContainer,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      quality.isLossless ? 'HI-FI' : '${quality.kbps}K',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
             // Settings Screen Button
             IconButton(
               icon: Icon(Icons.settings_outlined, color: cs.onSurface),
@@ -424,6 +385,93 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(width: 8),
           ],
         ),
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Import Progress Bar (Real-Time Loading Bar)
+        // ─────────────────────────────────────────────────────────────────────
+        if (importProgress.isImporting)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.onPrimaryContainer,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Importing Music...',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: cs.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '${importProgress.current} / ${importProgress.total} (${importProgress.progressPercentage})',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (importProgress.currentItemName.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        importProgress.currentItemName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(100),
+                      child: LinearProgressIndicator(
+                        value: importProgress.total > 0
+                            ? importProgress.progressFraction
+                            : null,
+                        minHeight: 5,
+                        backgroundColor:
+                            cs.onPrimaryContainer.withValues(alpha: 0.2),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
         // ─────────────────────────────────────────────────────────────────────
         // 2. Search Bar (Animated Expand)
@@ -766,50 +814,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
 
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisExtent: 112,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _PixelPlaylistCard(
+                title: 'Daily Mix',
+                subtitle:
+                    'Adaptive Flow • ${topPicks.isNotEmpty ? topPicks.length : allTracks.length} tracks',
+                icon: Icons.auto_awesome_rounded,
+                onTap: () {
+                  if (topPicks.isNotEmpty) {
+                    ref
+                        .read(playbackProvider.notifier)
+                        .playTrack(topPicks.first, newQueue: topPicks);
+                    widget.onOpenNowPlaying();
+                  } else if (allTracks.isNotEmpty) {
+                    ref
+                        .read(playbackProvider.notifier)
+                        .playTrack(allTracks.first, newQueue: allTracks);
+                    widget.onOpenNowPlaying();
+                  }
+                },
               ),
-              delegate: SliverChildListDelegate([
-                _PixelPlaylistCard(
-                  title: 'Daily Mix',
-                  subtitle: 'Adaptive Flow',
-                  icon: Icons.auto_awesome_rounded,
-                  onTap: () {
-                    if (topPicks.isNotEmpty) {
-                      ref
-                          .read(playbackProvider.notifier)
-                          .playTrack(topPicks.first, newQueue: topPicks);
-                      widget.onOpenNowPlaying();
-                    }
-                  },
-                ),
-                _PixelPlaylistCard(
-                  title: 'Lossless Hi-Fi',
-                  subtitle: 'FLAC 24-Bit Masters',
-                  icon: Icons.high_quality_rounded,
-                  onTap: () {
-                    ref.read(selectedCloudFilterProvider.notifier).state = 'hifi';
-                  },
-                ),
-                _PixelPlaylistCard(
-                  title: 'Poweramp DSP',
-                  subtitle: '10-Band EQ & Knobs',
-                  icon: Icons.graphic_eq_rounded,
-                  onTap: () => widget.onNavigateToTab(2),
-                ),
-                _PixelPlaylistCard(
-                  title: 'Cloud Storage',
-                  subtitle: 'Drive & Media Servers',
-                  icon: Icons.cloud_rounded,
-                  onTap: () => widget.onNavigateToTab(3),
-                ),
-              ]),
             ),
           ),
         ],
@@ -1624,44 +1650,58 @@ class _PixelPlaylistCard extends StatelessWidget {
             width: 1,
           ),
         ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: cs.onPrimaryContainer, size: 20),
+              child: Icon(icon, color: cs.onPrimaryContainer, size: 22),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+            ),
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: cs.primary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.play_arrow_rounded,
+                color: cs.onPrimary,
+                size: 24,
+              ),
             ),
           ],
         ),

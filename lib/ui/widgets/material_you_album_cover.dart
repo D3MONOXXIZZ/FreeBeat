@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../core/models/track.dart';
 import 'expressive_shapes.dart';
@@ -151,8 +152,29 @@ class MaterialYouAlbumCover extends StatelessWidget {
                   ),
                 ),
 
-              // 5. Center / Bottom: Play Button or Equalizer Animation
-              if (showPlayButton || isPlaying)
+              // 5. Centered Playing Animation on Album Art
+              if (isPlaying)
+                Center(
+                  child: Container(
+                    padding: EdgeInsets.all((size * 0.12).clamp(4.0, 10.0)),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.65),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: PixelPlayingEqualizerAnimation(
+                      size: (size * 0.36).clamp(16.0, 32.0),
+                      color: cs.primaryContainer,
+                    ),
+                  ),
+                )
+              else if (showPlayButton)
                 Positioned(
                   bottom: 8,
                   right: 8,
@@ -161,7 +183,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
                     height: 38,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isPlaying ? cs.primary : Colors.white,
+                      color: Colors.white,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.25),
@@ -170,10 +192,10 @@ class MaterialYouAlbumCover extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Center(
+                    child: const Center(
                       child: Icon(
-                        isPlaying ? Icons.equalizer_rounded : Icons.play_arrow_rounded,
-                        color: isPlaying ? cs.onPrimary : Colors.black,
+                        Icons.play_arrow_rounded,
+                        color: Colors.black,
                         size: 22,
                       ),
                     ),
@@ -303,4 +325,78 @@ class _VinylGroovesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VinylGroovesPainter oldDelegate) => false;
+}
+
+/// Dynamic, hardware-accelerated 3-bar playing equalizer animation.
+/// Visually indicates playback across album covers and mini-player.
+class PixelPlayingEqualizerAnimation extends StatefulWidget {
+  const PixelPlayingEqualizerAnimation({
+    super.key,
+    this.color,
+    this.size = 20,
+    this.barCount = 3,
+  });
+
+  final Color? color;
+  final double size;
+  final int barCount;
+
+  @override
+  State<PixelPlayingEqualizerAnimation> createState() =>
+      _PixelPlayingEqualizerAnimationState();
+}
+
+class _PixelPlayingEqualizerAnimationState
+    extends State<PixelPlayingEqualizerAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 950),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final barColor = widget.color ?? Colors.white;
+    final width = widget.size;
+    final barWidth = (width / (widget.barCount * 2.2)).clamp(2.0, 4.0);
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value * 2 * pi;
+        return SizedBox(
+          width: width,
+          height: width,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List.generate(widget.barCount, (i) {
+              final phase = i * 1.45;
+              final heightFactor = (0.25 + 0.70 * (0.5 + 0.5 * sin(t + phase))).clamp(0.2, 1.0);
+              return Container(
+                width: barWidth,
+                height: (width * heightFactor).clamp(3.0, width),
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(100),
+                ),
+              );
+            }),
+          ),
+        );
+      },
+    );
+  }
 }

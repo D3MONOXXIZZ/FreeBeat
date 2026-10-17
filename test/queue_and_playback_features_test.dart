@@ -315,7 +315,8 @@ void main() {
         ),
       );
 
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Up Next Queue'), findsOneWidget);
       expect(find.text('Time'), findsOneWidget); // Hero track

@@ -318,15 +318,29 @@ class CloudsScreen extends ConsumerWidget {
       displayName: 'Device Storage',
       endpointOrFolder: 'Local Music Files',
     );
-    final tracks = await authService.pickFromInstalledCloudApp(account: safAccount);
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final tracks = await authService.pickFromInstalledCloudApp(
+      account: safAccount,
+      onProgress: (current, total, track) {
+        progressNotifier.update(
+          current: current,
+          total: total,
+          name: track?.title ?? '',
+        );
+        if (track != null) {
+          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+        }
+      },
+    );
+    progressNotifier.complete();
     if (tracks.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
-      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
       await PixelHaptics.hifiConfirm();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Imported ${tracks.length} tracks from device storage!'),
+            content:
+                Text('Imported ${tracks.length} tracks from device storage!'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -665,11 +679,24 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       );
 
       final authService = ref.read(nativeCloudAuthServiceProvider);
-      final tracks = await authService.pickFromInstalledCloudApp(account: account);
+      final progressNotifier = ref.read(importProgressProvider.notifier);
+      final tracks = await authService.pickFromInstalledCloudApp(
+        account: account,
+        onProgress: (current, total, track) {
+          progressNotifier.update(
+            current: current,
+            total: total,
+            name: track?.title ?? '',
+          );
+          if (track != null) {
+            ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+          }
+        },
+      );
+      progressNotifier.complete();
 
       if (tracks.isNotEmpty) {
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
 
         if (mounted) {

@@ -1461,3 +1461,52 @@ final playbackProvider =
     StateNotifierProvider<PlaybackNotifier, PlaybackViewState>((ref) {
   return PlaybackNotifier(ref, const []);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real-Time Track Import Progress State & Provider
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ImportProgressState {
+  const ImportProgressState({
+    this.isImporting = false,
+    this.current = 0,
+    this.total = 0,
+    this.currentItemName = '',
+  });
+
+  final bool isImporting;
+  final int current;
+  final int total;
+  final String currentItemName;
+
+  double get progressFraction =>
+      total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
+  String get progressPercentage => '${(progressFraction * 100).round()}%';
+}
+
+class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
+  ImportProgressNotifier() : super(const ImportProgressState());
+
+  void start({required int total}) {
+    state = ImportProgressState(isImporting: true, current: 0, total: total);
+  }
+
+  void update({required int current, required int total, String name = ''}) {
+    state = ImportProgressState(
+      isImporting: true,
+      current: current,
+      total: total,
+      currentItemName: name,
+    );
+  }
+
+  void complete() {
+    state = const ImportProgressState(isImporting: false);
+  }
+}
+
+final importProgressProvider =
+    StateNotifierProvider<ImportProgressNotifier, ImportProgressState>(
+  (ref) => ImportProgressNotifier(),
+);
+

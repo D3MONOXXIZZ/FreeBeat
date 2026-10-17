@@ -219,6 +219,7 @@ class NativeCloudAuthService {
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
   Future<List<Track>> pickFromInstalledCloudApp({
     required CloudAccount account,
+    void Function(int current, int total, Track? track)? onProgress,
   }) async {
     try {
       FilePickerResult? result;
@@ -267,13 +268,19 @@ class NativeCloudAuthService {
         '.dff',
       };
 
+      final totalFiles = result.files.length;
+      onProgress?.call(0, totalFiles, null);
+
       int fileIndex = 0;
       for (final file in result.files) {
         fileIndex++;
         try {
           final name = file.name;
           final ext = p.extension(name).toLowerCase();
-          if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) continue;
+          if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) {
+            onProgress?.call(fileIndex, totalFiles, null);
+            continue;
+          }
 
           String finalPath = file.path ?? '';
 
@@ -305,7 +312,10 @@ class NativeCloudAuthService {
           if (finalPath.isEmpty) {
             finalPath = file.path ?? file.identifier ?? '';
           }
-          if (finalPath.isEmpty) continue;
+          if (finalPath.isEmpty) {
+            onProgress?.call(fileIndex, totalFiles, null);
+            continue;
+          }
 
           final parsed = RangeTagParser.parseFromFilename(name);
           final cleanTitle = parsed.title ??
@@ -324,32 +334,33 @@ class NativeCloudAuthService {
             );
           }
 
-          tracks.add(
-            Track(
-              id: trackId,
-              accountId: account.id,
-              providerType: account.providerType,
-              remotePathOrId: finalPath,
-              title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-              artist: parsed.artist ?? providerLabel,
-              album: parsed.album ?? providerLabel,
-              durationMs: 210000,
-              streamUrl: finalPath,
-              artworkUrl: embeddedArt,
-              codec: parsed.codec ??
-                  (ext.isNotEmpty
-                      ? ext.replaceAll('.', '').toUpperCase()
-                      : 'FLAC'),
-              bitDepth: parsed.bitDepth ?? 24,
-              sampleRateHz: parsed.sampleRateHz ?? 96000,
-              bitrateKbps: parsed.bitrateKbps ?? 1411,
-              sizeBytes: file.size > 0 ? file.size : 25000000,
-              dominantColorValue: account.providerType.accentColorValue,
-              isPinnedOffline: true,
-              localCachePath: finalPath,
-            ),
+          final newTrack = Track(
+            id: trackId,
+            accountId: account.id,
+            providerType: account.providerType,
+            remotePathOrId: finalPath,
+            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+            artist: parsed.artist ?? providerLabel,
+            album: parsed.album ?? providerLabel,
+            durationMs: 210000,
+            streamUrl: finalPath,
+            artworkUrl: embeddedArt,
+            codec: parsed.codec ??
+                (ext.isNotEmpty
+                    ? ext.replaceAll('.', '').toUpperCase()
+                    : 'FLAC'),
+            bitDepth: parsed.bitDepth ?? 24,
+            sampleRateHz: parsed.sampleRateHz ?? 96000,
+            bitrateKbps: parsed.bitrateKbps ?? 1411,
+            sizeBytes: file.size > 0 ? file.size : 25000000,
+            dominantColorValue: account.providerType.accentColorValue,
+            isPinnedOffline: true,
+            localCachePath: finalPath,
           );
+          tracks.add(newTrack);
+          onProgress?.call(fileIndex, totalFiles, newTrack);
         } catch (_) {
+          onProgress?.call(fileIndex, totalFiles, null);
           // If one file fails in batch, continue importing remaining files
           continue;
         }
@@ -364,6 +375,7 @@ class NativeCloudAuthService {
   /// 1-Tap Folder Import: Scans an entire music directory (e.g. from Google Drive or device)
   Future<List<Track>> pickFolder({
     required CloudAccount account,
+    void Function(int current, int total, Track? track)? onProgress,
   }) async {
     try {
       final dirPath = await FilePicker.platform.getDirectoryPath(
@@ -401,6 +413,9 @@ class NativeCloudAuthService {
           ? account.displayName
           : account.providerType.displayName;
 
+      final totalFiles = audioFiles.length;
+      onProgress?.call(0, totalFiles, null);
+
       final tracks = <Track>[];
       int folderFileIndex = 0;
       for (final file in audioFiles) {
@@ -421,33 +436,34 @@ class NativeCloudAuthService {
                 await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
           }
 
-          tracks.add(
-            Track(
-              id: trackId,
-              accountId: account.id,
-              providerType: account.providerType,
-              remotePathOrId: file.path,
-              title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-              artist: parsed.artist ?? providerLabel,
-              album: parsed.album ??
-                  (parentFolder.isNotEmpty ? parentFolder : providerLabel),
-              durationMs: 210000,
-              streamUrl: file.path,
-              artworkUrl: embeddedArt,
-              codec: parsed.codec ??
-                  (ext.isNotEmpty
-                      ? ext.replaceAll('.', '').toUpperCase()
-                      : 'FLAC'),
-              bitDepth: parsed.bitDepth ?? 24,
-              sampleRateHz: parsed.sampleRateHz ?? 96000,
-              bitrateKbps: parsed.bitrateKbps ?? 1411,
-              sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
-              dominantColorValue: account.providerType.accentColorValue,
-              isPinnedOffline: true,
-              localCachePath: file.path,
-            ),
+          final newTrack = Track(
+            id: trackId,
+            accountId: account.id,
+            providerType: account.providerType,
+            remotePathOrId: file.path,
+            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+            artist: parsed.artist ?? providerLabel,
+            album: parsed.album ??
+                (parentFolder.isNotEmpty ? parentFolder : providerLabel),
+            durationMs: 210000,
+            streamUrl: file.path,
+            artworkUrl: embeddedArt,
+            codec: parsed.codec ??
+                (ext.isNotEmpty
+                    ? ext.replaceAll('.', '').toUpperCase()
+                    : 'FLAC'),
+            bitDepth: parsed.bitDepth ?? 24,
+            sampleRateHz: parsed.sampleRateHz ?? 96000,
+            bitrateKbps: parsed.bitrateKbps ?? 1411,
+            sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
+            dominantColorValue: account.providerType.accentColorValue,
+            isPinnedOffline: true,
+            localCachePath: file.path,
           );
+          tracks.add(newTrack);
+          onProgress?.call(folderFileIndex, totalFiles, newTrack);
         } catch (_) {
+          onProgress?.call(folderFileIndex, totalFiles, null);
           continue;
         }
       }

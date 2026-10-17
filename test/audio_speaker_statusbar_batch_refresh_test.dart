@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/core/models/track.dart';
-import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
 import 'package:freebeat/state/app_providers.dart';
 import 'package:freebeat/ui/screens/clouds_screen.dart';
 import 'package:freebeat/ui/screens/home_screen.dart';

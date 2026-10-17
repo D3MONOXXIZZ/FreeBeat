@@ -72,13 +72,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final cs = Theme.of(context).colorScheme;
     final playback = ref.watch(playbackProvider);
     final track = playback.currentTrack;
-    final route = ref.watch(audioRouteInfoProvider);
-    final quality = ref.watch(audioQualityProvider).effectiveStreamingTier;
     final lyrics = track.syncedLyrics;
-    final activeLyricIdx = playback.activeLyricIndex;
-    final activeLyricText = (activeLyricIdx >= 0 && activeLyricIdx < lyrics.length)
-        ? lyrics[activeLyricIdx].text
-        : (lyrics.isNotEmpty ? lyrics.first.text : '');
 
     return Scaffold(
       body: Stack(
@@ -120,83 +114,31 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           Navigator.of(context).pop();
                         },
                       ),
-                      // Connected Output Chip
-                      SpringPressScale(
-                        onTap: () {
-                          PixelHaptics.sheetExpand();
-                          showModalBottomSheet<void>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) => const SignalPathSheet(),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHigh.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(100),
-                            border: Border.all(
-                              color: cs.outlineVariant.withValues(alpha: 0.4),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                route.isBluetooth
-                                    ? Icons.headphones_rounded
-                                    : Icons.graphic_eq_rounded,
-                                size: 15,
-                                color: cs.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                route.isBluetooth
-                                    ? '${route.deviceName} (${route.bluetoothCodecName})'
-                                    : (quality.isLossless
-                                        ? 'Hi-Fi 24-Bit / 96k Direct'
-                                        : '${quality.kbps}k Direct Play'),
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.onSurface,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.info_outline_rounded, size: 24),
+                            tooltip: 'Track Details',
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TrackDetailsScreen(track: track),
                                 ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.queue_music_rounded, size: 24),
-                        tooltip: 'Up Next Queue',
-                        onPressed: () {
-                          PixelHaptics.sheetExpand();
-                          showQueueBottomSheet(context);
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.info_outline_rounded, size: 24),
-                        tooltip: 'Track Details',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TrackDetailsScreen(track: track),
-                            ),
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.tune_rounded, size: 24),
-                        tooltip: 'Poweramp EQ',
-                        onPressed: () {
-                          PixelHaptics.sheetExpand();
-                          Navigator.of(context).pop();
-                          widget.onOpenDspStudio();
-                        },
+                          IconButton(
+                            icon: const Icon(Icons.tune_rounded, size: 24),
+                            tooltip: 'Poweramp EQ',
+                            onPressed: () {
+                              PixelHaptics.sheetExpand();
+                              Navigator.of(context).pop();
+                              widget.onOpenDspStudio();
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -443,9 +385,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Phase 1: Secondary Action Bar (Queue, Sleep Timer, Speed/Pitch, A-B Loop)
+                  // Phase 1: Secondary Action Bar (Queue, Lyrics Button, Hamburger Menu)
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _buildActionPill(
                         context: context,
@@ -456,119 +398,29 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                         isActive: playback.upNextQueue.isNotEmpty,
                         onTap: () => showQueueBottomSheet(context),
                       ),
+                      const SizedBox(width: 10),
                       _buildActionPill(
                         context: context,
-                        icon: playback.isSleepTimerActive
-                            ? Icons.bedtime_rounded
-                            : Icons.bedtime_outlined,
-                        label: playback.isSleepTimerActive
-                            ? playback.formattedSleepTimerRemaining
-                            : 'Timer',
-                        isActive: playback.isSleepTimerActive,
-                        onTap: () => showSleepTimerModal(context),
+                        icon: Icons.lyrics_rounded,
+                        label: 'Lyrics',
+                        isActive: lyrics.isNotEmpty,
+                        onTap: _openFullscreenLyrics,
                       ),
+                      const SizedBox(width: 10),
                       _buildActionPill(
                         context: context,
-                        icon: Icons.speed_rounded,
-                        label:
-                            '${playback.playbackSpeed.toStringAsFixed(playback.playbackSpeed % 1 == 0 ? 0 : 2)}x',
-                        isActive: playback.playbackSpeed != 1.0 ||
-                            playback.pitch != 1.0,
-                        onTap: () => showPlaybackSpeedModal(context),
-                      ),
-                      _buildActionPill(
-                        context: context,
-                        icon: playback.isLoopActive
-                            ? Icons.repeat_on_rounded
-                            : Icons.all_inclusive_rounded,
-                        label: playback.isLoopActive ? 'Loop ON' : 'A-B',
-                        isActive:
-                            playback.isLoopActive || playback.loopPointA != null,
-                        onTap: () => showABLoopModal(context),
+                        icon: Icons.menu_rounded,
+                        label: 'More',
+                        isActive: playback.isSleepTimerActive ||
+                            playback.playbackSpeed != 1.0 ||
+                            playback.pitch != 1.0 ||
+                            playback.isLoopActive,
+                        onTap: () => _showPlaybackOptionsMenu(context),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 14),
-
-                  // 7. Bottom Peekable Lyrics Drawer
-                  SpringPressScale(
-                    onTap: _openFullscreenLyrics,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.lyrics_rounded, size: 20, color: cs.primary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Text(
-                                      'Lyrics',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 1.5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: cs.secondaryContainer,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        'LIVE',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                          color: cs.onSecondaryContainer,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  activeLyricText.isNotEmpty
-                                      ? activeLyricText
-                                      : 'Tap to expand Google Style music typography',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.keyboard_arrow_up_rounded,
-                            size: 24,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const Spacer(flex: 1),
 
                   const AndroidGestureHandle(
                     margin: EdgeInsets.only(top: 6, bottom: 8),
@@ -579,6 +431,196 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showPlaybackOptionsMenu(BuildContext context) {
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+    final playback = ref.read(playbackProvider);
+    final track = playback.currentTrack;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: cs.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.tune_rounded,
+                        color: cs.onPrimaryContainer,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Playback Options',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Icon(
+                    playback.isSleepTimerActive
+                        ? Icons.bedtime_rounded
+                        : Icons.bedtime_outlined,
+                    color: playback.isSleepTimerActive ? cs.primary : null,
+                  ),
+                  title: const Text('Sleep Timer',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                    playback.isSleepTimerActive
+                        ? 'Remaining: ${playback.formattedSleepTimerRemaining}'
+                        : 'Turn off playback automatically',
+                  ),
+                  trailing: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: playback.isSleepTimerActive
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Text(
+                      playback.isSleepTimerActive
+                          ? playback.formattedSleepTimerRemaining
+                          : 'Off',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: playback.isSleepTimerActive
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showSleepTimerModal(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.speed_rounded,
+                    color: (playback.playbackSpeed != 1.0 ||
+                            playback.pitch != 1.0)
+                        ? cs.primary
+                        : null,
+                  ),
+                  title: const Text('Playback Speed & Pitch',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Fine-grained tempo & pitch shifting'),
+                  trailing: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (playback.playbackSpeed != 1.0 ||
+                              playback.pitch != 1.0)
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Text(
+                      '${playback.playbackSpeed.toStringAsFixed(playback.playbackSpeed % 1 == 0 ? 0 : 2)}x',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: (playback.playbackSpeed != 1.0 ||
+                                playback.pitch != 1.0)
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showPlaybackSpeedModal(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    playback.isLoopActive
+                        ? Icons.repeat_on_rounded
+                        : Icons.all_inclusive_rounded,
+                    color: playback.isLoopActive ? cs.primary : null,
+                  ),
+                  title: const Text('A-B Repeat Loop',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Loop a specific section seamlessly'),
+                  trailing: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: playback.isLoopActive
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Text(
+                      playback.isLoopActive ? 'Active' : 'Off',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: playback.isLoopActive
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showABLoopModal(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.graphic_eq_rounded),
+                  title: const Text('Audio Signal Path & Specs',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                      '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => const SignalPathSheet(),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -594,7 +636,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
               ? cs.primaryContainer
@@ -611,14 +653,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           children: [
             Icon(
               icon,
-              size: 15,
+              size: 16,
               color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
                 color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
               ),

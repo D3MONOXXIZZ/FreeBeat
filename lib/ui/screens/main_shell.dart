@@ -6,7 +6,6 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/nav_pill.dart';
-import '../widgets/queue_bottom_sheet.dart';
 import 'clouds_screen.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
@@ -61,150 +60,146 @@ class _MainShellState extends ConsumerState<MainShell> {
     PlaybackViewState playback,
     Track track,
   ) {
-    return SpringPressScale(
-      onTap: _openFullNowPlaying,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.35),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
+    return Align(
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: 320,
+        height: 50,
+        child: SpringPressScale(
+          onTap: _openFullNowPlaying,
+          child: Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.35),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(100),
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-                child: Row(
-                  children: [
-                    MaterialYouAlbumCover(
-                      track: track,
-                      size: 40,
-                      borderRadius: 100,
-                      showQualityBadge: false,
-                      showSourceBadge: false,
-                      isPlaying: playback.isPlaying,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            track.title.isEmpty ? 'FreeBeat' : track.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(100),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      children: [
+                        MaterialYouAlbumCover(
+                          track: track,
+                          size: 36,
+                          borderRadius: 100,
+                          showQualityBadge: false,
+                          showSourceBadge: false,
+                          isPlaying: playback.isPlaying,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      track.title.isEmpty
+                                          ? 'FreeBeat'
+                                          : track.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  if (playback.isPlaying) ...[
+                                    const SizedBox(width: 4),
+                                    PixelPlayingEqualizerAnimation(
+                                      size: 13,
+                                      color: cs.primary,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                '${track.artist} • ${track.codec}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 1),
-                          Text(
-                            '${track.artist} • ${track.codec}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: cs.onSurfaceVariant,
-                            ),
+                        ),
+
+                        // Play / Pause Circle Button
+                        FilledButton(
+                          onPressed: () {
+                            ref
+                                .read(playbackProvider.notifier)
+                                .togglePlayPause();
+                          },
+                          style: FilledButton.styleFrom(
+                            shape: const CircleBorder(),
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(34, 34),
+                            backgroundColor: cs.primaryContainer,
+                            foregroundColor: cs.onPrimaryContainer,
                           ),
-                        ],
-                      ),
-                    ),
+                          child: Icon(
+                            playback.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 20,
+                          ),
+                        ),
 
-                    // Previous / Rewind Button
-                    IconButton(
-                      icon: const Icon(Icons.skip_previous_rounded),
-                      color: cs.onSurfaceVariant,
-                      iconSize: 22,
-                      padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 36, minHeight: 36),
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        ref.read(playbackProvider.notifier).skipPrevious();
-                      },
+                        // Skip Next Button
+                        IconButton(
+                          icon: const Icon(Icons.skip_next_rounded),
+                          color: cs.onSurfaceVariant,
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          onPressed: () {
+                            PixelHaptics.tick();
+                            ref.read(playbackProvider.notifier).skipNext();
+                          },
+                        ),
+                      ],
                     ),
+                  ),
 
-                    // Play / Pause Circle Button
-                    FilledButton(
-                      onPressed: () {
-                        ref.read(playbackProvider.notifier).togglePlayPause();
-                      },
-                      style: FilledButton.styleFrom(
-                        shape: const CircleBorder(),
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(38, 38),
-                        backgroundColor: cs.primaryContainer,
-                        foregroundColor: cs.onPrimaryContainer,
-                      ),
-                      child: Icon(
-                        playback.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 22,
-                      ),
+                  // Slim Track Progress Bar at bottom of mini player
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 0,
+                    child: LinearProgressIndicator(
+                      value: playback.progressFraction,
+                      minHeight: 2,
+                      backgroundColor:
+                          cs.onSurfaceVariant.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
                     ),
-
-                    // Skip Next Button
-                    IconButton(
-                      icon: const Icon(Icons.skip_next_rounded),
-                      color: cs.onSurfaceVariant,
-                      iconSize: 22,
-                      padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 36, minHeight: 36),
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        ref.read(playbackProvider.notifier).skipNext();
-                      },
-                    ),
-
-                    // Up Next Queue Button
-                    IconButton(
-                      icon: const Icon(Icons.queue_music_rounded),
-                      color: cs.onSurfaceVariant,
-                      iconSize: 22,
-                      padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 36, minHeight: 36),
-                      tooltip: 'Up Next Queue',
-                      onPressed: () {
-                        PixelHaptics.sheetExpand();
-                        showQueueBottomSheet(context);
-                      },
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-
-              // Slim Track Progress Bar at bottom of mini player
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: 0,
-                child: LinearProgressIndicator(
-                  value: playback.progressFraction,
-                  minHeight: 2.5,
-                  backgroundColor:
-                      cs.onSurfaceVariant.withValues(alpha: 0.12),
-                  valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -216,6 +211,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     final cs = Theme.of(context).colorScheme;
     final playback = ref.watch(playbackProvider);
     final track = playback.currentTrack;
+    final importProgress = ref.watch(importProgressProvider);
 
     final pages = [
       HomeScreen(
@@ -242,6 +238,90 @@ class _MainShellState extends ConsumerState<MainShell> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Global Real-Time Import Progress Indicator
+              if (importProgress.isImporting) ...[
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 320,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(100),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.10),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Importing (${importProgress.current}/${importProgress.total})',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: cs.onPrimaryContainer,
+                                    ),
+                                  ),
+                                  Text(
+                                    importProgress.progressPercentage,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: cs.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(100),
+                                child: LinearProgressIndicator(
+                                  value: importProgress.total > 0
+                                      ? importProgress.progressFraction
+                                      : null,
+                                  minHeight: 3,
+                                  backgroundColor: cs.onPrimaryContainer
+                                      .withValues(alpha: 0.2),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    cs.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+              ],
+
               // Floating Docked Mini-Player Pill (Active playback only)
               if (playback.queue.isNotEmpty && track.id.isNotEmpty) ...[
                 _buildMiniPlayerPill(cs, playback, track),
