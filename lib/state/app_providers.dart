@@ -718,24 +718,62 @@ class PlaybackViewState {
   const PlaybackViewState({
     required this.currentTrack,
     required this.queue,
+    this.sessionHistory = const [],
     this.isPlaying = false,
     this.positionMs = 42000,
     this.bufferedPositionMs = 165000,
     this.isShuffle = false,
     this.repeatMode = 0, // 0: Off, 1: All, 2: One
+    this.playbackSpeed = 1.0,
+    this.pitch = 1.0,
+    this.isAutoplay = true,
+    this.crossfadeSeconds = 0,
+    this.isGapless = true,
+    this.sleepTimerDuration,
+    this.sleepTimerRemaining,
+    this.loopPointA,
+    this.loopPointB,
+    this.isLoopActive = false,
   });
 
   final Track currentTrack;
   final List<Track> queue;
+  final List<Track> sessionHistory;
   final bool isPlaying;
   final int positionMs;
   final int bufferedPositionMs;
   final bool isShuffle;
   final int repeatMode;
+  final double playbackSpeed;
+  final double pitch;
+  final bool isAutoplay;
+  final int crossfadeSeconds;
+  final bool isGapless;
+  final Duration? sleepTimerDuration;
+  final Duration? sleepTimerRemaining;
+  final int? loopPointA;
+  final int? loopPointB;
+  final bool isLoopActive;
 
   double get progressFraction {
     if (currentTrack.durationMs <= 0) return 0.0;
     return (positionMs / currentTrack.durationMs).clamp(0.0, 1.0);
+  }
+
+  bool get isSleepTimerActive =>
+      sleepTimerRemaining != null && sleepTimerRemaining!.inSeconds > 0;
+
+  String get formattedSleepTimerRemaining {
+    if (sleepTimerRemaining == null) return '';
+    final m = sleepTimerRemaining!.inMinutes;
+    final s = sleepTimerRemaining!.inSeconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  List<Track> get upNextQueue {
+    final idx = queue.indexWhere((t) => t.id == currentTrack.id);
+    if (idx == -1 || idx >= queue.length - 1) return const [];
+    return queue.sublist(idx + 1);
   }
 
   int get activeLyricIndex {
@@ -773,20 +811,48 @@ class PlaybackViewState {
   PlaybackViewState copyWith({
     Track? currentTrack,
     List<Track>? queue,
+    List<Track>? sessionHistory,
     bool? isPlaying,
     int? positionMs,
     int? bufferedPositionMs,
     bool? isShuffle,
     int? repeatMode,
+    double? playbackSpeed,
+    double? pitch,
+    bool? isAutoplay,
+    int? crossfadeSeconds,
+    bool? isGapless,
+    Duration? sleepTimerDuration,
+    Duration? sleepTimerRemaining,
+    bool clearSleepTimer = false,
+    int? loopPointA,
+    int? loopPointB,
+    bool clearLoop = false,
+    bool? isLoopActive,
   }) {
     return PlaybackViewState(
       currentTrack: currentTrack ?? this.currentTrack,
       queue: queue ?? this.queue,
+      sessionHistory: sessionHistory ?? this.sessionHistory,
       isPlaying: isPlaying ?? this.isPlaying,
       positionMs: positionMs ?? this.positionMs,
       bufferedPositionMs: bufferedPositionMs ?? this.bufferedPositionMs,
       isShuffle: isShuffle ?? this.isShuffle,
       repeatMode: repeatMode ?? this.repeatMode,
+      playbackSpeed: playbackSpeed ?? this.playbackSpeed,
+      pitch: pitch ?? this.pitch,
+      isAutoplay: isAutoplay ?? this.isAutoplay,
+      crossfadeSeconds: crossfadeSeconds ?? this.crossfadeSeconds,
+      isGapless: isGapless ?? this.isGapless,
+      sleepTimerDuration: clearSleepTimer
+          ? null
+          : (sleepTimerDuration ?? this.sleepTimerDuration),
+      sleepTimerRemaining: clearSleepTimer
+          ? null
+          : (sleepTimerRemaining ?? this.sleepTimerRemaining),
+      loopPointA: clearLoop ? null : (loopPointA ?? this.loopPointA),
+      loopPointB: clearLoop ? null : (loopPointB ?? this.loopPointB),
+      isLoopActive: clearLoop ? false : (isLoopActive ?? this.isLoopActive),
     );
   }
 }
@@ -811,6 +877,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   final Ref _ref;
   AudioPlayer? _audioPlayer;
   Timer? _progressTicker;
+  Timer? _sleepTimer;
+  DateTime? _sleepTimerTarget;
+  bool _sleepTimerEndAfterTrack = false;
   bool _isInitializingPlayer = false;
 
   Future<void> _initAudioPlayer() async {
@@ -843,7 +912,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
       player.positionStream.listen((pos) {
         if (mounted && state.isPlaying) {
-          state = state.copyWith(positionMs: pos.inMilliseconds);
+          final posMs = pos.inMilliseconds;
+          if (state.isLoopActive &&
+              state.loopPointA != null &&
+              state.loopPointB != null) {
+            if (posMs >= state.loopPointB!) {
+              seekToMs(state.loopPointA!);
+              return;
+            }
+          }
+          state = state.copyWith(positionMs: posMs);
         }
       });
 
@@ -925,6 +1003,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final cachedPath = await cacheSvc.getCachedFilePath(track);
       final effectiveSource = cachedPath ?? track.streamUrl;
 
+      if (state.playbackSpeed != 1.0) {
+        try {
+          await _audioPlayer!.setSpeed(state.playbackSpeed);
+        } catch (_) {}
+      }
+      if (state.pitch != 1.0) {
+        try {
+          await _audioPlayer!.setPitch(state.pitch);
+        } catch (_) {}
+      }
+
       if (cachedPath != null && File(cachedPath).existsSync()) {
         await _audioPlayer!.setFilePath(cachedPath);
         await _audioPlayer!.play();
@@ -987,9 +1076,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final hasTrack = effectiveQueue.any((t) => t.id == track.id);
     final queueToUse = hasTrack ? effectiveQueue : [track, ...effectiveQueue];
 
+    // Record session history
+    final prevTrack = state.currentTrack;
+    List<Track> updatedHistory = state.sessionHistory;
+    if (prevTrack.id.isNotEmpty && prevTrack.id != track.id) {
+      updatedHistory = [
+        prevTrack,
+        ...state.sessionHistory.where((t) => t.id != prevTrack.id)
+      ].take(50).toList();
+    }
+
     state = state.copyWith(
       currentTrack: track,
       queue: queueToUse,
+      sessionHistory: updatedHistory,
       positionMs: 0,
       bufferedPositionMs: (track.durationMs * 0.35).round(),
       isPlaying: true,
@@ -1021,10 +1121,41 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   Future<void> skipNext() async {
     await PixelHaptics.tick(intensity: 0.8);
-    final idx =
-        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
-    final nextIdx = (idx + 1) % state.queue.length;
-    await playTrack(state.queue[nextIdx]);
+
+    if (_sleepTimerEndAfterTrack) {
+      _sleepTimerEndAfterTrack = false;
+      state = state.copyWith(
+        isPlaying: false,
+        clearSleepTimer: true,
+      );
+      try {
+        await _audioPlayer?.pause();
+      } catch (_) {}
+      return;
+    }
+
+    if (state.repeatMode == 2) {
+      // Repeat current track
+      await seekToMs(0);
+      try {
+        await _audioPlayer?.play();
+      } catch (_) {}
+      return;
+    }
+
+    final idx = state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    if (idx != -1 && idx < state.queue.length - 1) {
+      await playTrack(state.queue[idx + 1]);
+    } else if (state.repeatMode == 1 && state.queue.isNotEmpty) {
+      await playTrack(state.queue.first);
+    } else if (state.isAutoplay) {
+      _triggerAutoplayNext();
+    } else if (state.queue.isNotEmpty) {
+      state = state.copyWith(isPlaying: false, positionMs: 0);
+      try {
+        await _audioPlayer?.pause();
+      } catch (_) {}
+    }
   }
 
   Future<void> skipPrevious() async {
@@ -1033,10 +1164,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       await seekToMs(0);
       return;
     }
-    final idx =
-        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
-    final prevIdx = (idx - 1 + state.queue.length) % state.queue.length;
-    await playTrack(state.queue[prevIdx]);
+    final idx = state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    if (idx > 0) {
+      await playTrack(state.queue[idx - 1]);
+    } else if (state.queue.isNotEmpty) {
+      await seekToMs(0);
+    }
   }
 
   void toggleShuffle() {
@@ -1049,9 +1182,244 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     state = state.copyWith(repeatMode: (state.repeatMode + 1) % 3);
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: Up Next Reorderable Queue & Queue Operations
+  // ───────────────────────────────────────────────────────────────────────────
+
+  void reorderUpNext(int oldIndex, int newIndex) {
+    PixelHaptics.lowTick();
+    final currentIdx =
+        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    if (currentIdx == -1) return;
+    final upNext = List<Track>.from(state.upNextQueue);
+    if (oldIndex < 0 || oldIndex >= upNext.length) return;
+    final item = upNext.removeAt(oldIndex);
+    final targetIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    upNext.insert(targetIdx.clamp(0, upNext.length), item);
+
+    final newQueue = [
+      ...state.queue.sublist(0, currentIdx + 1),
+      ...upNext,
+    ];
+    state = state.copyWith(queue: newQueue);
+  }
+
+  void removeFromQueue(String trackId) {
+    PixelHaptics.tick();
+    final newQueue = state.queue
+        .where((t) => t.id != trackId || t.id == state.currentTrack.id)
+        .toList();
+    state = state.copyWith(queue: newQueue);
+  }
+
+  void playNext(Track track) {
+    PixelHaptics.tick();
+    final currentIdx =
+        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
+    final insertIdx = currentIdx == -1
+        ? 0
+        : (currentIdx + 1).clamp(0, withoutTrack.length);
+    final newQueue = List<Track>.from(withoutTrack)..insert(insertIdx, track);
+    state = state.copyWith(queue: newQueue);
+  }
+
+  void addToQueue(Track track) {
+    PixelHaptics.tick();
+    final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
+    state = state.copyWith(queue: [...withoutTrack, track]);
+  }
+
+  void clearUpNext() {
+    PixelHaptics.tick();
+    final currentIdx =
+        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    if (currentIdx == -1) return;
+    state = state.copyWith(queue: [state.currentTrack]);
+  }
+
+  void shuffleRemaining() {
+    PixelHaptics.medium();
+    final currentIdx =
+        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    if (currentIdx == -1) return;
+    final remaining =
+        List<Track>.from(state.queue.sublist(currentIdx + 1))..shuffle();
+    state = state.copyWith(queue: [
+      ...state.queue.sublist(0, currentIdx + 1),
+      ...remaining,
+    ]);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: Smart Autoplay
+  // ───────────────────────────────────────────────────────────────────────────
+
+  void toggleAutoplay() {
+    PixelHaptics.tick();
+    state = state.copyWith(isAutoplay: !state.isAutoplay);
+  }
+
+  void _triggerAutoplayNext() {
+    if (!state.isAutoplay) return;
+    final allTracks = _ref.read(tracksCatalogProvider);
+    if (allTracks.isEmpty) return;
+
+    final current = state.currentTrack;
+    final sameArtist = allTracks
+        .where((t) => t.id != current.id && t.artist == current.artist)
+        .toList();
+    Track next;
+    if (sameArtist.isNotEmpty) {
+      sameArtist.shuffle();
+      next = sameArtist.first;
+    } else {
+      final unplayed = allTracks
+          .where((t) =>
+              t.id != current.id &&
+              !state.sessionHistory.any((h) => h.id == t.id))
+          .toList();
+      if (unplayed.isNotEmpty) {
+        unplayed.shuffle();
+        next = unplayed.first;
+      } else {
+        final copy = List<Track>.from(allTracks)..shuffle();
+        next = copy.first;
+      }
+    }
+    state = state.copyWith(queue: [...state.queue, next]);
+    playTrack(next);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: Variable Playback Speed & Pitch Shifter
+  // ───────────────────────────────────────────────────────────────────────────
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    PixelHaptics.tick();
+    state = state.copyWith(playbackSpeed: speed);
+    try {
+      await _audioPlayer?.setSpeed(speed);
+    } catch (_) {}
+  }
+
+  Future<void> setPitch(double pitch) async {
+    PixelHaptics.tick();
+    state = state.copyWith(pitch: pitch);
+    try {
+      await _audioPlayer?.setPitch(pitch);
+    } catch (_) {}
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: M3 Sleep Timer with Gentle 30s Fade-Out
+  // ───────────────────────────────────────────────────────────────────────────
+
+  void setSleepTimer(Duration? duration) {
+    PixelHaptics.tick();
+    _sleepTimer?.cancel();
+    if (duration == null) {
+      _sleepTimer = null;
+      _sleepTimerTarget = null;
+      _sleepTimerEndAfterTrack = false;
+      state = state.copyWith(clearSleepTimer: true);
+      _audioPlayer?.setVolume(1.0);
+      return;
+    }
+
+    _sleepTimerTarget = DateTime.now().add(duration);
+    _sleepTimerEndAfterTrack = false;
+    state = state.copyWith(
+      sleepTimerDuration: duration,
+      sleepTimerRemaining: duration,
+    );
+
+    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final remaining =
+          _sleepTimerTarget?.difference(DateTime.now()) ?? Duration.zero;
+      if (remaining.isNegative || remaining.inSeconds <= 0) {
+        timer.cancel();
+        _sleepTimer = null;
+        _sleepTimerTarget = null;
+        state = state.copyWith(
+          clearSleepTimer: true,
+          isPlaying: false,
+        );
+        _audioPlayer?.pause();
+        _audioPlayer?.setVolume(1.0);
+        PixelHaptics.railLimitThud();
+      } else {
+        if (remaining.inSeconds <= 30) {
+          final vol = (remaining.inSeconds / 30.0).clamp(0.05, 1.0);
+          _audioPlayer?.setVolume(vol);
+        } else {
+          _audioPlayer?.setVolume(1.0);
+        }
+        state = state.copyWith(sleepTimerRemaining: remaining);
+      }
+    });
+  }
+
+  void setSleepTimerAfterCurrentTrack() {
+    PixelHaptics.tick();
+    _sleepTimer?.cancel();
+    _sleepTimerEndAfterTrack = true;
+    final remainingMs =
+        (state.currentTrack.durationMs - state.positionMs).clamp(0, 86400000);
+    state = state.copyWith(
+      sleepTimerDuration: Duration(milliseconds: remainingMs),
+      sleepTimerRemaining: Duration(milliseconds: remainingMs),
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: A-B Loop Section Repeater
+  // ───────────────────────────────────────────────────────────────────────────
+
+  void setLoopPointA([int? customPosMs]) {
+    PixelHaptics.tick();
+    final pos = customPosMs ?? state.positionMs;
+    final isActive =
+        state.loopPointB != null && pos < state.loopPointB!;
+    state = state.copyWith(
+      loopPointA: pos,
+      isLoopActive: isActive,
+    );
+  }
+
+  void setLoopPointB([int? customPosMs]) {
+    PixelHaptics.tick();
+    final pos = customPosMs ?? state.positionMs;
+    final isActive =
+        state.loopPointA != null && pos > state.loopPointA!;
+    state = state.copyWith(
+      loopPointB: pos,
+      isLoopActive: isActive,
+    );
+  }
+
+  void clearLoop() {
+    PixelHaptics.tick();
+    state = state.copyWith(clearLoop: true);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 1: Crossfade Duration Setting
+  // ───────────────────────────────────────────────────────────────────────────
+
+  void setCrossfadeSeconds(int seconds) {
+    PixelHaptics.tick();
+    state = state.copyWith(crossfadeSeconds: seconds.clamp(0, 12));
+  }
+
   @override
   void dispose() {
     _progressTicker?.cancel();
+    _sleepTimer?.cancel();
     _audioPlayer?.dispose();
     super.dispose();
   }

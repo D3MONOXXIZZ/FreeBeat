@@ -6,6 +6,7 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/nav_pill.dart';
+import '../widgets/queue_bottom_sheet.dart';
 import 'clouds_screen.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
@@ -169,6 +170,21 @@ class _MainShellState extends ConsumerState<MainShell> {
                       onPressed: () {
                         PixelHaptics.tick();
                         ref.read(playbackProvider.notifier).skipNext();
+                      },
+                    ),
+
+                    // Up Next Queue Button
+                    IconButton(
+                      icon: const Icon(Icons.queue_music_rounded),
+                      color: cs.onSurfaceVariant,
+                      iconSize: 22,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 36, minHeight: 36),
+                      tooltip: 'Up Next Queue',
+                      onPressed: () {
+                        PixelHaptics.sheetExpand();
+                        showQueueBottomSheet(context);
                       },
                     ),
                   ],

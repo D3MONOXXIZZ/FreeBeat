@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import '../widgets/ab_loop_modal.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/nav_pill.dart';
+import '../widgets/playback_speed_modal.dart';
+import '../widgets/queue_bottom_sheet.dart';
 import '../widgets/signal_path_sheet.dart';
+import '../widgets/sleep_timer_modal.dart';
 import '../widgets/waveform_seekbar.dart';
 import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
@@ -164,6 +168,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                             ],
                           ),
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.queue_music_rounded, size: 24),
+                        tooltip: 'Up Next Queue',
+                        onPressed: () {
+                          PixelHaptics.sheetExpand();
+                          showQueueBottomSheet(context);
+                        },
                       ),
                       IconButton(
                         icon: const Icon(Icons.info_outline_rounded, size: 24),
@@ -429,7 +441,55 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // Phase 1: Secondary Action Bar (Queue, Sleep Timer, Speed/Pitch, A-B Loop)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildActionPill(
+                        context: context,
+                        icon: Icons.queue_music_rounded,
+                        label: playback.upNextQueue.isNotEmpty
+                            ? 'Queue (${playback.upNextQueue.length})'
+                            : 'Queue',
+                        isActive: playback.upNextQueue.isNotEmpty,
+                        onTap: () => showQueueBottomSheet(context),
+                      ),
+                      _buildActionPill(
+                        context: context,
+                        icon: playback.isSleepTimerActive
+                            ? Icons.bedtime_rounded
+                            : Icons.bedtime_outlined,
+                        label: playback.isSleepTimerActive
+                            ? playback.formattedSleepTimerRemaining
+                            : 'Timer',
+                        isActive: playback.isSleepTimerActive,
+                        onTap: () => showSleepTimerModal(context),
+                      ),
+                      _buildActionPill(
+                        context: context,
+                        icon: Icons.speed_rounded,
+                        label:
+                            '${playback.playbackSpeed.toStringAsFixed(playback.playbackSpeed % 1 == 0 ? 0 : 2)}x',
+                        isActive: playback.playbackSpeed != 1.0 ||
+                            playback.pitch != 1.0,
+                        onTap: () => showPlaybackSpeedModal(context),
+                      ),
+                      _buildActionPill(
+                        context: context,
+                        icon: playback.isLoopActive
+                            ? Icons.repeat_on_rounded
+                            : Icons.all_inclusive_rounded,
+                        label: playback.isLoopActive ? 'Loop ON' : 'A-B',
+                        isActive:
+                            playback.isLoopActive || playback.loopPointA != null,
+                        onTap: () => showABLoopModal(context),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
 
                   // 7. Bottom Peekable Lyrics Drawer
                   SpringPressScale(
@@ -518,6 +578,53 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionPill({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return SpringPressScale(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? cs.primaryContainer
+              : cs.surfaceContainerHigh.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: isActive
+                ? cs.primary.withValues(alpha: 0.6)
+                : cs.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

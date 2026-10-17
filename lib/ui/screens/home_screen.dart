@@ -130,6 +130,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 16),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.playlist_play_rounded),
+                  title: const Text('Play Next',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle:
+                      const Text('Insert immediately after current track'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    ref.read(playbackProvider.notifier).playNext(track);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Playing next: ${track.title}'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.queue_music_rounded),
+                  title: const Text('Add to Queue',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Append to the end of Up Next queue'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    ref.read(playbackProvider.notifier).addToQueue(track);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Added to queue: ${track.title}'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.info_outline_rounded),
                   title: const Text('View Track Details',
                       style: TextStyle(fontWeight: FontWeight.w700)),

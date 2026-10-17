@@ -7,6 +7,7 @@ import 'appearance_settings_screen.dart';
 import 'audio_quality_settings_screen.dart';
 import 'bluetooth_settings_screen.dart';
 import 'cloud_sync_settings_screen.dart';
+import 'playback_settings_screen.dart';
 
 /// Master Settings Hub for FreeBeat (Styled after Google Pixel Settings).
 /// Clean, categorized entry point where each configurable setting has its own dedicated screen.
@@ -19,6 +20,7 @@ class SettingsScreen extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
     final quality = ref.watch(audioQualityProvider);
     final route = ref.watch(audioRouteInfoProvider);
+    final playback = ref.watch(playbackProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -56,6 +58,19 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const AudioQualitySettingsScreen()),
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsNavTile(
+                  icon: Icons.graphic_eq_rounded,
+                  title: 'Playback & Transitions',
+                  subtitle: playback.crossfadeSeconds == 0
+                      ? 'Gapless • Autoplay ${playback.isAutoplay ? "On" : "Off"}'
+                      : 'Crossfade ${playback.crossfadeSeconds}s • Autoplay ${playback.isAutoplay ? "On" : "Off"}',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PlaybackSettingsScreen()),
                   ),
                 ),
               ],
