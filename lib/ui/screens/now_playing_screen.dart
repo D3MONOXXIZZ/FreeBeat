@@ -14,6 +14,7 @@ import '../widgets/waveform_seekbar.dart';
 import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
 import 'track_details_screen.dart';
+import '../widgets/add_to_playlist_modal.dart';
 
 /// Full-Screen Google Pixel Material 3 Expressive Now Playing Screen.
 /// Strictly implements Screen 2 in Figma inspiration:
@@ -616,6 +617,17 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     );
                   },
                 ),
+                if (track.id.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.playlist_add_rounded),
+                    title: const Text('Add to Playlist',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Save to a custom or new playlist'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showAddToPlaylistModal(context, track);
+                    },
+                  ),
               ],
             ),
           ),

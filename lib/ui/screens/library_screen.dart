@@ -7,8 +7,12 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import 'artist_details_screen.dart';
+import 'playlist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
+import '../../core/models/playlist.dart';
+import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/generative_playlist_cover.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -76,6 +80,193 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         );
       }
     }
+  }
+
+  void _showCreatePlaylistDialog() {
+    PixelHaptics.tick();
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          title: const Text(
+            'New Playlist',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Playlist Name',
+                  hintText: 'e.g. Late Night Drives, Chill Lofi',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descController,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final title = titleController.text.trim();
+                if (title.isNotEmpty) {
+                  Navigator.of(ctx).pop();
+                  final playlist = await ref
+                      .read(playlistsProvider.notifier)
+                      .createPlaylist(
+                        title,
+                        description: descController.text.trim(),
+                      );
+                  await PixelHaptics.hifiConfirm();
+                  if (mounted) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            PlaylistDetailsScreen(playlist: playlist),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showDeduplicateDialog(Map<String, List<Track>> duplicateMap) {
+    PixelHaptics.tick();
+    final totalRedundant = duplicateMap.values.fold<int>(
+      0,
+      (sum, list) => sum + (list.length - 1),
+    );
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.tertiaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.auto_fix_high_rounded,
+                  color: cs.onTertiaryContainer,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  '1-Tap Deduplicate',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Found $totalRedundant duplicate tracks across ${duplicateMap.length} titles.\n\nFreeBeat will keep the highest quality version (Hi-Res / highest sample rate) and safely remove redundant copies from your library.',
+                style: const TextStyle(fontSize: 13.5, height: 1.4),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.tonal(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                final idsToRemove = <String>[];
+                for (final group in duplicateMap.values) {
+                  // Sort by bit depth and sample rate descending
+                  final sorted = List<Track>.from(group)
+                    ..sort((a, b) {
+                      final scoreA = (a.isHiRes ? 1000 : 0) +
+                          (a.bitDepth * 10) +
+                          (a.sampleRateHz / 1000).round();
+                      final scoreB = (b.isHiRes ? 1000 : 0) +
+                          (b.bitDepth * 10) +
+                          (b.sampleRateHz / 1000).round();
+                      return scoreB.compareTo(scoreA);
+                    });
+                  // Keep first (highest quality), remove the rest
+                  for (int i = 1; i < sorted.length; i++) {
+                    idsToRemove.add(sorted[i].id);
+                  }
+                }
+
+                if (idsToRemove.isNotEmpty) {
+                  await ref
+                      .read(tracksCatalogProvider.notifier)
+                      .removeTracks(idsToRemove);
+                  await PixelHaptics.hifiConfirm();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Cleaned up ${idsToRemove.length} duplicate tracks! Library optimized.',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: Text('Clean $totalRedundant Duplicates'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showTrackOptions(Track track) {
@@ -190,6 +381,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     },
                   ),
                   ListTile(
+                    leading: const Icon(Icons.playlist_add_rounded),
+                    title: const Text('Add to Playlist',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Save to custom or new playlist'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showAddToPlaylistModal(context, track);
+                    },
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: const Text('View Track Details',
                         style: TextStyle(fontWeight: FontWeight.w700)),
@@ -253,6 +454,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final allTracks = ref.watch(tracksCatalogProvider);
     final playback = ref.watch(playbackProvider);
     final importProgress = ref.watch(importProgressProvider);
+    final allPlaylists = ref.watch(smartPlaylistsProvider);
+    final duplicateMap = ref.watch(duplicateTracksProvider);
 
     // Extract unique artists
     final artists = allTracks
@@ -281,11 +484,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 74, right: 8),
         child: FloatingActionButton.extended(
-          onPressed: _pickLocalFiles,
-          icon: const Icon(Icons.add_rounded, size: 22),
-          label: const Text(
-            'Add Music',
-            style: TextStyle(fontWeight: FontWeight.w700),
+          onPressed: _segment == 'playlists'
+              ? _showCreatePlaylistDialog
+              : _pickLocalFiles,
+          icon: Icon(
+            _segment == 'playlists'
+                ? Icons.playlist_add_rounded
+                : Icons.add_rounded,
+            size: 22,
+          ),
+          label: Text(
+            _segment == 'playlists' ? 'New Playlist' : 'Add Music',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           backgroundColor: cs.primaryContainer,
           foregroundColor: cs.onPrimaryContainer,
@@ -438,6 +648,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                   const SizedBox(width: 8),
                   _LibraryPillFilter(
+                    label: 'Playlists (${allPlaylists.length})',
+                    isSelected: _segment == 'playlists',
+                    icon: Icons.playlist_play_rounded,
+                    onTap: () => setState(() {
+                      _segment = 'playlists';
+                      _selectedArtist = null;
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                  _LibraryPillFilter(
                     label: 'Hi-Res 24-Bit',
                     isSelected: _segment == 'hires',
                     icon: Icons.high_quality_rounded,
@@ -463,8 +683,130 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
 
           // ───────────────────────────────────────────────────────────────────
-          // 3. Figma Screen 5: Artists Avatars Horizontal Row (when available)
+          // Duplicate Tracks Detector Banner (1-Tap Deduplication)
           // ───────────────────────────────────────────────────────────────────
+          if (duplicateMap.isNotEmpty && _segment != 'playlists')
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: cs.tertiaryContainer.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: cs.tertiary.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.tertiaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.auto_fix_high_rounded,
+                          color: cs.onTertiaryContainer,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${duplicateMap.length} Duplicate ${duplicateMap.length == 1 ? "Track" : "Tracks"} Found',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                                color: cs.onTertiaryContainer,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Keep highest audio fidelity & deduplicate',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onTertiaryContainer
+                                    .withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () => _showDeduplicateDialog(duplicateMap),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.tertiary,
+                          foregroundColor: cs.onTertiary,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          visualDensity: VisualDensity.compact,
+                          shape: const StadiumBorder(),
+                        ),
+                        child: const Text(
+                          'Clean Up',
+                          style: TextStyle(
+                              fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          if (_segment == 'playlists') ...[
+            // ─────────────────────────────────────────────────────────────────
+            // Curated & Smart Playlists 2-Column Responsive Grid
+            // ─────────────────────────────────────────────────────────────────
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 160),
+              sliver: SliverGrid(
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  childAspectRatio: 0.74,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    if (index == 0) {
+                      return _NewPlaylistCard(
+                        onTap: _showCreatePlaylistDialog,
+                      );
+                    }
+                    final playlist = allPlaylists[index - 1];
+                    final pTracks = allTracks
+                        .where((t) => playlist.trackIds.contains(t.id))
+                        .toList();
+                    return _PlaylistGridCard(
+                      playlist: playlist,
+                      tracks: pTracks,
+                      onTap: () {
+                        PixelHaptics.tick();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                PlaylistDetailsScreen(playlist: playlist),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                  childCount: allPlaylists.length + 1,
+                ),
+              ),
+            ),
+          ] else ...[
+            // ─────────────────────────────────────────────────────────────────
+            // 3. Figma Screen 5: Artists Avatars Horizontal Row (when available)
+            // ─────────────────────────────────────────────────────────────────
           if (artists.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
@@ -732,6 +1074,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           ),
         ],
+      ],
       ),
     );
   }
@@ -939,3 +1282,155 @@ class _LibraryTrackTile extends StatelessWidget {
     );
   }
 }
+
+class _NewPlaylistCard extends StatelessWidget {
+  const _NewPlaylistCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.primary.withValues(alpha: 0.45),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                color: cs.onPrimaryContainer,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'New Playlist',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14.5,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Custom curation',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaylistGridCard extends StatelessWidget {
+  const _PlaylistGridCard({
+    required this.playlist,
+    required this.tracks,
+    required this.onTap,
+  });
+
+  final Playlist playlist;
+  final List<Track> tracks;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.35),
+            width: 1,
+          ),
+        ),
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Center(
+                child: GenerativePlaylistCover(
+                  playlist: playlist,
+                  tracks: tracks,
+                  size: double.infinity,
+                  borderRadius: 18,
+                  showBadge: true,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                playlist.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  if (playlist.isSmart) ...[
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 11,
+                      color: cs.primary,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Text(
+                      playlist.isSmart
+                          ? '${playlist.trackCount} tracks • Smart'
+                          : '${playlist.trackCount} tracks',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

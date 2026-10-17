@@ -5,6 +5,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/add_to_playlist_modal.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Artist Details Page.
@@ -360,6 +361,9 @@ class ArtistDetailsScreen extends ConsumerWidget {
                               ),
                             );
                           },
+                          onAddToPlaylist: () {
+                            showAddToPlaylistModal(context, artistTracks[i]);
+                          },
                         ),
                       ],
                     ],
@@ -443,6 +447,7 @@ class _ArtistTrackTile extends StatelessWidget {
     required this.durationText,
     required this.onTap,
     required this.onOpenDetails,
+    required this.onAddToPlaylist,
   });
 
   final Track track;
@@ -451,6 +456,7 @@ class _ArtistTrackTile extends StatelessWidget {
   final String durationText;
   final VoidCallback onTap;
   final VoidCallback onOpenDetails;
+  final VoidCallback onAddToPlaylist;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +529,14 @@ class _ArtistTrackTile extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.playlist_add_rounded, size: 22),
+              tooltip: 'Add to Playlist',
+              onPressed: () {
+                PixelHaptics.tick();
+                onAddToPlaylist();
+              },
             ),
             IconButton(
               icon: const Icon(Icons.info_outline_rounded, size: 20),

@@ -9,6 +9,7 @@ import '../widgets/material_you_album_cover.dart';
 import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
+import '../widgets/add_to_playlist_modal.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -159,6 +160,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.playlist_add_rounded),
+                  title: const Text('Add to Playlist',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Add to custom or new playlist'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showAddToPlaylistModal(context, track);
                   },
                 ),
                 ListTile(

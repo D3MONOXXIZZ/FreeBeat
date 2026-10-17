@@ -1,14 +1,16 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../models/cloud_account.dart';
+import '../models/playlist.dart';
 import '../models/track.dart';
 
 /// Unified SQLite catalog storing connected cloud account metadata, indexed tracks,
-/// offline pinned files, and custom user DSP presets.
+/// offline pinned files, and custom user playlists.
 class LibraryDatabase {
   Database? _db;
   final List<CloudAccount> _memoryAccounts = [];
   final List<Track> _memoryTracks = [];
+  final List<Playlist> _memoryPlaylists = [];
 
   bool _initAttempted = false;
 
@@ -19,7 +21,7 @@ class LibraryDatabase {
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
       _db = await openDatabase(
         fullPath,
-        version: 1,
+        version: 2,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE cloud_accounts (
@@ -60,6 +62,38 @@ class LibraryDatabase {
               playCount INTEGER DEFAULT 0
             )
           ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS playlists (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              description TEXT,
+              trackIdsJson TEXT,
+              createdAt INTEGER NOT NULL,
+              updatedAt INTEGER NOT NULL,
+              isSmart INTEGER DEFAULT 0,
+              smartType TEXT,
+              customArtworkUrl TEXT,
+              colorSeedValue INTEGER DEFAULT 6770852
+            )
+          ''');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS playlists (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT,
+                trackIdsJson TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                isSmart INTEGER DEFAULT 0,
+                smartType TEXT,
+                customArtworkUrl TEXT,
+                colorSeedValue INTEGER DEFAULT 6770852
+              )
+            ''');
+          }
         },
       );
     } catch (_) {
@@ -133,4 +167,49 @@ class LibraryDatabase {
       await batch.commit(noResult: true);
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 2: Playlist Operations
+  // ───────────────────────────────────────────────────────────────────────────
+
+  Future<List<Playlist>> loadPlaylists() async {
+    await _ensureInitialized();
+    if (_db == null) return List.unmodifiable(_memoryPlaylists);
+    final rows = await _db!.query('playlists', orderBy: 'updatedAt DESC');
+    return rows.map(Playlist.fromMap).toList();
+  }
+
+  Future<void> upsertPlaylist(Playlist playlist) async {
+    await _ensureInitialized();
+    _memoryPlaylists.removeWhere((p) => p.id == playlist.id);
+    _memoryPlaylists.insert(0, playlist);
+    if (_db != null) {
+      await _db!.insert(
+        'playlists',
+        playlist.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    await _ensureInitialized();
+    _memoryPlaylists.removeWhere((p) => p.id == playlistId);
+    if (_db != null) {
+      await _db!.delete('playlists', where: 'id = ?', whereArgs: [playlistId]);
+    }
+  }
+
+  Future<void> deleteTracks(List<String> trackIds) async {
+    await _ensureInitialized();
+    _memoryTracks.removeWhere((t) => trackIds.contains(t.id));
+    if (_db != null) {
+      final batch = _db!.batch();
+      for (final id in trackIds) {
+        batch.delete('tracks', where: 'id = ?', whereArgs: [id]);
+      }
+      await batch.commit(noResult: true);
+    }
+  }
 }
+

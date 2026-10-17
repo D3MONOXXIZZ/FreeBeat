@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import '../core/models/audio_quality_settings.dart';
 import '../core/models/cloud_account.dart';
+import '../core/models/playlist.dart';
 import '../core/models/poweramp_dsp_state.dart';
 import '../core/models/track.dart';
 import '../core/storage/library_database.dart';
@@ -281,6 +282,14 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       unawaited(cacheSvc.cacheTrack(target!, onComplete: (cachedTrack) {
         updateTrack(cachedTrack);
       }));
+    }
+  }
+
+  Future<void> removeTracks(List<String> trackIds) async {
+    await PixelHaptics.tick();
+    state = state.where((t) => !trackIds.contains(t.id)).toList();
+    if (_db != null) {
+      await _db.deleteTracks(trackIds);
     }
   }
 }
@@ -1509,4 +1518,276 @@ final importProgressProvider =
     StateNotifierProvider<ImportProgressNotifier, ImportProgressState>(
   (ref) => ImportProgressNotifier(),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Playlist Providers & Smart Playlist Engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
+  PlaylistsNotifier(this._db) : super([]) {
+    _loadPlaylists();
+  }
+
+  final LibraryDatabase? _db;
+
+  Future<void> _loadPlaylists() async {
+    if (_db != null) {
+      final loaded = await _db.loadPlaylists();
+      state = loaded;
+    }
+  }
+
+  Future<Playlist> createPlaylist(
+    String title, {
+    String description = '',
+    List<String> initialTrackIds = const [],
+  }) async {
+    await PixelHaptics.hifiConfirm();
+    final now = DateTime.now();
+    // Derives an expressive seed from the title string hash
+    final colorSeed = 0xFF000000 | (title.hashCode & 0x00FFFFFF);
+    final newPlaylist = Playlist(
+      id: 'playlist_${now.millisecondsSinceEpoch}_${Random().nextInt(9999)}',
+      title: title.trim().isEmpty ? 'Untitled Playlist' : title.trim(),
+      description: description.trim(),
+      trackIds: List.from(initialTrackIds),
+      createdAt: now,
+      updatedAt: now,
+      colorSeedValue: colorSeed,
+    );
+    state = [newPlaylist, ...state];
+    if (_db != null) {
+      await _db.upsertPlaylist(newPlaylist);
+    }
+    return newPlaylist;
+  }
+
+  Future<void> renamePlaylist(
+    String playlistId,
+    String newTitle, {
+    String? description,
+  }) async {
+    await PixelHaptics.tick();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final updated = p.copyWith(
+          title: newTitle.trim().isEmpty ? p.title : newTitle.trim(),
+          description: description ?? p.description,
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    await PixelHaptics.tick();
+    state = state.where((p) => p.id != playlistId).toList();
+    if (_db != null) {
+      await _db.deletePlaylist(playlistId);
+    }
+  }
+
+  Future<bool> toggleTrackInPlaylist(String playlistId, String trackId) async {
+    final playlist = state.firstWhere(
+      (p) => p.id == playlistId,
+      orElse: () => throw StateError('Playlist not found'),
+    );
+    final isPresent = playlist.trackIds.contains(trackId);
+    if (isPresent) {
+      await removeTrackFromPlaylist(playlistId, trackId);
+      return false;
+    } else {
+      await addTrackToPlaylist(playlistId, trackId);
+      return true;
+    }
+  }
+
+  Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
+    await PixelHaptics.tick();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        if (!p.trackIds.contains(trackId)) {
+          final updated = p.copyWith(
+            trackIds: [...p.trackIds, trackId],
+            updatedAt: DateTime.now(),
+          );
+          if (_db != null) {
+            _db.upsertPlaylist(updated);
+          }
+          return updated;
+        }
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> removeTrackFromPlaylist(
+    String playlistId,
+    String trackId,
+  ) async {
+    await PixelHaptics.tick();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final updated = p.copyWith(
+          trackIds: p.trackIds.where((id) => id != trackId).toList(),
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> reorderTracks(
+    String playlistId,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    await PixelHaptics.tick();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final list = List<String>.from(p.trackIds);
+        if (oldIndex < newIndex) {
+          newIndex -= 1;
+        }
+        final item = list.removeAt(oldIndex);
+        list.insert(newIndex, item);
+        final updated = p.copyWith(
+          trackIds: list,
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  String exportPlaylistM3u8(Playlist playlist, List<Track> allTracks) {
+    final trackMap = {for (final t in allTracks) t.id: t};
+    final buffer = StringBuffer();
+    buffer.writeln('#EXTM3U');
+    buffer.writeln('#PLAYLIST:${playlist.title}');
+    for (final id in playlist.trackIds) {
+      final track = trackMap[id];
+      if (track != null) {
+        final seconds = (track.durationMs / 1000).round();
+        buffer.writeln('#EXTINF:$seconds,${track.artist} - ${track.title}');
+        buffer.writeln(track.streamUrl);
+      }
+    }
+    return buffer.toString();
+  }
+}
+
+final playlistsProvider =
+    StateNotifierProvider<PlaylistsNotifier, List<Playlist>>((ref) {
+  final db = ref.watch(libraryDatabaseProvider);
+  return PlaylistsNotifier(db);
+});
+
+/// Smart dynamic playlists calculated on-the-fly from library track metadata
+final smartPlaylistsProvider = Provider<List<Playlist>>((ref) {
+  final allTracks = ref.watch(tracksCatalogProvider);
+  final customPlaylists = ref.watch(playlistsProvider);
+
+  final hiresTracks =
+      allTracks.where((t) => t.isHiRes).map((t) => t.id).toList();
+  final offlineTracks =
+      allTracks.where((t) => t.isPinnedOffline).map((t) => t.id).toList();
+  final favTracks =
+      allTracks.where((t) => t.isFavorite).map((t) => t.id).toList();
+
+  final sortedByPlays = List<Track>.from(allTracks)
+    ..sort((a, b) => b.playCount.compareTo(a.playCount));
+  final heavyRotationIds = sortedByPlays.take(50).map((t) => t.id).toList();
+
+  final recentlyAddedIds =
+      allTracks.reversed.take(50).map((t) => t.id).toList();
+
+  final smarts = [
+    Playlist(
+      id: 'smart_hires',
+      title: 'Hi-Res Master Vault',
+      description: '24-Bit / 96kHz+ studio master resolution',
+      trackIds: hiresTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'hires',
+      colorSeedValue: 0xFF006782,
+    ),
+    Playlist(
+      id: 'smart_offline',
+      title: 'Offline Vault',
+      description: 'Zero-data offline cached & stored music',
+      trackIds: offlineTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'offline',
+      colorSeedValue: 0xFF006E1C,
+    ),
+    Playlist(
+      id: 'smart_favorites',
+      title: 'Favorite Jams',
+      description: 'Tracks marked with heart',
+      trackIds: favTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'favorites',
+      colorSeedValue: 0xFFB3261E,
+    ),
+    Playlist(
+      id: 'smart_heavy_rotation',
+      title: 'Heavy Rotation',
+      description: 'Your top 50 most frequently played tracks',
+      trackIds: heavyRotationIds,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'heavy_rotation',
+      colorSeedValue: 0xFF984061,
+    ),
+    Playlist(
+      id: 'smart_recently_added',
+      title: 'Recently Added',
+      description: 'The latest tracks ingested from clouds & storage',
+      trackIds: recentlyAddedIds,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'recently_added',
+      colorSeedValue: 0xFF7D5260,
+    ),
+  ];
+
+  return [...customPlaylists, ...smarts];
+});
+
+/// Grouping of detected duplicate tracks (same title + artist case-insensitive)
+final duplicateTracksProvider = Provider<Map<String, List<Track>>>((ref) {
+  final allTracks = ref.watch(tracksCatalogProvider);
+  final map = <String, List<Track>>{};
+  for (final t in allTracks) {
+    final key =
+        '${t.title.trim().toLowerCase()}__${t.artist.trim().toLowerCase()}';
+    map.putIfAbsent(key, () => []).add(t);
+  }
+  // Retain only groups with more than 1 track
+  map.removeWhere((key, list) => list.length <= 1);
+  return map;
+});
+
 
