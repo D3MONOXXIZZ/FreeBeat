@@ -1,0 +1,499 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../core/models/track.dart';
+
+/// Result of an imported playlist analysis.
+class PlaylistImportResult {
+  const PlaylistImportResult({
+    required this.title,
+    this.description = '',
+    required this.matchedTracks,
+    required this.unmatchedTrackNames,
+    required this.totalParsed,
+    this.sourceType = 'text',
+  });
+
+  final String title;
+  final String description;
+  final List<Track> matchedTracks;
+  final List<String> unmatchedTrackNames;
+  final int totalParsed;
+  final String sourceType; // 'spotify', 'apple', 'm3u', 'text', 'csv'
+
+  int get matchedCount => matchedTracks.length;
+  int get unmatchedCount => unmatchedTrackNames.length;
+  double get matchPercentage =>
+      totalParsed > 0 ? (matchedCount / totalParsed) * 100 : 0.0;
+}
+
+/// Service that parses Spotify links, Apple Music links, CSV/text track lists,
+/// and M3U/M3U8 files, matching entries against the user's FreeBeat library.
+class PlaylistImportService {
+  const PlaylistImportService();
+
+  static String _normalize(String s) {
+    return s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), '') // remove parenthesized details
+        .replaceAll(RegExp(r'[^\w\s]'), '') // remove punctuation
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  /// Finds the best matching track in the user's library.
+  static Track? findBestMatch(
+    String queryTitle,
+    String queryArtist,
+    List<Track> libraryTracks,
+  ) {
+    final cleanQTitle = _normalize(queryTitle);
+    final cleanQArtist = _normalize(queryArtist);
+    if (cleanQTitle.isEmpty) return null;
+
+    // 1. Strict match on normalized title & artist
+    for (final t in libraryTracks) {
+      final tTitle = _normalize(t.title);
+      final tArtist = _normalize(t.artist);
+      if (tTitle == cleanQTitle &&
+          cleanQArtist.isNotEmpty &&
+          tArtist == cleanQArtist) {
+        return t;
+      }
+    }
+
+    // 2. Title matches and artist overlaps
+    for (final t in libraryTracks) {
+      final tTitle = _normalize(t.title);
+      final tArtist = _normalize(t.artist);
+      if ((tTitle == cleanQTitle ||
+              tTitle.contains(cleanQTitle) ||
+              cleanQTitle.contains(tTitle)) &&
+          (cleanQArtist.isEmpty ||
+              tArtist.contains(cleanQArtist) ||
+              cleanQArtist.contains(tArtist))) {
+        return t;
+      }
+    }
+
+    // 3. Exact title match
+    for (final t in libraryTracks) {
+      final tTitle = _normalize(t.title);
+      if (tTitle == cleanQTitle) {
+        return t;
+      }
+    }
+
+    // 4. Substring title match
+    for (final t in libraryTracks) {
+      final tTitle = _normalize(t.title);
+      if (tTitle.length > 3 &&
+          cleanQTitle.length > 3 &&
+          (tTitle.contains(cleanQTitle) || cleanQTitle.contains(tTitle))) {
+        return t;
+      }
+    }
+
+    return null;
+  }
+
+  /// Parses M3U or M3U8 string content and matches against library tracks.
+  PlaylistImportResult parseM3u(String m3uContent, List<Track> libraryTracks) {
+    final lines = const LineSplitter().convert(m3uContent);
+    String title = 'Imported M3U Playlist';
+    final List<_RawTrackEntry> entries = [];
+
+    String? pendingTitle;
+    String? pendingArtist;
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      if (trimmed.startsWith('#PLAYLIST:')) {
+        title = trimmed.substring('#PLAYLIST:'.length).trim();
+      } else if (trimmed.startsWith('#EXTINF:')) {
+        // e.g. #EXTINF:244,Artist Name - Song Title
+        final commaIdx = trimmed.indexOf(',');
+        if (commaIdx != -1) {
+          final info = trimmed.substring(commaIdx + 1).trim();
+          final parts = info.split(' - ');
+          if (parts.length >= 2) {
+            pendingArtist = parts[0].trim();
+            pendingTitle = parts.sublist(1).join(' - ').trim();
+          } else {
+            pendingTitle = info;
+            pendingArtist = '';
+          }
+        }
+      } else if (!trimmed.startsWith('#')) {
+        // File path or stream URL
+        if (pendingTitle != null) {
+          entries.add(_RawTrackEntry(
+            title: pendingTitle,
+            artist: pendingArtist ?? '',
+            urlOrPath: trimmed,
+          ));
+          pendingTitle = null;
+          pendingArtist = null;
+        } else {
+          // Extract filename from path/url
+          final uri = Uri.tryParse(trimmed);
+          final seg = uri != null && uri.pathSegments.isNotEmpty
+              ? uri.pathSegments.last
+              : trimmed.split(RegExp(r'[\\/]')).last;
+          final dot = seg.lastIndexOf('.');
+          final baseName = dot != -1 ? seg.substring(0, dot) : seg;
+          final parts = baseName.split(' - ');
+          if (parts.length >= 2) {
+            entries.add(_RawTrackEntry(
+              artist: parts[0].trim(),
+              title: parts.sublist(1).join(' - ').trim(),
+              urlOrPath: trimmed,
+            ));
+          } else {
+            entries.add(_RawTrackEntry(
+              artist: '',
+              title: baseName,
+              urlOrPath: trimmed,
+            ));
+          }
+        }
+      }
+    }
+
+    return _matchEntries(
+      entries: entries,
+      title: title,
+      description: 'Imported from .m3u8 playlist file',
+      libraryTracks: libraryTracks,
+      sourceType: 'm3u',
+    );
+  }
+
+  /// Parses plain text, CSV, or line-by-line track listings.
+  PlaylistImportResult parseTextOrCsv(
+    String rawText,
+    List<Track> libraryTracks, {
+    String? defaultTitle,
+  }) {
+    final lines = const LineSplitter().convert(rawText);
+    final List<_RawTrackEntry> entries = [];
+    String playlistTitle = defaultTitle ?? 'Imported Tracklist';
+
+    for (var line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      // Ignore common CSV headers
+      final lower = trimmed.toLowerCase();
+      if (lower.startsWith('title,') ||
+          lower.startsWith('track,') ||
+          lower.startsWith('artist,') ||
+          lower.startsWith('track name,')) {
+        continue;
+      }
+
+      // 1. Check for CSV format: title, artist OR artist, title
+      if (trimmed.contains(',')) {
+        final cols = trimmed.split(',').map((c) => c.trim().replaceAll('"', '')).toList();
+        if (cols.length >= 2) {
+          entries.add(_RawTrackEntry(
+            artist: cols[0],
+            title: cols[1],
+          ));
+          continue;
+        }
+      }
+
+      // 2. Check for "Artist - Title" or "Title - Artist"
+      if (trimmed.contains(' - ')) {
+        final parts = trimmed.split(' - ');
+        entries.add(_RawTrackEntry(
+          artist: parts[0].trim(),
+          title: parts.sublist(1).join(' - ').trim(),
+        ));
+        continue;
+      }
+
+      // 3. Fallback: Entire line as Title
+      entries.add(_RawTrackEntry(
+        artist: '',
+        title: trimmed,
+      ));
+    }
+
+    return _matchEntries(
+      entries: entries,
+      title: playlistTitle,
+      description: 'Imported from text tracklist',
+      libraryTracks: libraryTracks,
+      sourceType: 'text',
+    );
+  }
+
+  /// Fetches and parses a public Spotify or Apple Music playlist URL.
+  Future<PlaylistImportResult> importFromUrl(
+    String url,
+    List<Track> libraryTracks,
+  ) async {
+    final cleanUrl = url.trim();
+    final uri = Uri.tryParse(cleanUrl);
+    if (uri == null || (!uri.isScheme('http') && !uri.isScheme('https'))) {
+      throw const FormatException('Invalid URL. Please enter a valid HTTP or HTTPS playlist link.');
+    }
+
+    final isSpotify = uri.host.contains('spotify.com');
+    final isApple = uri.host.contains('apple.com');
+
+    if (!isSpotify && !isApple) {
+      throw const FormatException('Unsupported URL. Only Spotify and Apple Music playlist links are supported.');
+    }
+
+    try {
+      final response = await http.get(
+        uri,
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      ).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode >= 400) {
+        throw HttpException(
+            'Failed to fetch playlist (HTTP ${response.statusCode}). Please ensure the playlist is public.');
+      }
+
+      final html = response.body;
+      if (isSpotify) {
+        return _parseSpotifyHtml(html, uri, libraryTracks);
+      } else {
+        return _parseAppleMusicHtml(html, uri, libraryTracks);
+      }
+    } catch (e) {
+      if (e is FormatException || e is HttpException) rethrow;
+      throw Exception('Could not connect to playlist service: $e');
+    }
+  }
+
+  PlaylistImportResult _parseSpotifyHtml(
+    String html,
+    Uri uri,
+    List<Track> libraryTracks,
+  ) {
+    // 1. Extract title from OpenGraph or Title tag
+    String title = 'Spotify Playlist';
+    final ogTitleMatch = RegExp(r'<meta\s+property=["' "'" r']og:title["' "'" r']\s+content=["' "'" r'](.*?)["' "'" r']', caseSensitive: false).firstMatch(html);
+    if (ogTitleMatch != null && ogTitleMatch.group(1) != null) {
+      title = _unescapeHtml(ogTitleMatch.group(1)!);
+    } else {
+      final titleTag = RegExp(r'<title>(.*?)</title>', caseSensitive: false).firstMatch(html);
+      if (titleTag != null && titleTag.group(1) != null) {
+        title = _unescapeHtml(titleTag.group(1)!).replaceAll(' | Spotify', '').trim();
+      }
+    }
+
+    // 2. Extract description
+    String description = '';
+    final ogDescMatch = RegExp(r'<meta\s+property=["' "'" r']og:description["' "'" r']\s+content=["' "'" r'](.*?)["' "'" r']', caseSensitive: false).firstMatch(html);
+    if (ogDescMatch != null && ogDescMatch.group(1) != null) {
+      description = _unescapeHtml(ogDescMatch.group(1)!);
+    }
+
+    final List<_RawTrackEntry> entries = [];
+
+    // 3. Try parsing schema.org JSON-LD
+    final jsonLdMatches = RegExp(r'<script\s+type=["' "'" r']application/ld\+json["' "'" r']>(.*?)</script>', dotAll: true, caseSensitive: false).allMatches(html);
+    for (final match in jsonLdMatches) {
+      final jsonStr = match.group(1);
+      if (jsonStr == null) continue;
+      try {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['name'] != null && title == 'Spotify Playlist') {
+            title = decoded['name'].toString();
+          }
+          final trackList = decoded['track'] ?? decoded['tracks'];
+          if (trackList is List) {
+            for (final t in trackList) {
+              if (t is Map) {
+                final trackName = t['name']?.toString() ?? '';
+                String artistName = '';
+                final byArtist = t['byArtist'];
+                if (byArtist is List && byArtist.isNotEmpty) {
+                  artistName = byArtist.first['name']?.toString() ?? '';
+                } else if (byArtist is Map) {
+                  artistName = byArtist['name']?.toString() ?? '';
+                }
+                if (trackName.isNotEmpty) {
+                  entries.add(_RawTrackEntry(title: trackName, artist: artistName));
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 4. Fallback: Parse Spotify metadata music:song links or track names
+    if (entries.isEmpty) {
+      // Regex for track names inside Spotify HTML structures
+      final trackMatches = RegExp(r'data-testid=["' "'" r']tracklist-row["' "'" r'].*?<div dir=["' "'" r']auto["' "'" r']>(.*?)</div>', dotAll: true).allMatches(html);
+      for (final m in trackMatches) {
+        final name = _unescapeHtml(m.group(1) ?? '').replaceAll(RegExp(r'<[^>]*>'), '').trim();
+        if (name.isNotEmpty) {
+          entries.add(_RawTrackEntry(title: name, artist: ''));
+        }
+      }
+    }
+
+    return _matchEntries(
+      entries: entries,
+      title: title,
+      description: description.isNotEmpty ? description : 'Imported from Spotify',
+      libraryTracks: libraryTracks,
+      sourceType: 'spotify',
+    );
+  }
+
+  PlaylistImportResult _parseAppleMusicHtml(
+    String html,
+    Uri uri,
+    List<Track> libraryTracks,
+  ) {
+    String title = 'Apple Music Playlist';
+    final ogTitleMatch = RegExp(r'<meta\s+property=["' "'" r']og:title["' "'" r']\s+content=["' "'" r'](.*?)["' "'" r']', caseSensitive: false).firstMatch(html);
+    if (ogTitleMatch != null && ogTitleMatch.group(1) != null) {
+      title = _unescapeHtml(ogTitleMatch.group(1)!).replaceAll(' on Apple Music', '').trim();
+    }
+
+    String description = '';
+    final ogDescMatch = RegExp(r'<meta\s+property=["' "'" r']og:description["' "'" r']\s+content=["' "'" r'](.*?)["' "'" r']', caseSensitive: false).firstMatch(html);
+    if (ogDescMatch != null && ogDescMatch.group(1) != null) {
+      description = _unescapeHtml(ogDescMatch.group(1)!);
+    }
+
+    final List<_RawTrackEntry> entries = [];
+
+    // Parse JSON-LD or meta tags
+    final jsonLdMatches = RegExp(r'<script\s+type=["' "'" r']application/ld\+json["' "'" r']>(.*?)</script>', dotAll: true, caseSensitive: false).allMatches(html);
+    for (final match in jsonLdMatches) {
+      final jsonStr = match.group(1);
+      if (jsonStr == null) continue;
+      try {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map<String, dynamic>) {
+          final trackList = decoded['track'] ?? decoded['tracks'];
+          if (trackList is List) {
+            for (final t in trackList) {
+              if (t is Map) {
+                final trackName = t['name']?.toString() ?? '';
+                String artistName = '';
+                final byArtist = t['byArtist'];
+                if (byArtist is List && byArtist.isNotEmpty) {
+                  artistName = byArtist.first['name']?.toString() ?? '';
+                } else if (byArtist is Map) {
+                  artistName = byArtist['name']?.toString() ?? '';
+                }
+                if (trackName.isNotEmpty) {
+                  entries.add(_RawTrackEntry(title: trackName, artist: artistName));
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return _matchEntries(
+      entries: entries,
+      title: title,
+      description: description.isNotEmpty ? description : 'Imported from Apple Music',
+      libraryTracks: libraryTracks,
+      sourceType: 'apple',
+    );
+  }
+
+  PlaylistImportResult _matchEntries({
+    required List<_RawTrackEntry> entries,
+    required String title,
+    required String description,
+    required List<Track> libraryTracks,
+    required String sourceType,
+  }) {
+    final List<Track> matched = [];
+    final List<String> unmatched = [];
+    final Set<String> matchedIds = {};
+
+    for (final entry in entries) {
+      Track? best;
+
+      // First check path/url if present
+      if (entry.urlOrPath != null && entry.urlOrPath!.isNotEmpty) {
+        for (final t in libraryTracks) {
+          if (t.streamUrl == entry.urlOrPath ||
+              t.remotePathOrId == entry.urlOrPath ||
+              t.streamUrl.endsWith(entry.urlOrPath!)) {
+            best = t;
+            break;
+          }
+        }
+      }
+
+      // Otherwise match by title + artist
+      best ??= findBestMatch(entry.title, entry.artist, libraryTracks);
+
+      if (best != null) {
+        if (!matchedIds.contains(best.id)) {
+          matched.add(best);
+          matchedIds.add(best.id);
+        }
+      } else {
+        final display = entry.artist.isNotEmpty
+            ? '${entry.artist} - ${entry.title}'
+            : entry.title;
+        if (!unmatched.contains(display)) {
+          unmatched.add(display);
+        }
+      }
+    }
+
+    return PlaylistImportResult(
+      title: title,
+      description: description,
+      matchedTracks: matched,
+      unmatchedTrackNames: unmatched,
+      totalParsed: entries.length,
+      sourceType: sourceType,
+    );
+  }
+
+  static String _unescapeHtml(String input) {
+    return input
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'");
+  }
+}
+
+class _RawTrackEntry {
+  const _RawTrackEntry({
+    required this.title,
+    required this.artist,
+    this.urlOrPath,
+  });
+
+  final String title;
+  final String artist;
+  final String? urlOrPath;
+}
+
+class HttpException implements Exception {
+  final String message;
+  const HttpException(this.message);
+  @override
+  String toString() => message;
+}

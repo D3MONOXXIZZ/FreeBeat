@@ -1920,6 +1920,36 @@ final smartPlaylistsProvider = Provider<List<Playlist>>((ref) {
   final recentlyAddedIds =
       allTracks.reversed.take(50).map((t) => t.id).toList();
 
+  // Mood & Energy Auto-Clustering
+  final energyKeywords = RegExp(
+    r'\b(energy|workout|rock|dance|beat|fast|heavy|metal|power|run|remix|electro|synth|fire|party|club|rave|drop)\b',
+    caseSensitive: false,
+  );
+  final chillKeywords = RegExp(
+    r'\b(chill|ambient|lofi|lo-fi|slow|relax|sleep|calm|quiet|acoustic|piano|cloud|breeze|sea|rain|soft|dream|haze)\b',
+    caseSensitive: false,
+  );
+  final focusKeywords = RegExp(
+    r'\b(focus|study|instrumental|soundtrack|ost|score|theme|wave|synthwave|space|orbit|deep|ambient|work)\b',
+    caseSensitive: false,
+  );
+
+  final energyTracks = allTracks.where((t) {
+    final text = '${t.title} ${t.artist} ${t.album}';
+    return energyKeywords.hasMatch(text) || (t.isHiRes && t.playCount > 5);
+  }).map((t) => t.id).toList();
+
+  final chillTracks = allTracks.where((t) {
+    final text = '${t.title} ${t.artist} ${t.album}';
+    return chillKeywords.hasMatch(text) || t.durationMs > 270000;
+  }).map((t) => t.id).toList();
+
+  final focusTracks = allTracks.where((t) {
+    final text = '${t.title} ${t.artist} ${t.album}';
+    return focusKeywords.hasMatch(text) ||
+        t.title.toLowerCase().contains('instrumental');
+  }).map((t) => t.id).toList();
+
   final smarts = [
     Playlist(
       id: 'smart_hires',
@@ -1975,6 +2005,39 @@ final smartPlaylistsProvider = Provider<List<Playlist>>((ref) {
       isSmart: true,
       smartType: 'recently_added',
       colorSeedValue: 0xFF7D5260,
+    ),
+    Playlist(
+      id: 'smart_energy',
+      title: 'High Energy & Workout',
+      description: 'Upbeat tempos, hard-hitting transients & dynamic rhythm',
+      trackIds: energyTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'energy',
+      colorSeedValue: 0xFFE25507,
+    ),
+    Playlist(
+      id: 'smart_chill',
+      title: 'Chill & Ambient Vibe',
+      description: 'Mellow acoustic warmth, relaxed tempos & soothing atmosphere',
+      trackIds: chillTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'chill',
+      colorSeedValue: 0xFF006874,
+    ),
+    Playlist(
+      id: 'smart_focus',
+      title: 'Late Night & Focus',
+      description: 'Deep synthwave, soundtracks & uninterrupted instrumental flow',
+      trackIds: focusTracks,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime.now(),
+      isSmart: true,
+      smartType: 'focus',
+      colorSeedValue: 0xFF5B45BA,
     ),
   ];
 

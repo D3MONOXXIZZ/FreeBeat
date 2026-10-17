@@ -14,6 +14,7 @@ import '../../core/models/playlist.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
+import '../widgets/playlist_import_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
@@ -800,7 +801,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         onTap: _showCreatePlaylistDialog,
                       );
                     }
-                    final playlist = allPlaylists[index - 1];
+                    if (index == 1) {
+                      return _ImportPlaylistCard(
+                        onTap: () => showPlaylistImportModal(context),
+                      );
+                    }
+                    final playlist = allPlaylists[index - 2];
                     final pTracks = allTracks
                         .where((t) => playlist.trackIds.contains(t.id))
                         .toList();
@@ -818,7 +824,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       },
                     );
                   },
-                  childCount: allPlaylists.length + 1,
+                  childCount: allPlaylists.length + 2,
                 ),
               ),
             ),
@@ -1399,6 +1405,66 @@ class _NewPlaylistCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Custom curation',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImportPlaylistCard extends StatelessWidget {
+  const _ImportPlaylistCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.secondary.withValues(alpha: 0.45),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: cs.secondaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.file_download_outlined,
+                color: cs.onSecondaryContainer,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Import Playlist',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14.5,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Spotify, Apple, .M3U',
               style: TextStyle(
                 fontSize: 11.5,
                 color: cs.onSurfaceVariant,

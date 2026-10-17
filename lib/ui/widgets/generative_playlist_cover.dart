@@ -220,6 +220,12 @@ class GenerativePlaylistCover extends StatelessWidget {
         return Icons.local_fire_department_rounded;
       case 'recently_added':
         return Icons.schedule_rounded;
+      case 'energy':
+        return Icons.bolt_rounded;
+      case 'chill':
+        return Icons.spa_rounded;
+      case 'focus':
+        return Icons.psychology_rounded;
       default:
         return Icons.queue_music_rounded;
     }

@@ -7,6 +7,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/playlist_qr_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import 'track_details_screen.dart';
 
@@ -349,6 +350,15 @@ class _PlaylistDetailsScreenState
                   tooltip: 'Edit Playlist',
                   onPressed: () => _showRenameDialog(livePlaylist),
                 ),
+              IconButton(
+                icon: const Icon(Icons.qr_code_2_rounded),
+                tooltip: 'Share & QR Code',
+                onPressed: () => showPlaylistQrModal(
+                  context,
+                  livePlaylist,
+                  playlistTracks,
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.file_download_outlined),
                 tooltip: 'Export .M3U8',
