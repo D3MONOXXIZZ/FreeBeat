@@ -135,17 +135,19 @@ class _SquigglySliderState extends State<SquigglySlider>
                 _amplitudeController,
               ]),
               builder: (context, _) {
-                return CustomPaint(
-                  painter: _SquigglySliderPainter(
-                    progress: effectiveVal,
-                    bufferedProgress: widget.bufferedValue.clamp(0.0, 1.0),
-                    phase: _phaseController.value * 2 * math.pi,
-                    amplitude:
-                        widget.waveAmplitude * _amplitudeController.value,
-                    wavelength: widget.wavelength,
-                    activeColor: activeColor,
-                    inactiveColor: inactiveColor,
-                    isDragging: _isDragging,
+                return RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _SquigglySliderPainter(
+                      progress: effectiveVal,
+                      bufferedProgress: widget.bufferedValue.clamp(0.0, 1.0),
+                      phase: _phaseController.value * 2 * math.pi,
+                      amplitude:
+                          widget.waveAmplitude * _amplitudeController.value,
+                      wavelength: widget.wavelength,
+                      activeColor: activeColor,
+                      inactiveColor: inactiveColor,
+                      isDragging: _isDragging,
+                    ),
                   ),
                 );
               },

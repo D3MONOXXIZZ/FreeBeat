@@ -18,6 +18,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
     this.showSourceBadge = true,
     this.showPlayButton = false,
     this.isPlaying = false,
+    this.showPlayingAnimation = true,
     this.onPlayTap,
   });
 
@@ -28,6 +29,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
   final bool showSourceBadge;
   final bool showPlayButton;
   final bool isPlaying;
+  final bool showPlayingAnimation;
   final VoidCallback? onPlayTap;
 
   @override
@@ -155,7 +157,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
                 ),
 
               // 5. Centered Playing Animation on Album Art (without dark shadow)
-              if (isPlaying)
+              if (isPlaying && showPlayingAnimation)
                 Center(
                   child: RepaintBoundary(
                     child: PixelPlayingEqualizerAnimation(

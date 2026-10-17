@@ -956,7 +956,9 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     required this.colorScheme,
     required this.gridColor,
     List<double>? precomputedDb,
-  }) : precomputedDb = precomputedDb ?? computeFrequencyResponses(dsp);
+  })  : precomputedDb = precomputedDb ?? computeFrequencyResponses(dsp),
+        barColors = _computeBarColors(colorScheme),
+        gainMultipliers = _computeGainMultipliers(precomputedDb ?? computeFrequencyResponses(dsp));
 
   static const int barCount = 24;
 
@@ -970,6 +972,25 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     }, growable: false);
   }
 
+  static List<Color> _computeBarColors(ColorScheme cs) {
+    return List<Color>.generate(barCount, (i) {
+      final t = i / (barCount - 1);
+      if (t < 0.33) {
+        return Color.lerp(cs.primary, cs.tertiary, t / 0.33)!;
+      } else if (t < 0.66) {
+        return Color.lerp(cs.tertiary, cs.secondary, (t - 0.33) / 0.33)!;
+      } else {
+        return Color.lerp(cs.secondary, cs.primaryContainer, (t - 0.66) / 0.34)!;
+      }
+    }, growable: false);
+  }
+
+  static List<double> _computeGainMultipliers(List<double> dbList) {
+    return List<double>.generate(barCount, (i) {
+      return math.pow(10.0, dbList[i] / 35.0).toDouble();
+    }, growable: false);
+  }
+
   final PowerampDspState dsp;
   final bool isPlaying;
   final bool isAnimated;
@@ -977,27 +998,11 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
   final ColorScheme colorScheme;
   final Color gridColor;
   final List<double> precomputedDb;
+  final List<Color> barColors;
+  final List<double> gainMultipliers;
 
-  Color _getBarColor(double t) {
-    // Follow Material You dynamic color scheme across the frequency spectrum:
-    // Bass (0.0 - 0.33): Primary -> Tertiary
-    // Mids (0.33 - 0.66): Tertiary -> Secondary
-    // Highs (0.66 - 1.0): Secondary -> PrimaryContainer
-    if (t < 0.33) {
-      final ratio = t / 0.33;
-      return Color.lerp(colorScheme.primary, colorScheme.tertiary, ratio)!;
-    } else if (t < 0.66) {
-      final ratio = (t - 0.33) / 0.33;
-      return Color.lerp(colorScheme.tertiary, colorScheme.secondary, ratio)!;
-    } else {
-      final ratio = (t - 0.66) / 0.34;
-      return Color.lerp(
-        colorScheme.secondary,
-        colorScheme.primaryContainer,
-        ratio,
-      )!;
-    }
-  }
+  static final Paint _barPaint = Paint();
+  static final Paint _zeroPaint = Paint()..strokeWidth = 1.0;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1006,60 +1011,35 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     final barWidth = (totalWidth - (barSpacing * (barCount - 1))) / barCount;
     final cornerRadius = Radius.circular(barWidth / 2);
 
-    // Draw subtle 0 dB reference line
+    // Subtle 0 dB reference line
     final midY = size.height * 0.55;
-    final zeroPaint = Paint()
-      ..color = gridColor
-      ..strokeWidth = 1.0;
-    canvas.drawLine(Offset(0, midY), Offset(size.width, midY), zeroPaint);
+    _zeroPaint.color = gridColor;
+    canvas.drawLine(Offset(0, midY), Offset(size.width, midY), _zeroPaint);
 
     final waveVal = animVal * 2.0 * math.pi;
+    final bassWeight = 1.0 + (dsp.bassGainDb > 0 ? (dsp.bassGainDb / 12.0) : 0.0);
+    final trebleWeight = 1.0 + (dsp.trebleGainDb > 0 ? (dsp.trebleGainDb / 12.0) : 0.0);
 
     for (int i = 0; i < barCount; i++) {
       final t = i / (barCount - 1);
-      final color = _getBarColor(t);
-
-      // Precomputed base frequency response in O(1) time
+      final color = barColors[i];
       final db = precomputedDb[i];
-
-      // Base normalized height from dB (-15dB to +15dB)
-      // When EQ is flat (0 dB across all bands), db == 0 -> normalized == 0.5
       double normalized = ((db + 15.0) / 30.0).clamp(0.08, 0.95);
 
-      // Follow playing frequencies smoothly driven by animVal:
       if (isPlaying && isAnimated) {
         double dynamicEnergy = 0.0;
-
         if (t < 0.25) {
-          // Sub-bass & Bass region (< 250Hz):
-          // Pulsing rhythmic energy synchronized with musical beat & bass boost
-          final beat =
-              math.sin((waveVal * 1.5) + (i * 0.2)) * 0.5 + 0.5;
-          final bassWeight =
-              1.0 + (dsp.bassGainDb > 0 ? (dsp.bassGainDb / 12.0) : 0.0);
-          dynamicEnergy = math.pow(beat, 1.8) * 0.16 * bassWeight;
+          final beat = math.sin((waveVal * 1.5) + (i * 0.2)) * 0.5 + 0.5;
+          dynamicEnergy = beat * beat * 0.16 * bassWeight;
         } else if (t < 0.65) {
-          // Midrange vocal & instrument fundamental region (250Hz - 2500Hz):
-          // Harmonic wave motion across musical phrases
           final phase = (waveVal * 2.2) + (i * 0.65);
-          final midMotion =
-              (math.sin(phase) * 0.07) + (math.cos(phase * 1.7) * 0.05);
-          dynamicEnergy = midMotion;
+          dynamicEnergy = (math.sin(phase) * 0.07) + (math.cos(phase * 1.7) * 0.05);
         } else {
-          // Treble, Presence & Air region (> 2500Hz):
-          // High frequency transients and cymbal sparkle
           final treblePhase = (waveVal * 3.4) + (i * 1.3);
-          final trebleWeight =
-              1.0 + (dsp.trebleGainDb > 0 ? (dsp.trebleGainDb / 12.0) : 0.0);
-          final trebleFlutter = (math.sin(treblePhase * 1.8) * 0.06 +
-              math.cos(treblePhase * 2.5) * 0.04);
-          dynamicEnergy = trebleFlutter * trebleWeight;
+          dynamicEnergy = (math.sin(treblePhase * 1.8) * 0.06 + math.cos(treblePhase * 2.5) * 0.04) * trebleWeight;
         }
 
-        // Modulate by user's EQ response: boost in this frequency amplifies the dynamic bar
-        final gainMultiplier = math.pow(10.0, db / 35.0);
-        normalized =
-            (normalized + (dynamicEnergy * gainMultiplier)).clamp(0.06, 1.0);
+        normalized = (normalized + (dynamicEnergy * gainMultipliers[i])).clamp(0.06, 1.0);
       }
 
       final barHeight = normalized * (size.height * 0.84);
@@ -1071,8 +1051,8 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
         cornerRadius,
       );
 
-      final barPaint = Paint()..color = color;
-      canvas.drawRRect(rrect, barPaint);
+      _barPaint.color = color;
+      canvas.drawRRect(rrect, _barPaint);
     }
   }
 

@@ -71,11 +71,13 @@ class MainActivity : FlutterActivity() {
 
                     if (peakMode != null && peakMode.refreshRate > 60f) {
                         val params = window.attributes
-                        params.preferredDisplayModeId = peakMode.modeId
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            params.preferredRefreshRate = peakMode.refreshRate
+                        if (params.preferredDisplayModeId != peakMode.modeId) {
+                            params.preferredDisplayModeId = peakMode.modeId
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                params.preferredRefreshRate = peakMode.refreshRate
+                            }
+                            window.attributes = params
                         }
-                        window.attributes = params
                     }
                 }
             } catch (_: Throwable) {
@@ -196,9 +198,9 @@ class MainActivity : FlutterActivity() {
         // Attempt Tier 1: Hardware 10-Band DynamicsProcessing (API 28+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
-                // Pre-EQ 10-Band enabled, MBC disabled, Post-EQ disabled (prevents uninitialized filter muting), Limiter enabled
+                // Use VARIANT_FAVOR_TIME_RESOLUTION for ultra-low latency without buffer underruns
                 val config = DynamicsProcessing.Config.Builder(
-                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION,
                     2, // Stereo channels
                     true, // Pre-EQ enabled
                     10, // 10 Pre-EQ bands
@@ -230,12 +232,12 @@ class MainActivity : FlutterActivity() {
             initFallbackEqualizer(sessionId)
         }
 
-        // Spatial & Tone Auxiliary Hardware Effects
+        // Spatial & Tone Auxiliary Hardware Effects (initially disabled until activated by user)
         try {
-            virtualizer = Virtualizer(0, sessionId).apply { enabled = true }
+            virtualizer = Virtualizer(0, sessionId).apply { enabled = false }
         } catch (_: Throwable) {}
         try {
-            bassBoost = BassBoost(0, sessionId).apply { enabled = true }
+            bassBoost = BassBoost(0, sessionId).apply { enabled = false }
         } catch (_: Throwable) {}
         try {
             presetReverb = PresetReverb(0, sessionId).apply { enabled = false }
@@ -314,10 +316,21 @@ class MainActivity : FlutterActivity() {
             } catch (_: Throwable) {}
         }
 
-        // Apply Stereo X Width Expansion & BassBoost
+        // Apply Stereo X Width Expansion & BassBoost only when activated
         try {
-            virtualizer?.setStrength((stereoExpansion * 1000).roundToInt().toShort().coerceIn(0, 1000))
-            bassBoost?.setStrength((bassGain * 1000).roundToInt().toShort().coerceIn(0, 1000))
+            if (stereoExpansion > 0.001f) {
+                virtualizer?.enabled = true
+                virtualizer?.setStrength((stereoExpansion * 1000).roundToInt().toShort().coerceIn(0, 1000))
+            } else {
+                virtualizer?.enabled = false
+            }
+
+            if (bassGain > 0.001f) {
+                bassBoost?.enabled = true
+                bassBoost?.setStrength((bassGain * 1000).roundToInt().toShort().coerceIn(0, 1000))
+            } else {
+                bassBoost?.enabled = false
+            }
         } catch (_: Throwable) {}
     }
 

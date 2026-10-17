@@ -498,24 +498,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
-    final bottomFabPadding = MediaQuery.of(context).padding.bottom + 72.0;
+    // 58.0 + Scaffold's 16.0 margin = 74.0dp, aligning the 50dp FAB exactly with the 50dp mini player (74.0 - 124.0dp)
+    const bottomFabPadding = 58.0;
 
     return Scaffold(
       floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: bottomFabPadding, right: 8),
-        child: FloatingActionButton(
-          shape: const CircleBorder(),
-          backgroundColor: cs.primaryContainer,
-          foregroundColor: cs.onPrimaryContainer,
-          tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-          onPressed: _segment == 'playlists'
-              ? _showCreatePlaylistDialog
-              : _pickLocalFiles,
-          child: Icon(
-            _segment == 'playlists'
-                ? Icons.playlist_add_rounded
-                : Icons.add_rounded,
-            size: 28,
+        padding: const EdgeInsets.only(bottom: bottomFabPadding),
+        child: SizedBox(
+          width: 50,
+          height: 50,
+          child: FloatingActionButton(
+            shape: const CircleBorder(),
+            elevation: 4,
+            backgroundColor: cs.primaryContainer,
+            foregroundColor: cs.onPrimaryContainer,
+            tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
+            onPressed: _segment == 'playlists'
+                ? _showCreatePlaylistDialog
+                : _pickLocalFiles,
+            child: Icon(
+              _segment == 'playlists'
+                  ? Icons.playlist_add_rounded
+                  : Icons.add_rounded,
+              size: 26,
+            ),
           ),
         ),
       ),

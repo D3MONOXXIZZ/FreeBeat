@@ -132,17 +132,19 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
               return SizedBox(
                 height: widget.height,
                 width: double.infinity,
-                child: CustomPaint(
-                  size: Size(totalWidth, widget.height),
-                  painter: _WaveformSeekbarPainter(
-                    baseHeights: _baseHeights,
-                    progress: effectiveProgress,
-                    bufferedProgress: widget.bufferedProgress,
-                    animationValue: animVal,
-                    activeColor: activeColor,
-                    bufferedColor: bufferedColor,
-                    inactiveColor: inactiveColor,
-                    isDragging: _isDragging,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    size: Size(totalWidth, widget.height),
+                    painter: _WaveformSeekbarPainter(
+                      baseHeights: _baseHeights,
+                      progress: effectiveProgress,
+                      bufferedProgress: widget.bufferedProgress,
+                      animationValue: animVal,
+                      activeColor: activeColor,
+                      bufferedColor: bufferedColor,
+                      inactiveColor: inactiveColor,
+                      isDragging: _isDragging,
+                    ),
                   ),
                 ),
               );

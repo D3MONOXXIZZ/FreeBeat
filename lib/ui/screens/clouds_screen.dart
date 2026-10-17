@@ -510,6 +510,9 @@ class CloudsScreen extends ConsumerWidget {
           name: track?.title ?? '',
           track: track,
         );
+        if (track != null) {
+          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
+        }
       },
     );
     progressNotifier.complete();
@@ -875,6 +878,9 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
 
       final authService = ref.read(nativeCloudAuthServiceProvider);
       final progressNotifier = ref.read(importProgressProvider.notifier);
+      final accountsNotifier = ref.read(cloudAccountsProvider.notifier);
+      final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
+
       final tracks = await authService.pickFromInstalledCloudApp(
         account: account,
         onFilesSelected: (filenames) {
@@ -887,19 +893,22 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
             name: track?.title ?? '',
             track: track,
           );
+          if (track != null) {
+            catalogNotifier.addIndexedTracks([track]);
+          }
         },
       );
       progressNotifier.complete();
 
       if (tracks.isNotEmpty) {
+        await accountsNotifier.addAccount(account, {});
+        await catalogNotifier.addIndexedTracks(tracks);
+        await PixelHaptics.hifiConfirm();
+
         final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
         if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
-
-        await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
-        await PixelHaptics.hifiConfirm();
 
         messenger?.showSnackBar(
           SnackBar(
@@ -952,17 +961,19 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       );
 
       final authService = ref.read(nativeCloudAuthServiceProvider);
+      final accountsNotifier = ref.read(cloudAccountsProvider.notifier);
+      final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
       final tracks = await authService.pickFolder(account: account);
 
       if (tracks.isNotEmpty) {
+        await accountsNotifier.addAccount(account, {});
+        await catalogNotifier.addIndexedTracks(tracks);
+        await PixelHaptics.hifiConfirm();
+
         final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
         if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
-
-        await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
-        await PixelHaptics.hifiConfirm();
 
         messenger?.showSnackBar(
           SnackBar(

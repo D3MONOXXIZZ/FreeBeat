@@ -58,47 +58,47 @@ class _MainShellState extends ConsumerState<MainShell> {
   Widget _buildMiniPlayerPill(
     ColorScheme cs,
     bool isPlaying,
-    Track track,
-  ) {
-    return Align(
-      alignment: Alignment.center,
-      child: SizedBox(
-        width: 310,
-        height: 50,
-        child: SpringPressScale(
-          onTap: _openFullNowPlaying,
-          child: Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(100),
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.35),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+    Track track, {
+    bool isLibraryTab = false,
+  }) {
+    final pillWidget = SizedBox(
+      width: isLibraryTab ? double.infinity : 310,
+      height: 50,
+      child: SpringPressScale(
+        onTap: _openFullNowPlaying,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(100),
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        MaterialYouAlbumCover(
-                          track: track,
-                          size: 36,
-                          borderRadius: 100,
-                          showQualityBadge: false,
-                          showSourceBadge: false,
-                          isPlaying: isPlaying,
-                        ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(100),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      MaterialYouAlbumCover(
+                        track: track,
+                        size: 36,
+                        borderRadius: 100,
+                        showQualityBadge: false,
+                        showSourceBadge: false,
+                        isPlaying: isPlaying,
+                        showPlayingAnimation: false,
+                      ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -185,7 +185,20 @@ class _MainShellState extends ConsumerState<MainShell> {
             ),
           ),
         ),
-      ),
+      );
+
+    if (isLibraryTab) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 68),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: pillWidget,
+        ),
+      );
+    }
+    return Align(
+      alignment: Alignment.center,
+      child: pillWidget,
     );
   }
 
@@ -311,7 +324,12 @@ class _MainShellState extends ConsumerState<MainShell> {
 
               // Floating Docked Mini-Player Pill (Active playback only)
               if (hasActiveQueue && track.id.isNotEmpty) ...[
-                _buildMiniPlayerPill(cs, isPlaying, track),
+                _buildMiniPlayerPill(
+                  cs,
+                  isPlaying,
+                  track,
+                  isLibraryTab: _selectedIndex == 1,
+                ),
                 const SizedBox(height: 8),
               ],
 

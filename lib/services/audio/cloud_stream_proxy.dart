@@ -132,7 +132,9 @@ class CloudStreamProxy {
         }
       });
 
-      await upstreamResp.stream.pipe(request.response);
+      request.response.bufferOutput = false;
+      await request.response.addStream(upstreamResp.stream);
+      await request.response.close();
     } catch (_) {
       try {
         request.response.statusCode = HttpStatus.badGateway;
