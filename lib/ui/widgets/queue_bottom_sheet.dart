@@ -6,6 +6,7 @@ import '../../state/app_providers.dart';
 import 'expressive_shapes.dart';
 import 'material_you_album_cover.dart';
 import 'sleep_timer_modal.dart';
+import 'swipe_to_queue_wrapper.dart';
 
 /// Shows the Material 3 Expressive Up Next Queue bottom sheet.
 Future<void> showQueueBottomSheet(BuildContext context) =>
@@ -623,65 +624,69 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
       itemCount: history.length,
       itemBuilder: (context, index) {
         final track = history[index];
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.25),
+        return SwipeToQueueWrapper(
+          track: track,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.25),
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              MaterialYouAlbumCover(
-                track: track,
-                size: 40,
-                borderRadius: 10,
-                showQualityBadge: false,
-                showSourceBadge: false,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      track.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      '${track.artist} • ${_formatMs(track.durationMs)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+            child: Row(
+              children: [
+                MaterialYouAlbumCover(
+                  track: track,
+                  size: 40,
+                  borderRadius: 10,
+                  showQualityBadge: false,
+                  showSourceBadge: false,
                 ),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  PixelHaptics.tick();
-                  playbackNotifier.playTrack(track);
-                },
-                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                label: const Text('Play'),
-                style: FilledButton.styleFrom(
-                  shape: const StadiumBorder(),
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        '${track.artist} • ${_formatMs(track.durationMs)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    playbackNotifier.playTrack(track);
+                  },
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Play'),
+                  style: FilledButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

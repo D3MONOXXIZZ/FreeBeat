@@ -14,6 +14,7 @@ import '../../core/models/playlist.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
+import '../widgets/swipe_to_queue_wrapper.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -373,11 +374,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     onTap: () {
                       Navigator.of(ctx).pop();
                       ref.read(playbackProvider.notifier).addToQueue(track);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Added to queue: ${track.title}'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                      PixelHaptics.hifiConfirm();
+                      SwipeToQueueWrapper.showQueuedSnackBar(
+                        context,
+                        track.title,
                       );
                     },
                   ),
@@ -1058,30 +1058,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                       color: cs.outlineVariant
                                           .withValues(alpha: 0.25),
                                     ),
-                                  _LibraryTrackTile(
+                                  SwipeToQueueWrapper(
                                     track: filtered[i],
-                                    isCurrent: activeTrackId == filtered[i].id,
-                                    isPlaying: activeTrackId == filtered[i].id &&
-                                        isPlaybackActive,
-                                    durationText: _formatTrackDuration(
-                                        filtered[i].durationMs),
-                                    onTap: () {
-                                      ref
-                                          .read(playbackProvider.notifier)
-                                          .playTrack(filtered[i]);
-                                    },
-                                    onToggleFavorite: () {
-                                      ref
-                                          .read(tracksCatalogProvider.notifier)
-                                          .toggleFavorite(filtered[i].id);
-                                    },
-                                    onTogglePin: () {
-                                      ref
-                                          .read(tracksCatalogProvider.notifier)
-                                          .togglePinOffline(filtered[i].id);
-                                    },
-                                    onOptionsTap: () =>
-                                        _showTrackOptions(filtered[i]),
+                                    child: _LibraryTrackTile(
+                                      track: filtered[i],
+                                      isCurrent: activeTrackId == filtered[i].id,
+                                      isPlaying: activeTrackId == filtered[i].id &&
+                                          isPlaybackActive,
+                                      durationText: _formatTrackDuration(
+                                          filtered[i].durationMs),
+                                      onTap: () {
+                                        ref
+                                            .read(playbackProvider.notifier)
+                                            .playTrack(filtered[i]);
+                                      },
+                                      onToggleFavorite: () {
+                                        ref
+                                            .read(tracksCatalogProvider.notifier)
+                                            .toggleFavorite(filtered[i].id);
+                                      },
+                                      onTogglePin: () {
+                                        ref
+                                            .read(tracksCatalogProvider.notifier)
+                                            .togglePinOffline(filtered[i].id);
+                                      },
+                                      onOptionsTap: () =>
+                                          _showTrackOptions(filtered[i]),
+                                    ),
                                   ),
                                 ],
                               ],

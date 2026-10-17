@@ -7,6 +7,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/swipe_to_queue_wrapper.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Playlist Details Screen.
@@ -260,6 +261,11 @@ class _PlaylistDetailsScreenState
                   onTap: () {
                     Navigator.of(ctx).pop();
                     ref.read(playbackProvider.notifier).addToQueue(track);
+                    PixelHaptics.hifiConfirm();
+                    SwipeToQueueWrapper.showQueuedSnackBar(
+                      context,
+                      track.title,
+                    );
                   },
                 ),
                 if (!current.isSmart)
@@ -518,19 +524,96 @@ class _PlaylistDetailsScreenState
                   return Dismissible(
                     key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
                     direction: livePlaylist.isSmart
-                        ? DismissDirection.none
-                        : DismissDirection.endToStart,
+                        ? DismissDirection.startToEnd
+                        : DismissDirection.horizontal,
+                    dismissThresholds: const {
+                      DismissDirection.startToEnd: 0.28,
+                    },
                     background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      color: cs.errorContainer,
-                      child: Icon(Icons.delete_outline_rounded,
-                          color: cs.onErrorContainer),
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      color: cs.primaryContainer,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color:
+                                  cs.onPrimaryContainer.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.queue_music_rounded,
+                              color: cs.onPrimaryContainer,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Add to Queue',
+                            style: TextStyle(
+                              color: cs.onPrimaryContainer,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    onDismissed: (_) {
-                      ref
-                          .read(playlistsProvider.notifier)
-                          .removeTrackFromPlaylist(livePlaylist.id, track.id);
+                    secondaryBackground: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      color: cs.errorContainer,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Remove',
+                            style: TextStyle(
+                              color: cs.onErrorContainer,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: cs.onErrorContainer
+                                  .withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              color: cs.onErrorContainer,
+                              size: 22,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    confirmDismiss: (direction) async {
+                      if (direction == DismissDirection.startToEnd) {
+                        ref.read(playbackProvider.notifier).addToQueue(track);
+                        await PixelHaptics.hifiConfirm();
+                        if (context.mounted) {
+                          SwipeToQueueWrapper.showQueuedSnackBar(
+                            context,
+                            track.title,
+                          );
+                        }
+                        return false; // Snap back
+                      }
+                      return true; // Proceed with removal
+                    },
+                    onDismissed: (direction) {
+                      if (direction == DismissDirection.endToStart) {
+                        ref
+                            .read(playlistsProvider.notifier)
+                            .removeTrackFromPlaylist(livePlaylist.id, track.id);
+                      }
                     },
                     child: InkWell(
                       onTap: () {

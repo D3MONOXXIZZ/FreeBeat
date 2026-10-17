@@ -6,6 +6,7 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/swipe_to_queue_wrapper.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Artist Details Page.
@@ -339,31 +340,34 @@ class ArtistDetailsScreen extends ConsumerWidget {
                             endIndent: 16,
                             color: cs.outlineVariant.withValues(alpha: 0.25),
                           ),
-                        _ArtistTrackTile(
+                        SwipeToQueueWrapper(
                           track: artistTracks[i],
-                          isCurrent: playback.currentTrack.id == artistTracks[i].id,
-                          isPlaying:
-                              playback.currentTrack.id == artistTracks[i].id &&
-                                  playback.isPlaying,
-                          durationText:
-                              _formatDuration(artistTracks[i].durationMs),
-                          onTap: () {
-                            ref
-                                .read(playbackProvider.notifier)
-                                .playTrack(artistTracks[i], newQueue: artistTracks);
-                          },
-                          onOpenDetails: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => TrackDetailsScreen(
-                                  track: artistTracks[i],
+                          child: _ArtistTrackTile(
+                            track: artistTracks[i],
+                            isCurrent: playback.currentTrack.id == artistTracks[i].id,
+                            isPlaying:
+                                playback.currentTrack.id == artistTracks[i].id &&
+                                    playback.isPlaying,
+                            durationText:
+                                _formatDuration(artistTracks[i].durationMs),
+                            onTap: () {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .playTrack(artistTracks[i], newQueue: artistTracks);
+                            },
+                            onOpenDetails: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TrackDetailsScreen(
+                                    track: artistTracks[i],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                          onAddToPlaylist: () {
-                            showAddToPlaylistModal(context, artistTracks[i]);
-                          },
+                              );
+                            },
+                            onAddToPlaylist: () {
+                              showAddToPlaylistModal(context, artistTracks[i]);
+                            },
+                          ),
                         ),
                       ],
                     ],
