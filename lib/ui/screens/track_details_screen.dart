@@ -49,8 +49,11 @@ class TrackDetailsScreen extends ConsumerWidget {
       orElse: () => track,
     );
 
-    final playback = ref.watch(playbackProvider);
-    final isPlaying = playback.isPlaying && playback.currentTrack.id == liveTrack.id;
+    final currentTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaybackPlaying =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
+    final isPlaying = isPlaybackPlaying && currentTrackId == liveTrack.id;
 
     final cacheService = ref.watch(cloudAudioCacheServiceProvider);
     final cacheProgress = cacheService.getProgress(liveTrack.id);

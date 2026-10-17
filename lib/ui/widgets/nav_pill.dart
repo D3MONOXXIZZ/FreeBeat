@@ -29,7 +29,7 @@ class MaterialYouNavPill extends StatelessWidget {
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
-    this.maxWidth,
+    this.maxWidth = 336,
   });
 
   final int selectedIndex;
@@ -42,9 +42,9 @@ class MaterialYouNavPill extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      height: 50,
+      height: 58,
       constraints:
-          maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
+          maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : const BoxConstraints(maxWidth: 336),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(100),
@@ -112,8 +112,8 @@ class _NavPillItem extends StatelessWidget {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                width: isSelected ? 44 : 32,
-                height: 24,
+                width: isSelected ? 50 : 36,
+                height: 28,
                 decoration: BoxDecoration(
                   color: isSelected ? cs.primaryContainer : Colors.transparent,
                   borderRadius: BorderRadius.circular(100),
@@ -121,7 +121,7 @@ class _NavPillItem extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     isSelected ? destination.selectedIcon : destination.icon,
-                    size: 16.5,
+                    size: 20.5,
                     color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                   ),
                 ),
@@ -131,8 +131,8 @@ class _NavPillItem extends StatelessWidget {
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
                 style: TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 10.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                   color: isSelected ? cs.onSurface : cs.onSurfaceVariant,
                   letterSpacing: -0.2,
                 ),

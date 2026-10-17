@@ -173,12 +173,23 @@ class CloudAudioCacheService extends ChangeNotifier {
       final totalBytes = streamedResponse.contentLength ?? track.sizeBytes;
       int downloaded = 0;
       final sink = tempFile.openWrite();
+      DateTime lastNotifyTime = DateTime.now();
+      int lastNotifyBytes = 0;
 
       await for (final chunk in streamedResponse.stream) {
         sink.add(chunk);
         downloaded += chunk.length;
-        if (totalBytes > 0) {
-          final progress = (downloaded / totalBytes).clamp(0.0, 0.99);
+
+        final now = DateTime.now();
+        final bytesDelta = downloaded - lastNotifyBytes;
+        final timeDelta = now.difference(lastNotifyTime);
+
+        if (timeDelta.inMilliseconds >= 500 || bytesDelta >= 512 * 1024) {
+          lastNotifyTime = now;
+          lastNotifyBytes = downloaded;
+          final progress = totalBytes > 0
+              ? (downloaded / totalBytes).clamp(0.0, 0.99)
+              : 0.0;
           _progressMap[track.id] = CacheProgress(
             state: CacheState.caching,
             progress: progress,

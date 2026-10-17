@@ -48,7 +48,10 @@ class ArtistDetailsScreen extends ConsumerWidget {
       albumMap.putIfAbsent(alb, () => []).add(t);
     }
 
-    final playback = ref.watch(playbackProvider);
+    final currentTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaybackPlaying =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
 
     // Audio format counts
     final hiResCount = artistTracks.where((t) => t.isHiRes).length;
@@ -344,10 +347,10 @@ class ArtistDetailsScreen extends ConsumerWidget {
                           track: artistTracks[i],
                           child: _ArtistTrackTile(
                             track: artistTracks[i],
-                            isCurrent: playback.currentTrack.id == artistTracks[i].id,
+                            isCurrent: currentTrackId == artistTracks[i].id,
                             isPlaying:
-                                playback.currentTrack.id == artistTracks[i].id &&
-                                    playback.isPlaying,
+                                currentTrackId == artistTracks[i].id &&
+                                    isPlaybackPlaying,
                             durationText:
                                 _formatDuration(artistTracks[i].durationMs),
                             onTap: () {

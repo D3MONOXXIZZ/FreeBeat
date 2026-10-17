@@ -135,6 +135,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 14),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  showPlaylistImportModal(context);
+                },
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: const Text('Or import from Spotify / Apple Music'),
+              ),
             ],
           ),
           actions: [
@@ -489,9 +498,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
-    final hasActiveTrack = activeTrackId.isNotEmpty;
-    final bottomFabPadding = MediaQuery.of(context).padding.bottom +
-        (hasActiveTrack ? 118.0 : 64.0);
+    final bottomFabPadding = MediaQuery.of(context).padding.bottom + 72.0;
 
     return Scaffold(
       floatingActionButton: Padding(
@@ -527,6 +534,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.playlist_add_check_circle_outlined),
+                tooltip: 'Import Spotify / Apple Music Playlist',
+                onPressed: () => showPlaylistImportModal(context),
+              ),
               IconButton(
                 icon: const Icon(Icons.add_rounded),
                 tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
@@ -781,6 +793,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
 
           if (_segment == 'playlists') ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: _SpotifyAppleImportBanner(
+                  onTap: () => showPlaylistImportModal(context),
+                ),
+              ),
+            ),
             // ─────────────────────────────────────────────────────────────────
             // Curated & Smart Playlists 2-Column Responsive Grid
             // ─────────────────────────────────────────────────────────────────
@@ -1467,6 +1487,157 @@ class _ImportPlaylistCard extends StatelessWidget {
               'Spotify, Apple, .M3U',
               style: TextStyle(
                 fontSize: 11.5,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpotifyAppleImportBanner extends StatelessWidget {
+  const _SpotifyAppleImportBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SpringPressScale(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.35),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Spotify badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(
+                      color: const Color(0xFF1DB954).withValues(alpha: 0.40),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF1DB954),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Spotify',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1DB954),
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Apple Music badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFC3C44).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(
+                      color: const Color(0xFFFC3C44).withValues(alpha: 0.40),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFC3C44),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Apple Music',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFFC3C44),
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                FilledButton.tonalIcon(
+                  onPressed: onTap,
+                  icon: const Icon(Icons.download_rounded, size: 16),
+                  label: const Text('Import'),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    shape: const StadiumBorder(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Import from Spotify / Apple Music',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Paste public playlist link, text tracklist, or pick .M3U8 file',
+              style: TextStyle(
+                fontSize: 12,
                 color: cs.onSurfaceVariant,
               ),
             ),

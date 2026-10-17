@@ -11,6 +11,7 @@ import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/playlist_import_modal.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -843,6 +844,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     widget.onOpenNowPlaying();
                   }
                 },
+              ),
+            ),
+          ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => showPlaylistImportModal(context),
+                  icon: const Icon(Icons.download_rounded, size: 16),
+                  label: const Text('Import Playlist'),
+                  style: TextButton.styleFrom(
+                    backgroundColor: cs.surfaceContainerHigh,
+                    foregroundColor: cs.onSurfaceVariant,
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

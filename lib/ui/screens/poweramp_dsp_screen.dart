@@ -221,11 +221,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 ),
                 child: Stack(
                   children: [
-                    AnimatedBuilder(
-                      animation: _spectrumAnimController,
-                      builder: (context, _) {
-                        return RepaintBoundary(
-                          child: CustomPaint(
+                    RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _spectrumAnimController,
+                        builder: (context, _) {
+                          return CustomPaint(
                             size: Size.infinite,
                             painter: _MaterialYouSpectrumBarsPainter(
                               dsp: dsp,
@@ -237,9 +237,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                               gridColor:
                                   cs.outlineVariant.withValues(alpha: 0.20),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                     Positioned(
                       top: 0,

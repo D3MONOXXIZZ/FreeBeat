@@ -510,9 +510,6 @@ class CloudsScreen extends ConsumerWidget {
           name: track?.title ?? '',
           track: track,
         );
-        if (track != null) {
-          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-        }
       },
     );
     progressNotifier.complete();
@@ -862,8 +859,14 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     PixelHaptics.tick();
 
     try {
+      final existingAccounts = ref.read(cloudAccountsProvider);
+      final existing = existingAccounts.cast<CloudAccount?>().firstWhere(
+        (a) => a?.providerType == providerType && a?.displayName == defaultName,
+        orElse: () => null,
+      );
+      final accountId = existing?.id ?? 'saf_${providerType.name}';
       final account = CloudAccount(
-        id: 'saf_${DateTime.now().millisecondsSinceEpoch}',
+        id: accountId,
         providerType: providerType,
         displayName: defaultName,
         endpointOrFolder: 'Android App Storage (${providerType.displayName})',
@@ -884,35 +887,32 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
             name: track?.title ?? '',
             track: track,
           );
-          if (track != null) {
-            ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-          }
         },
       );
       progressNotifier.complete();
 
       if (tracks.isNotEmpty) {
+        final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
         await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
 
-        if (mounted) {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Imported ${tracks.length} audio tracks from $defaultName!'),
-              action: widget.onNavigateToTab != null
-                  ? SnackBarAction(
-                      label: 'View in Library',
-                      onPressed: () => widget.onNavigateToTab!(1),
-                    )
-                  : null,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('Imported ${tracks.length} audio tracks from $defaultName!'),
+            action: widget.onNavigateToTab != null
+                ? SnackBarAction(
+                    label: 'View in Library',
+                    onPressed: () => widget.onNavigateToTab!(1),
+                  )
+                : null,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       } else {
         if (mounted) setState(() => _isConnecting = false);
       }
@@ -937,8 +937,14 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     PixelHaptics.tick();
 
     try {
+      final existingAccounts = ref.read(cloudAccountsProvider);
+      final existing = existingAccounts.cast<CloudAccount?>().firstWhere(
+        (a) => a?.providerType == providerType && a?.displayName == defaultName,
+        orElse: () => null,
+      );
+      final accountId = existing?.id ?? 'saf_folder_${providerType.name}';
       final account = CloudAccount(
-        id: 'saf_folder_${DateTime.now().millisecondsSinceEpoch}',
+        id: accountId,
         providerType: providerType,
         displayName: defaultName,
         endpointOrFolder: 'Folder Import (${providerType.displayName})',
@@ -949,27 +955,27 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       final tracks = await authService.pickFolder(account: account);
 
       if (tracks.isNotEmpty) {
+        final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
         await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
 
-        if (mounted) {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Imported ${tracks.length} tracks from $defaultName!'),
-              action: widget.onNavigateToTab != null
-                  ? SnackBarAction(
-                      label: 'View in Library',
-                      onPressed: () => widget.onNavigateToTab!(1),
-                    )
-                  : null,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('Imported ${tracks.length} tracks from $defaultName!'),
+            action: widget.onNavigateToTab != null
+                ? SnackBarAction(
+                    label: 'View in Library',
+                    onPressed: () => widget.onNavigateToTab!(1),
+                  )
+                : null,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       } else {
         if (mounted) setState(() => _isConnecting = false);
       }

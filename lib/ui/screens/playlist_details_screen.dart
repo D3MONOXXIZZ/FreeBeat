@@ -314,7 +314,10 @@ class _PlaylistDetailsScreenState
     final textTheme = Theme.of(context).textTheme;
     final allTracks = ref.watch(tracksCatalogProvider);
     final allPlaylists = ref.watch(smartPlaylistsProvider);
-    final playback = ref.watch(playbackProvider);
+    final currentTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaybackPlaying =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
 
     // Find the latest live state of this playlist
     final livePlaylist = allPlaylists.firstWhere(
@@ -528,8 +531,8 @@ class _PlaylistDetailsScreenState
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final track = playlistTracks[index];
-                  final isCurrent = playback.currentTrack.id == track.id;
-                  final isPlaying = isCurrent && playback.isPlaying;
+                  final isCurrent = currentTrackId == track.id;
+                  final isPlaying = isCurrent && isPlaybackPlaying;
 
                   return Dismissible(
                     key: Key('pl_${livePlaylist.id}_${track.id}_$index'),

@@ -250,17 +250,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     unawaited(() async {
       final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
       for (final t in tracks) {
-        final needsPalette = t.dominantColorValue == 0xFF1E293B ||
-            t.dominantColorValue == 0xFF3DDC84 ||
-            t.dominantColorValue == 0xFF1DB954;
-        final needsMetadata = t.artist == 'Cloud Artist' ||
-            t.artist == 'Unknown Artist' ||
-            t.artist.isEmpty ||
-            t.album == 'Cloud Library';
-        if (t.artworkUrl == null ||
-            t.artworkUrl!.isEmpty ||
-            needsPalette ||
-            needsMetadata) {
+        if (t.artworkUrl == null || t.artworkUrl!.isEmpty) {
           try {
             final enriched = await artworkSvc.enrichTrackArtwork(t);
             if (enriched != t) {
@@ -1004,9 +994,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       });
 
+      int lastEmittedBufMs = -1000;
       player.bufferedPositionStream.listen((buf) {
         if (mounted) {
-          state = state.copyWith(bufferedPositionMs: buf.inMilliseconds);
+          final bufMs = buf.inMilliseconds;
+          if ((bufMs - lastEmittedBufMs).abs() >= 1000 || bufMs == 0) {
+            lastEmittedBufMs = bufMs;
+            state = state.copyWith(bufferedPositionMs: bufMs);
+          }
         }
       });
 
@@ -1166,14 +1161,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       await _audioPlayer!.setVolume(1.0);
       await _audioPlayer!.play();
 
-      // Transient background caching during streaming should NOT mark the track as pinned offline
-      unawaited(cacheSvc.cacheTrack(
-        track,
-        markPinnedOffline: false,
-        onComplete: (cachedTrack) {
-          _ref.read(tracksCatalogProvider.notifier).updateTrack(cachedTrack);
-        },
-      ));
     } catch (e, st) {
       debugPrint('Error playing track "${track.title}": $e\n$st');
     }
@@ -1242,12 +1229,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
     } catch (_) {}
 
-    final needsPalette = effectiveTrack.dominantColorValue == 0xFF1E293B ||
-        effectiveTrack.dominantColorValue == 0xFF3DDC84 ||
-        effectiveTrack.dominantColorValue == 0xFF1DB954;
     if (effectiveTrack.artworkUrl == null ||
-        effectiveTrack.artworkUrl!.isEmpty ||
-        needsPalette) {
+        effectiveTrack.artworkUrl!.isEmpty) {
       _ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(effectiveTrack);
     }
   }

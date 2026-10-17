@@ -63,7 +63,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return Align(
       alignment: Alignment.center,
       child: SizedBox(
-        width: 320,
+        width: 310,
         height: 50,
         child: SpringPressScale(
           onTap: _openFullNowPlaying,
@@ -221,7 +221,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         left: false,
         right: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -318,7 +318,7 @@ class _MainShellState extends ConsumerState<MainShell> {
               // Material 3 Expressive Floating Navigation Pill
               Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 308),
+                  constraints: const BoxConstraints(maxWidth: 336),
                   child: MaterialYouNavPill(
                     selectedIndex: _selectedIndex,
                     onDestinationSelected: (idx) {
@@ -349,9 +349,6 @@ class _MainShellState extends ConsumerState<MainShell> {
                   ),
                 ),
               ),
-
-              // Signature Android Pixel Gesture Pill
-              const AndroidGestureHandle(),
             ],
           ),
         ),
