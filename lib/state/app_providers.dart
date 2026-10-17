@@ -460,7 +460,9 @@ final filteredTracksProvider = Provider<List<Track>>((ref) {
         ? true
         : cloudFilter == 'offline'
             ? track.isPinnedOffline
-            : track.providerType.id == cloudFilter;
+            : cloudFilter == 'hifi'
+                ? track.isHiRes
+                : track.providerType.id == cloudFilter;
     if (!matchesCloud) return false;
 
     // 2. Artist filter
@@ -1080,7 +1082,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     try {
       final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
       final cachedPath = await cacheSvc.getCachedFilePath(track);
-      final effectiveSource = cachedPath ?? track.streamUrl;
 
       // Always guarantee 100% full hardware output volume
       await _audioPlayer!.setVolume(1.0);
@@ -1096,15 +1097,57 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         } catch (_) {}
       }
 
-      if (cachedPath != null && File(cachedPath).existsSync()) {
+      // 1. If pinned offline or explicitly cached on disk, play local file directly (0ms latency)
+      if (track.isPinnedOffline && cachedPath != null && File(cachedPath).existsSync()) {
         await _audioPlayer!.setFilePath(cachedPath);
         await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
         return;
       }
 
-      if (effectiveSource.startsWith('http://') ||
-          effectiveSource.startsWith('https://')) {
+      // 2. If it is a local file on device storage
+      if (!track.streamUrl.startsWith('http://') &&
+          !track.streamUrl.startsWith('https://') &&
+          !track.streamUrl.startsWith('content://')) {
+        final localFile = File(track.streamUrl);
+        if (localFile.existsSync()) {
+          await _audioPlayer!.setFilePath(track.streamUrl);
+          await _audioPlayer!.setVolume(1.0);
+          await _audioPlayer!.play();
+          return;
+        }
+      }
+
+      // 3. If it is a content:// URI from Android SAF
+      if (track.streamUrl.startsWith('content://')) {
+        await _audioPlayer!.setAudioSource(
+          AudioSource.uri(Uri.parse(track.streamUrl)),
+        );
+        await _audioPlayer!.setVolume(1.0);
+        await _audioPlayer!.play();
+        return;
+      }
+
+      // 4. Remote Cloud Stream (Google Drive, OneDrive, WebDAV, HTTP/HTTPS):
+      // Route through local loopback proxy (127.0.0.1) for instant, unbuffered streaming
+      // with OAuth token injection and 206 Partial Content byte-range support.
+      final proxy = _ref.read(cloudStreamProxyProvider);
+      if (!proxy.isRunning) {
+        await proxy.start();
+      }
+      final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
+      proxy.updateCatalog(
+        tracks: _ref.read(tracksCatalogProvider),
+        accounts: _ref.read(cloudAccountsProvider),
+        activeTier: quality,
+      );
+
+      final playbackUrl = proxy.buildPlaybackUrl(track, quality);
+      if (playbackUrl.startsWith('http://127.0.0.1')) {
+        await _audioPlayer!.setAudioSource(
+          AudioSource.uri(Uri.parse(playbackUrl)),
+        );
+      } else {
         Map<String, String>? headers;
         if (track.providerType == CloudProviderType.googleDrive) {
           final secrets = await _ref
@@ -1115,44 +1158,21 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             headers = {'Authorization': 'Bearer $token'};
           }
         }
-
         await _audioPlayer!.setAudioSource(
-          AudioSource.uri(Uri.parse(effectiveSource), headers: headers),
+          AudioSource.uri(Uri.parse(playbackUrl), headers: headers),
         );
-        await _audioPlayer!.setVolume(1.0);
-        await _audioPlayer!.play();
-
-        // Stream directly while caching in background
-        unawaited(cacheSvc.cacheTrack(track, onComplete: (cachedTrack) {
-          _ref.read(tracksCatalogProvider.notifier).updateTrack(cachedTrack);
-        }));
-      } else if (effectiveSource.startsWith('content://')) {
-        await _audioPlayer!.setAudioSource(
-          AudioSource.uri(Uri.parse(effectiveSource)),
-        );
-        await _audioPlayer!.setVolume(1.0);
-        await _audioPlayer!.play();
-      } else if (effectiveSource.startsWith('file://')) {
-        await _audioPlayer!.setAudioSource(
-          AudioSource.uri(Uri.parse(effectiveSource)),
-        );
-        await _audioPlayer!.setVolume(1.0);
-        await _audioPlayer!.play();
-      } else {
-        if (File(effectiveSource).existsSync()) {
-          await _audioPlayer!.setFilePath(effectiveSource);
-        } else {
-          try {
-            await _audioPlayer!.setFilePath(effectiveSource);
-          } catch (_) {
-            await _audioPlayer!.setAudioSource(
-              AudioSource.uri(Uri.file(effectiveSource)),
-            );
-          }
-        }
-        await _audioPlayer!.setVolume(1.0);
-        await _audioPlayer!.play();
       }
+      await _audioPlayer!.setVolume(1.0);
+      await _audioPlayer!.play();
+
+      // Transient background caching during streaming should NOT mark the track as pinned offline
+      unawaited(cacheSvc.cacheTrack(
+        track,
+        markPinnedOffline: false,
+        onComplete: (cachedTrack) {
+          _ref.read(tracksCatalogProvider.notifier).updateTrack(cachedTrack);
+        },
+      ));
     } catch (e, st) {
       debugPrint('Error playing track "${track.title}": $e\n$st');
     }

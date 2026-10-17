@@ -6,19 +6,36 @@ import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/discovery/local_media_server_discovery_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import '../widgets/material_you_album_cover.dart';
+import '../widgets/material_you_download_button.dart';
+import '../widgets/swipe_to_queue_wrapper.dart';
 import 'settings/settings_screen.dart';
 
 /// Clean, focused Cloud Storage Hub (Google Material 3 Expressive).
 /// Dedicated solely to managing connected cloud drives, 1-tap cloud authorization,
 /// installed cloud app launching/Play Store redirects, and local media servers.
 class CloudsScreen extends ConsumerWidget {
-  const CloudsScreen({super.key});
+  const CloudsScreen({super.key, this.onNavigateToTab});
+
+  final ValueChanged<int>? onNavigateToTab;
+
+  String _formatTrackDuration(int ms) {
+    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final accounts = ref.watch(cloudAccountsProvider);
+    final allTracks = ref.watch(tracksCatalogProvider);
+    final activeTrackId =
+        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
+    final isPlaybackActive =
+        ref.watch(playbackProvider.select((p) => p.isPlaying));
 
     return SafeArea(
       bottom: false,
@@ -134,8 +151,10 @@ class CloudsScreen extends ConsumerWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28),
-              child: Column(
-                children: [
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
+                  children: [
                   for (int i = 0; i < accounts.length; i++) ...[
                     if (i > 0)
                       Divider(
@@ -144,42 +163,201 @@ class CloudsScreen extends ConsumerWidget {
                         endIndent: 16,
                         color: cs.outlineVariant.withValues(alpha: 0.25),
                       ),
-                    ListTile(
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      leading: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: accounts[i]
-                            .providerType
-                            .accentColor
-                            .withValues(alpha: 0.16),
-                        child: Icon(
-                          accounts[i].providerType.icon,
-                          color: accounts[i].providerType.accentColor,
+                    Builder(
+                      builder: (context) {
+                        final accountTracks = allTracks
+                            .where((t) => t.accountId == accounts[i].id)
+                            .toList();
+                        return ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          leading: CircleAvatar(
+                            radius: 20,
+                            backgroundColor: accounts[i]
+                                .providerType
+                                .accentColor
+                                .withValues(alpha: 0.16),
+                            child: Icon(
+                              accounts[i].providerType.icon,
+                              color: accounts[i].providerType.accentColor,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            accounts[i].displayName,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          subtitle: Text(
+                            accountTracks.isNotEmpty
+                                ? '${accountTracks.length} tracks indexed • ${accounts[i].endpointOrFolder}'
+                                : accounts[i].endpointOrFolder,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            color: cs.error,
+                            onPressed: () => _confirmRemoveAccount(
+                              context,
+                              ref,
+                              accounts[i],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // 3. Tracks from Connected Clouds & Device Storage
+        if (allTracks.isNotEmpty) ...[
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.35),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.queue_music_rounded,
+                                color: cs.primary, size: 20),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Imported Tracks (${allTracks.length})',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (onNavigateToTab != null)
+                          TextButton.icon(
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              onNavigateToTab!(1);
+                            },
+                            icon: const Icon(Icons.library_music_rounded,
+                                size: 16),
+                            label: const Text('Library',
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    color: cs.outlineVariant.withValues(alpha: 0.25),
+                  ),
+                  for (int i = 0;
+                      i < (allTracks.length > 15 ? 15 : allTracks.length);
+                      i++) ...[
+                    if (i > 0)
+                      Divider(
+                        height: 1,
+                        indent: 74,
+                        endIndent: 16,
+                        color: cs.outlineVariant.withValues(alpha: 0.2),
+                      ),
+                    SwipeToQueueWrapper(
+                      track: allTracks[i],
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        leading: MaterialYouAlbumCover(
+                          track: allTracks[i],
+                          size: 46,
+                          borderRadius: 14,
+                          showQualityBadge: false,
+                          showSourceBadge: true,
+                          isPlaying: activeTrackId == allTracks[i].id &&
+                              isPlaybackActive,
+                        ),
+                        title: Text(
+                          allTracks[i].title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: activeTrackId == allTracks[i].id
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: activeTrackId == allTracks[i].id
+                                ? cs.primary
+                                : cs.onSurface,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${allTracks[i].artist} • ${allTracks[i].codec} • ${_formatTrackDuration(allTracks[i].durationMs)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: MaterialYouDownloadButton(
+                          track: allTracks[i],
                           size: 20,
                         ),
+                        onTap: () {
+                          PixelHaptics.tick();
+                          ref.read(playbackProvider.notifier).playTrack(
+                                allTracks[i],
+                                newQueue: allTracks,
+                              );
+                        },
                       ),
-                      title: Text(
-                        accounts[i].displayName,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Text(
-                        accounts[i].endpointOrFolder,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        color: cs.error,
-                        onPressed: () => _confirmRemoveAccount(
-                          context,
-                          ref,
-                          accounts[i],
+                    ),
+                  ],
+                  if (allTracks.length > 15 && onNavigateToTab != null) ...[
+                    Divider(
+                      height: 1,
+                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                    ),
+                    InkWell(
+                      onTap: () {
+                        PixelHaptics.tick();
+                        onNavigateToTab!(1);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: Text(
+                            'View all ${allTracks.length} tracks in Library →',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: cs.primary,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -188,8 +366,9 @@ class CloudsScreen extends ConsumerWidget {
               ),
             ),
           ),
-
+        ),
         const SizedBox(height: 20),
+        ],
 
         // 3. Fast Cloud App Launchers (Open installed app or Google Play Store)
         Card(
@@ -339,12 +518,19 @@ class CloudsScreen extends ConsumerWidget {
     progressNotifier.complete();
     if (tracks.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
+      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
       await PixelHaptics.hifiConfirm();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content:
                 Text('Imported ${tracks.length} tracks from device storage!'),
+            action: onNavigateToTab != null
+                ? SnackBarAction(
+                    label: 'View in Library',
+                    onPressed: () => onNavigateToTab!(1),
+                  )
+                : null,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -397,7 +583,7 @@ class CloudsScreen extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (ctx) => const _AddCloudWizardSheet(),
+      builder: (ctx) => _AddCloudWizardSheet(onNavigateToTab: onNavigateToTab),
     );
   }
 }
@@ -481,7 +667,9 @@ enum _AddCloudMode {
 }
 
 class _AddCloudWizardSheet extends ConsumerStatefulWidget {
-  const _AddCloudWizardSheet();
+  const _AddCloudWizardSheet({this.onNavigateToTab});
+
+  final ValueChanged<int>? onNavigateToTab;
 
   @override
   ConsumerState<_AddCloudWizardSheet> createState() =>
@@ -705,6 +893,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
 
       if (tracks.isNotEmpty) {
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, {});
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
 
         if (mounted) {
@@ -714,6 +903,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Imported ${tracks.length} audio tracks from $defaultName!'),
+              action: widget.onNavigateToTab != null
+                  ? SnackBarAction(
+                      label: 'View in Library',
+                      onPressed: () => widget.onNavigateToTab!(1),
+                    )
+                  : null,
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -765,6 +960,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Imported ${tracks.length} tracks from $defaultName!'),
+              action: widget.onNavigateToTab != null
+                  ? SnackBarAction(
+                      label: 'View in Library',
+                      onPressed: () => widget.onNavigateToTab!(1),
+                    )
+                  : null,
               behavior: SnackBarBehavior.floating,
             ),
           );

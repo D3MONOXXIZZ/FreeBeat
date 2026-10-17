@@ -417,8 +417,8 @@ class NativeCloudAuthService {
             bitrateKbps: parsed.bitrateKbps ?? 1411,
             sizeBytes: file.size > 0 ? file.size : 25000000,
             dominantColorValue: dominantColor,
-            isPinnedOffline: true,
-            localCachePath: finalPath,
+            isPinnedOffline: false,
+            localCachePath: null,
           );
           tracks.add(newTrack);
           onProgress?.call(fileIndex, totalFiles, newTrack);
@@ -575,8 +575,8 @@ class NativeCloudAuthService {
             bitrateKbps: parsed.bitrateKbps ?? 1411,
             sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
             dominantColorValue: dominantColor,
-            isPinnedOffline: true,
-            localCachePath: file.path,
+            isPinnedOffline: false,
+            localCachePath: null,
           );
           tracks.add(newTrack);
           onProgress?.call(folderFileIndex, totalFiles, newTrack);

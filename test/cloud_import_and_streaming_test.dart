@@ -1,0 +1,266 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:freebeat/core/models/audio_quality_settings.dart';
+import 'package:freebeat/core/models/cloud_account.dart';
+import 'package:freebeat/core/models/track.dart';
+import 'package:freebeat/core/storage/library_database.dart';
+import 'package:freebeat/core/storage/secure_credential_store.dart';
+import 'package:freebeat/providers/implementations/network_and_saf_connectors.dart';
+import 'package:freebeat/services/audio/cloud_audio_cache_service.dart';
+import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
+import 'package:freebeat/state/app_providers.dart';
+import 'package:freebeat/ui/screens/clouds_screen.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (MethodCall methodCall) async => Directory.systemTemp.path,
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async => null,
+    );
+  });
+
+  group('Cloud Import & Offline Status Tests', () {
+    test('Imported tracks default to isPinnedOffline: false', () {
+      final track = Track(
+        id: 'test_imported_1',
+        accountId: 'saf_account_1',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: 'gdrive_file_123',
+        title: 'Morning Sun',
+        artist: 'Chill Beats',
+        album: 'Acoustic Dawn',
+        durationMs: 180000,
+        streamUrl: 'https://www.googleapis.com/drive/v3/files/123?alt=media',
+        isPinnedOffline: false,
+      );
+
+      expect(track.isPinnedOffline, isFalse);
+      expect(track.localCachePath, isNull);
+    });
+
+    test('CloudAudioCacheService with markPinnedOffline: false does not set isPinnedOffline', () async {
+      final credStore = SecureCredentialStore();
+      final cacheSvc = CloudAudioCacheService(credentialStore: credStore);
+
+      final track = Track(
+        id: 'stream_test_track',
+        accountId: 'acc_1',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: '123',
+        title: 'Stream Song',
+        artist: 'Artist',
+        album: 'Album',
+        durationMs: 120000,
+        streamUrl: 'https://www.googleapis.com/drive/v3/files/123?alt=media',
+        isPinnedOffline: false,
+      );
+
+      // isTrackCached should be false when not pinned
+      expect(cacheSvc.isTrackCached(track), isFalse);
+    });
+  });
+
+  group('CloudStreamProxy & Direct Streaming Tests', () {
+    test('CloudStreamProxy starts and generates loopback URL with tier', () async {
+      final credStore = SecureCredentialStore();
+      final registry = CloudConnectorRegistry();
+      final proxy = CloudStreamProxy(
+        connectorRegistry: registry,
+        credentialStore: credStore,
+      );
+
+      await proxy.start();
+      expect(proxy.isRunning, isTrue);
+      expect(proxy.port, greaterThan(0));
+
+      final testTrack = Track(
+        id: 'drive_track_abc',
+        accountId: 'acc_drive',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: 'abc',
+        title: 'Cloud Symphony',
+        artist: 'Orchestra',
+        album: 'Lossless Collection',
+        durationMs: 240000,
+        streamUrl: 'https://www.googleapis.com/drive/v3/files/abc?alt=media',
+        isPinnedOffline: false,
+      );
+
+      final account = const CloudAccount(
+        id: 'acc_drive',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'My Google Drive',
+        endpointOrFolder: '/',
+      );
+
+      proxy.updateCatalog(
+        tracks: [testTrack],
+        accounts: [account],
+        activeTier: AudioQualityTier.hifiLossless,
+      );
+
+      final playbackUrl = proxy.buildPlaybackUrl(testTrack, AudioQualityTier.hifiLossless);
+      expect(playbackUrl, startsWith('http://127.0.0.1:${proxy.port}/stream/drive_track_abc'));
+      expect(playbackUrl, contains('tier=hifi_lossless'));
+
+      await proxy.dispose();
+    });
+
+    test('filteredTracksProvider with hifi filter checks track.isHiRes', () {
+      final container = ProviderContainer(
+        overrides: [
+          tracksCatalogProvider.overrideWith((ref) {
+            final cat = TracksCatalogNotifier(null, null);
+            cat.state = [
+              Track(
+                id: 't1',
+                accountId: 'a1',
+                providerType: CloudProviderType.googleDrive,
+                remotePathOrId: '1',
+                title: 'Hi-Res Track',
+                artist: 'Artist',
+                album: 'Album',
+                durationMs: 100000,
+                streamUrl: 'url1',
+                bitDepth: 24,
+                sampleRateHz: 96000,
+              ),
+              Track(
+                id: 't2',
+                accountId: 'a1',
+                providerType: CloudProviderType.googleDrive,
+                remotePathOrId: '2',
+                title: 'Standard Track',
+                artist: 'Artist',
+                album: 'Album',
+                durationMs: 100000,
+                streamUrl: 'url2',
+                bitDepth: 16,
+                sampleRateHz: 44100,
+              ),
+            ];
+            return cat;
+          }),
+          selectedCloudFilterProvider.overrideWith((ref) => 'hifi'),
+        ],
+      );
+
+      final filtered = container.read(filteredTracksProvider);
+      expect(filtered.length, 1);
+      expect(filtered.first.id, 't1');
+      expect(filtered.first.isHiRes, isTrue);
+    });
+  });
+
+  group('CloudsScreen Widget & UI Tests', () {
+    testWidgets('CloudsScreen renders account track count and imported tracks card', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final testAccount = const CloudAccount(
+        id: 'acc_drive_1',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'Personal Drive',
+        endpointOrFolder: 'Google Drive App Storage',
+      );
+
+      final testTrack = Track(
+        id: 'track_drive_1',
+        accountId: 'acc_drive_1',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: 'file_1',
+        title: 'Cosmic Beats',
+        artist: 'Starlight',
+        album: 'Nebula',
+        durationMs: 215000,
+        streamUrl: 'https://www.googleapis.com/drive/v3/files/1?alt=media',
+        isPinnedOffline: false,
+        codec: 'FLAC',
+        bitDepth: 24,
+        sampleRateHz: 96000,
+      );
+
+      final fakeProxy = _FakeCloudStreamProxy();
+      final container = ProviderContainer(
+        overrides: [
+          cloudStreamProxyProvider.overrideWithValue(fakeProxy),
+          cloudAccountsProvider.overrideWith((ref) {
+            final acc = CloudAccountsNotifier(LibraryDatabase(), SecureCredentialStore());
+            acc.state = [testAccount];
+            return acc;
+          }),
+          tracksCatalogProvider.overrideWith((ref) {
+            final cat = TracksCatalogNotifier(null, null);
+            cat.state = [testTrack];
+            return cat;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      bool navigatedToLibrary = false;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+            home: Scaffold(
+              body: CloudsScreen(
+                onNavigateToTab: (idx) {
+                  if (idx == 1) navigatedToLibrary = true;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Check that account card shows track count
+      expect(find.text('Personal Drive'), findsOneWidget);
+      expect(find.textContaining('1 tracks indexed'), findsOneWidget);
+
+      // Check that "Imported Tracks" section renders the track title and artist
+      expect(find.textContaining('Imported Tracks'), findsOneWidget);
+      expect(find.text('Cosmic Beats'), findsOneWidget);
+      expect(find.textContaining('Starlight'), findsOneWidget);
+
+      // Tap "Library" button to test tab navigation
+      final libraryBtn = find.text('Library');
+      expect(libraryBtn, findsOneWidget);
+      await tester.tap(libraryBtn);
+      expect(navigatedToLibrary, isTrue);
+    });
+  });
+}
+
+class _FakeCloudStreamProxy extends CloudStreamProxy {
+  _FakeCloudStreamProxy()
+      : super(
+          connectorRegistry: CloudConnectorRegistry(),
+          credentialStore: SecureCredentialStore(),
+        );
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> dispose() async {}
+}

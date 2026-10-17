@@ -65,18 +65,13 @@ class CloudAudioCacheService extends ChangeNotifier {
     return dir;
   }
 
-  /// Determines whether [track] is already cached on local storage.
+  /// Determines whether [track] is explicitly pinned offline or downloaded by user.
   bool isTrackCached(Track track) {
+    if (track.isPinnedOffline) return true;
     if (track.localCachePath != null && track.localCachePath!.isNotEmpty) {
-      if (File(track.localCachePath!).existsSync()) {
+      if (File(track.localCachePath!).existsSync() && track.isPinnedOffline) {
         return true;
       }
-    }
-    if (_cacheDir != null) {
-      final sanitizedId = track.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final ext = _getExtensionForTrack(track);
-      final file = File(p.join(_cacheDir!.path, '$sanitizedId.$ext'));
-      return file.existsSync() && file.lengthSync() > 1024;
     }
     return false;
   }
@@ -102,6 +97,7 @@ class CloudAudioCacheService extends ChangeNotifier {
   Future<String?> cacheTrack(
     Track track, {
     void Function(Track updatedTrack)? onComplete,
+    bool markPinnedOffline = true,
   }) async {
     // If already cached, notify immediately
     final existingPath = await getCachedFilePath(track);
@@ -134,20 +130,19 @@ class CloudAudioCacheService extends ChangeNotifier {
 
       // If source is a local file already (e.g. from device storage picker)
       if (File(track.streamUrl).existsSync()) {
-        await File(track.streamUrl).copy(finalFile.path);
         _progressMap[track.id] = CacheProgress(
           state: CacheState.cached,
           progress: 1.0,
-          localPath: finalFile.path,
+          localPath: track.streamUrl,
         );
         notifyListeners();
 
         final updated = track.copyWith(
-          isPinnedOffline: true,
-          localCachePath: finalFile.path,
+          isPinnedOffline: markPinnedOffline ? true : track.isPinnedOffline,
+          localCachePath: track.streamUrl,
         );
         onComplete?.call(updated);
-        return finalFile.path;
+        return track.streamUrl;
       }
 
       // Build authenticated download request
@@ -220,7 +215,7 @@ class CloudAudioCacheService extends ChangeNotifier {
       notifyListeners();
 
       final updated = track.copyWith(
-        isPinnedOffline: true,
+        isPinnedOffline: markPinnedOffline ? true : track.isPinnedOffline,
         localCachePath: finalFile.path,
         artworkUrl: artUrl ?? track.artworkUrl,
         sizeBytes: downloaded > 0 ? downloaded : track.sizeBytes,

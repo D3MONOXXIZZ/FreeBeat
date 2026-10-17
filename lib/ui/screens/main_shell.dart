@@ -205,7 +205,9 @@ class _MainShellState extends ConsumerState<MainShell> {
       ),
       const LibraryScreen(),
       PowerampDspScreen(isActive: _selectedIndex == 2),
-      const CloudsScreen(),
+      CloudsScreen(
+        onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
+      ),
     ];
 
     return Scaffold(
