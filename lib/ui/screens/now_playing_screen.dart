@@ -228,73 +228,85 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                         alignment: Alignment.center,
                         clipBehavior: Clip.none,
                         children: [
-                          // 3a. Directional Edge Lighting Aura: Top, Bottom, Left, Right Blooms
+                          // Ambient Edge-Matched Glow & Gaussian Blur Backdrop
+                          // Wrapped in RepaintBoundary to cache rasterization and avoid GPU lag
                           Positioned.fill(
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 600),
-                              curve: Curves.easeOutCubic,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(36),
-                                boxShadow: [
-                                  // Top edge glow
-                                  BoxShadow(
-                                    color: effectiveTopEdge.withValues(alpha: 0.45),
-                                    blurRadius: 52,
-                                    spreadRadius: 10,
-                                    offset: const Offset(0, -14),
+                            child: RepaintBoundary(
+                              child: Stack(
+                                alignment: Alignment.center,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  // 3a. Directional Edge Lighting Aura: Top, Bottom, Left, Right Blooms
+                                  Positioned.fill(
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 600),
+                                      curve: Curves.easeOutCubic,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(36),
+                                        boxShadow: [
+                                          // Top edge glow
+                                          BoxShadow(
+                                            color: effectiveTopEdge.withValues(alpha: 0.45),
+                                            blurRadius: 52,
+                                            spreadRadius: 10,
+                                            offset: const Offset(0, -14),
+                                          ),
+                                          // Bottom edge glow
+                                          BoxShadow(
+                                            color: effectiveBottomEdge.withValues(alpha: 0.50),
+                                            blurRadius: 56,
+                                            spreadRadius: 12,
+                                            offset: const Offset(0, 16),
+                                          ),
+                                          // Left edge glow
+                                          BoxShadow(
+                                            color: effectiveLeftEdge.withValues(alpha: 0.40),
+                                            blurRadius: 46,
+                                            spreadRadius: 8,
+                                            offset: const Offset(-12, 0),
+                                          ),
+                                          // Right edge glow
+                                          BoxShadow(
+                                            color: effectiveRightEdge.withValues(alpha: 0.40),
+                                            blurRadius: 46,
+                                            spreadRadius: 8,
+                                            offset: const Offset(12, 0),
+                                          ),
+                                          // Deep center dominant ambient bloom
+                                          BoxShadow(
+                                            color: effectiveDominant.withValues(alpha: 0.55),
+                                            blurRadius: 68,
+                                            spreadRadius: 16,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  // Bottom edge glow
-                                  BoxShadow(
-                                    color: effectiveBottomEdge.withValues(alpha: 0.50),
-                                    blurRadius: 56,
-                                    spreadRadius: 12,
-                                    offset: const Offset(0, 16),
-                                  ),
-                                  // Left edge glow
-                                  BoxShadow(
-                                    color: effectiveLeftEdge.withValues(alpha: 0.40),
-                                    blurRadius: 46,
-                                    spreadRadius: 8,
-                                    offset: const Offset(-12, 0),
-                                  ),
-                                  // Right edge glow
-                                  BoxShadow(
-                                    color: effectiveRightEdge.withValues(alpha: 0.40),
-                                    blurRadius: 46,
-                                    spreadRadius: 8,
-                                    offset: const Offset(12, 0),
-                                  ),
-                                  // Deep center dominant ambient bloom
-                                  BoxShadow(
-                                    color: effectiveDominant.withValues(alpha: 0.55),
-                                    blurRadius: 68,
-                                    spreadRadius: 16,
-                                  ),
+
+                                  // 3b. Blurred scaled duplicate of actual artwork
+                                  // Extends seamlessly 25-35dp past the card edges.
+                                  // Because it's literally a blurred version of the artwork image,
+                                  // every edge glows with the exact colors of that edge!
+                                  if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty)
+                                    Positioned.fill(
+                                      child: Transform.scale(
+                                        scale: 1.14,
+                                        child: ImageFiltered(
+                                          imageFilter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
+                                          child: Opacity(
+                                            opacity: 0.75,
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(32),
+                                              child: _buildArtworkBackdrop(track.artworkUrl!),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
                           ),
-
-                          // 3b. Blurred scaled duplicate of actual artwork
-                          // Extends seamlessly 25-35dp past the card edges.
-                          // Because it's literally a blurred version of the artwork image,
-                          // every edge glows with the exact colors of that edge!
-                          if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty)
-                            Positioned.fill(
-                              child: Transform.scale(
-                                scale: 1.14,
-                                child: ImageFiltered(
-                                  imageFilter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
-                                  child: Opacity(
-                                    opacity: 0.75,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(32),
-                                      child: _buildArtworkBackdrop(track.artworkUrl!),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
 
                           // 3c. Crisp Hero Album Artwork Card
                           GestureDetector(

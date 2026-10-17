@@ -157,9 +157,11 @@ class MaterialYouAlbumCover extends StatelessWidget {
               // 5. Centered Playing Animation on Album Art (without dark shadow)
               if (isPlaying)
                 Center(
-                  child: PixelPlayingEqualizerAnimation(
-                    size: (size * 0.36).clamp(16.0, 32.0),
-                    color: Colors.white,
+                  child: RepaintBoundary(
+                    child: PixelPlayingEqualizerAnimation(
+                      size: (size * 0.36).clamp(16.0, 32.0),
+                      color: Colors.white,
+                    ),
                   ),
                 )
               else if (showPlayButton)
@@ -361,31 +363,33 @@ class _PixelPlayingEqualizerAnimationState
     final width = widget.size;
     final barWidth = (width / (widget.barCount * 2.2)).clamp(2.0, 4.0);
 
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final t = _controller.value * 2 * pi;
-        return SizedBox(
-          width: width,
-          height: width,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: List.generate(widget.barCount, (i) {
-              final phase = i * 1.45;
-              final heightFactor = (0.25 + 0.70 * (0.5 + 0.5 * sin(t + phase))).clamp(0.2, 1.0);
-              return Container(
-                width: barWidth,
-                height: (width * heightFactor).clamp(3.0, width),
-                decoration: BoxDecoration(
-                  color: barColor,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-              );
-            }),
-          ),
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = _controller.value * 2 * pi;
+          return SizedBox(
+            width: width,
+            height: width,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: List.generate(widget.barCount, (i) {
+                final phase = i * 1.45;
+                final heightFactor = (0.25 + 0.70 * (0.5 + 0.5 * sin(t + phase))).clamp(0.2, 1.0);
+                return Container(
+                  width: barWidth,
+                  height: (width * heightFactor).clamp(3.0, width),
+                  decoration: BoxDecoration(
+                    color: barColor,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                );
+              }),
+            ),
+          );
+        },
+      ),
     );
   }
 }

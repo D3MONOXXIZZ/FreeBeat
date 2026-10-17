@@ -491,7 +491,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     final hasActiveTrack = activeTrackId.isNotEmpty;
     final bottomFabPadding = MediaQuery.of(context).padding.bottom +
-        (hasActiveTrack ? 156.0 : 88.0);
+        (hasActiveTrack ? 118.0 : 64.0);
 
     return Scaffold(
       floatingActionButton: Padding(

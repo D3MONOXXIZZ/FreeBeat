@@ -316,33 +316,38 @@ class _MainShellState extends ConsumerState<MainShell> {
               ],
 
               // Material 3 Expressive Floating Navigation Pill
-              MaterialYouNavPill(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (idx) {
-                  setState(() => _selectedIndex = idx);
-                },
-                destinations: const [
-                  NavPillDestination(
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: 'Your Mix',
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 308),
+                  child: MaterialYouNavPill(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (idx) {
+                      setState(() => _selectedIndex = idx);
+                    },
+                    destinations: const [
+                      NavPillDestination(
+                        icon: Icons.home_outlined,
+                        selectedIcon: Icons.home_rounded,
+                        label: 'Your Mix',
+                      ),
+                      NavPillDestination(
+                        icon: Icons.library_music_outlined,
+                        selectedIcon: Icons.library_music_rounded,
+                        label: 'Library',
+                      ),
+                      NavPillDestination(
+                        icon: Icons.equalizer_rounded,
+                        selectedIcon: Icons.graphic_eq_rounded,
+                        label: 'Poweramp EQ',
+                      ),
+                      NavPillDestination(
+                        icon: Icons.cloud_outlined,
+                        selectedIcon: Icons.cloud_done_rounded,
+                        label: 'Clouds',
+                      ),
+                    ],
                   ),
-                  NavPillDestination(
-                    icon: Icons.library_music_outlined,
-                    selectedIcon: Icons.library_music_rounded,
-                    label: 'Library',
-                  ),
-                  NavPillDestination(
-                    icon: Icons.equalizer_rounded,
-                    selectedIcon: Icons.graphic_eq_rounded,
-                    label: 'Poweramp EQ',
-                  ),
-                  NavPillDestination(
-                    icon: Icons.cloud_outlined,
-                    selectedIcon: Icons.cloud_done_rounded,
-                    label: 'Clouds',
-                  ),
-                ],
+                ),
               ),
 
               // Signature Android Pixel Gesture Pill

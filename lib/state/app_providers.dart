@@ -996,7 +996,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               return;
             }
           }
-          if ((posMs - lastEmittedPosMs).abs() >= 150 || posMs == 0) {
+          if (((posMs - lastEmittedPosMs).abs() >= 200 || posMs == 0) &&
+              state.positionMs != posMs) {
             lastEmittedPosMs = posMs;
             state = state.copyWith(positionMs: posMs);
           }

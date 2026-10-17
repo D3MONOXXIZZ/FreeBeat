@@ -29,11 +29,13 @@ class MaterialYouNavPill extends StatelessWidget {
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
+    this.maxWidth,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final List<NavPillDestination> destinations;
+  final double? maxWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +43,8 @@ class MaterialYouNavPill extends StatelessWidget {
 
     return Container(
       height: 50,
+      constraints:
+          maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(100),
@@ -58,19 +62,22 @@ class MaterialYouNavPill extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(100),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            for (int i = 0; i < destinations.length; i++)
-              _NavPillItem(
-                destination: destinations[i],
-                isSelected: selectedIndex == i,
-                onTap: () {
-                  PixelHaptics.tick(intensity: 0.70);
-                  onDestinationSelected(i);
-                },
-              ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              for (int i = 0; i < destinations.length; i++)
+                _NavPillItem(
+                  destination: destinations[i],
+                  isSelected: selectedIndex == i,
+                  onTap: () {
+                    PixelHaptics.tick(intensity: 0.70);
+                    onDestinationSelected(i);
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
