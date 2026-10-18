@@ -8,6 +8,7 @@ import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
+import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
 import '../../core/models/playlist.dart';
@@ -1135,19 +1136,59 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               child: Center(
                                 child: Column(
                                   children: [
-                                    Icon(Icons.filter_list_off_rounded,
-                                        size: 32, color: cs.onSurfaceVariant),
-                                    const SizedBox(height: 8),
-                                    Text('No tracks in this view',
-                                        style: textTheme.titleMedium),
-                                    const SizedBox(height: 8),
-                                    TextButton(
-                                      onPressed: () => setState(() {
-                                        _segment = 'all';
-                                        _selectedArtist = null;
-                                      }),
-                                      child: const Text('View All Tracks'),
+                                    Icon(
+                                      _segment == 'offline'
+                                          ? Icons.download_for_offline_outlined
+                                          : Icons.filter_list_off_rounded,
+                                      size: 36,
+                                      color: cs.onSurfaceVariant,
                                     ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _segment == 'offline'
+                                          ? 'No Pinned Offline Tracks'
+                                          : 'No tracks in this view',
+                                      style: textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _segment == 'offline'
+                                          ? 'Pin any song, playlist, or artist to listen without an internet connection.'
+                                          : 'Try selecting a different filter or adding music to your library.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    if (_segment == 'offline')
+                                      FilledButton.tonalIcon(
+                                        onPressed: () {
+                                          PixelHaptics.tick();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const CloudSyncSettingsScreen(),
+                                            ),
+                                          );
+                                        },
+                                        icon: const Icon(
+                                          Icons.storage_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Manage Downloads'),
+                                      )
+                                    else
+                                      TextButton(
+                                        onPressed: () => setState(() {
+                                          _segment = 'all';
+                                          _selectedArtist = null;
+                                        }),
+                                        child: const Text('View All Tracks'),
+                                      ),
                                   ],
                                 ),
                               ),

@@ -96,7 +96,7 @@ class SettingsScreen extends ConsumerWidget {
                 _SettingsNavTile(
                   icon: Icons.cloud_sync_outlined,
                   title: 'Storage & Sync',
-                  subtitle: 'Cache management, local discovery, and test data',
+                  subtitle: 'Offline downloads, storage breakdown, and cache limits',
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const CloudSyncSettingsScreen()),

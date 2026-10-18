@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/audio/cloud_audio_cache_service.dart';
+import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import 'expressive_shapes.dart';
@@ -29,9 +30,14 @@ class MaterialYouDownloadButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final cacheSvc = ref.watch(cloudAudioCacheServiceProvider);
+    final queueMgr = ref.watch(downloadQueueManagerProvider);
     final isCached = track.isPinnedOffline || cacheSvc.isTrackCached(track);
     final progress = cacheSvc.getProgress(track.id);
-    final isDownloading = progress.state == CacheState.caching;
+    final inQueue = queueMgr.queue.any((q) =>
+        q.track.id == track.id &&
+        (q.status == DownloadStatus.downloading ||
+            q.status == DownloadStatus.queued));
+    final isDownloading = progress.state == CacheState.caching || inQueue;
 
     Widget iconWidget;
     Color buttonColor = color ?? cs.onSurfaceVariant;

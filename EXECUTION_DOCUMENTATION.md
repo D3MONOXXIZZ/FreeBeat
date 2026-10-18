@@ -431,8 +431,10 @@ FreeBeat's background download queue orchestrates offline caching of cloud music
 - **Cache Maintenance**: 1-tap "Clear Stream Cache" button showing instant reclaimed storage without affecting pinned music.
 - **Live Active Download Queue**: Displays active progress indicators, percentage downloaded, pause/resume queue toggle, retry failed buttons, and item cancellation.
 
-### 13.5 Quality Verification & Universal Fat Release APK
+### 13.5 Quality Verification & Streamlined 64-Bit Release APK
 - **Static Analysis**: `flutter analyze` completed with 0 errors, 0 warnings across all files.
-- **Test Suite**: 126/126 unit and widget tests passing (100% pass rate).
-- **Universal Release Binary**: Universal fat release APK generated at root `FreeBeat-release.apk` (141.9 MB) bundling all native C++ FFmpeg and audio libraries across all four CPU architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`).
+- **Test Suite**: 128/128 unit and widget tests passing (100% pass rate).
+- **Target ABIs**: Strict enforcement of 64-bit architectures (`arm64-v8a` for physical Android phones and `x86_64` for emulators/Chromebooks) with legacy 32-bit (`armeabi-v7a`, `x86`) completely excluded via `android/app/build.gradle.kts` (`ndk.abiFilters` and `packaging.jniLibs.excludes`).
+- **Streamlined Release Binary**: Release APK generated at root `FreeBeat-release.apk` (82.6 MB, saving ~59.3 MB while retaining full FFmpeg and native audio processing capabilities for all modern devices).
+
 

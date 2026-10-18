@@ -10,6 +10,8 @@ import 'package:freebeat/services/audio/cloud_audio_cache_service.dart';
 import 'package:freebeat/services/audio/download_queue_manager.dart';
 import 'package:freebeat/state/app_providers.dart';
 import 'package:freebeat/ui/screens/settings/cloud_sync_settings_screen.dart';
+import 'package:freebeat/ui/screens/settings/settings_screen.dart';
+import 'package:freebeat/ui/widgets/material_you_download_button.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -371,6 +373,78 @@ void main() {
       expect(find.text('Download Queue'), findsOneWidget);
       expect(find.text('All downloads up to date'), findsOneWidget);
       expect(find.text('Sample Data (Testing)'), findsOneWidget);
+    });
+
+    testWidgets('MaterialYouDownloadButton reflects pinned and queued states',
+        (WidgetTester tester) async {
+      final tOffline = Track(
+        id: 't_offline',
+        accountId: 'acc',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: '1',
+        title: 'Offline Song',
+        artist: 'Artist',
+        album: 'Album',
+        durationMs: 100000,
+        streamUrl: 'https://example.com/1.flac',
+        isPinnedOffline: true,
+      );
+
+      final tOnline = Track(
+        id: 't_online',
+        accountId: 'acc',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: '2',
+        title: 'Online Song',
+        artist: 'Artist',
+        album: 'Album',
+        durationMs: 100000,
+        streamUrl: 'https://example.com/2.flac',
+        isPinnedOffline: false,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: Column(
+                children: [
+                  MaterialYouDownloadButton(track: tOffline),
+                  MaterialYouDownloadButton(track: tOnline),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.download_done_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_circle_down_rounded), findsOneWidget);
+    });
+
+    testWidgets('SettingsScreen navigates to CloudSyncSettingsScreen',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: SettingsScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Storage & Sync'), findsOneWidget);
+      await tester.tap(find.text('Storage & Sync'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Storage Breakdown'), findsOneWidget);
     });
   });
 }

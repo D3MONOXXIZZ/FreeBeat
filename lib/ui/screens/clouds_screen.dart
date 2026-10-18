@@ -10,6 +10,7 @@ import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/pending_import_track_tile.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
+import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/settings_screen.dart';
 
 /// Clean, focused Cloud Storage Hub (Google Material 3 Expressive).
@@ -70,6 +71,20 @@ class CloudsScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            IconButton.filledTonal(
+              onPressed: () {
+                PixelHaptics.tick();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CloudSyncSettingsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.storage_rounded, size: 20),
+              tooltip: 'Storage & Downloads',
+            ),
+            const SizedBox(width: 8),
             IconButton.filledTonal(
               onPressed: () {
                 PixelHaptics.tick();
