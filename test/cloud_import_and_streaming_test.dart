@@ -228,19 +228,13 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      bool navigatedToLibrary = false;
-
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
             theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
-            home: Scaffold(
-              body: CloudsScreen(
-                onNavigateToTab: (idx) {
-                  if (idx == 1) navigatedToLibrary = true;
-                },
-              ),
+            home: const Scaffold(
+              body: CloudsScreen(),
             ),
           ),
         ),
@@ -252,16 +246,12 @@ void main() {
       expect(find.text('Personal Drive'), findsOneWidget);
       expect(find.textContaining('1 tracks indexed'), findsOneWidget);
 
-      // Check that "Imported Tracks" section renders the track title and artist
-      expect(find.textContaining('Imported Tracks'), findsOneWidget);
-      expect(find.text('Cosmic Beats'), findsOneWidget);
-      expect(find.textContaining('Starlight'), findsOneWidget);
+      // Verify "Imported Tracks" library card was removed as requested
+      expect(find.textContaining('Imported Tracks'), findsNothing);
 
-      // Tap "Library" button to test tab navigation
-      final libraryBtn = find.text('Library');
-      expect(libraryBtn, findsOneWidget);
-      await tester.tap(libraryBtn);
-      expect(navigatedToLibrary, isTrue);
+      // Verify connected drive has direct action buttons to import tracks and folders under account details
+      expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
+      expect(find.text('Import Folder'), findsOneWidget);
     });
   });
 }

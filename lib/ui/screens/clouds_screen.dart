@@ -6,10 +6,7 @@ import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/discovery/local_media_server_discovery_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import '../widgets/material_you_album_cover.dart';
-import '../widgets/material_you_download_button.dart';
 import '../widgets/pending_import_track_tile.dart';
-import '../widgets/swipe_to_queue_wrapper.dart';
 import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/settings_screen.dart';
 
@@ -21,23 +18,12 @@ class CloudsScreen extends ConsumerWidget {
 
   final ValueChanged<int>? onNavigateToTab;
 
-  String _formatTrackDuration(int ms) {
-    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
-    final minutes = totalSeconds ~/ 60;
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final accounts = ref.watch(cloudAccountsProvider);
     final allTracks = ref.watch(tracksCatalogProvider);
-    final activeTrackId =
-        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
-    final isPlaybackActive =
-        ref.watch(playbackProvider.select((p) => p.isPlaying));
     final importProgress = ref.watch(importProgressProvider);
 
     return SafeArea(
@@ -233,63 +219,134 @@ class CloudsScreen extends ConsumerWidget {
                           final accountTracks = allTracks
                               .where((t) => t.accountId == accounts[i].id)
                               .toList();
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 6),
-                            leading: CircleAvatar(
-                              radius: 20,
-                              backgroundColor: accounts[i]
-                                  .providerType
-                                  .accentColor
-                                  .withValues(alpha: 0.16),
-                              child: Icon(
-                                accounts[i].providerType.icon,
-                                color: accounts[i].providerType.accentColor,
-                                size: 20,
-                              ),
-                            ),
-                            title: Text(
-                              accounts[i].displayName,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              accountTracks.isNotEmpty
-                                  ? '${accountTracks.length} tracks indexed • ${accounts[i].endpointOrFolder}'
-                                  : accounts[i].endpointOrFolder,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton.filledTonal(
-                                  icon: const Icon(Icons.sync_rounded, size: 18),
-                                  tooltip: 'Sync Cloud Library',
-                                  onPressed: () => _resyncAccount(
-                                    context,
-                                    ref,
-                                    accounts[i],
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 4),
+                                leading: CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: accounts[i]
+                                      .providerType
+                                      .accentColor
+                                      .withValues(alpha: 0.16),
+                                  child: Icon(
+                                    accounts[i].providerType.icon,
+                                    color: accounts[i].providerType.accentColor,
+                                    size: 20,
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded,
-                                      size: 18),
-                                  color: cs.error,
-                                  tooltip: 'Disconnect',
-                                  onPressed: () => _confirmRemoveAccount(
-                                    context,
-                                    ref,
-                                    accounts[i],
+                                title: Text(
+                                  accounts[i].displayName,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                              ],
-                            ),
+                                subtitle: Text(
+                                  accountTracks.isNotEmpty
+                                      ? '${accountTracks.length} tracks indexed • ${accounts[i].endpointOrFolder}'
+                                      : accounts[i].endpointOrFolder,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton.filledTonal(
+                                      icon: const Icon(Icons.sync_rounded,
+                                          size: 18),
+                                      tooltip: 'Sync Cloud Library',
+                                      onPressed: () => _resyncAccount(
+                                        context,
+                                        ref,
+                                        accounts[i],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18),
+                                      color: cs.error,
+                                      tooltip: 'Disconnect',
+                                      onPressed: () => _confirmRemoveAccount(
+                                        context,
+                                        ref,
+                                        accounts[i],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton.tonalIcon(
+                                        onPressed: () =>
+                                            _importTracksForAccount(
+                                          context,
+                                          ref,
+                                          accounts[i],
+                                        ),
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 10),
+                                          shape: const StadiumBorder(),
+                                        ),
+                                        icon: const Icon(
+                                            Icons.audio_file_rounded,
+                                            size: 16),
+                                        label: Text(
+                                          accounts[i].providerType ==
+                                                  CloudProviderType.googleDrive
+                                              ? 'Pick Audio Files from Google Drive'
+                                              : 'Import Tracks',
+                                          style: const TextStyle(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () =>
+                                            _importFolderForAccount(
+                                          context,
+                                          ref,
+                                          accounts[i],
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 10),
+                                          shape: const StadiumBorder(),
+                                        ),
+                                        icon: const Icon(
+                                            Icons.folder_shared_rounded,
+                                            size: 16),
+                                        label: const Text(
+                                          'Import Folder',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -316,7 +373,8 @@ class CloudsScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                     color: cs.primaryContainer.withValues(alpha: 0.35),
                     child: Row(
                       children: [
@@ -350,8 +408,11 @@ class CloudsScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  for (int p = 0; p < importProgress.pendingTracks.length; p++) ...[
-                    PendingImportTrackTile(item: importProgress.pendingTracks[p]),
+                  for (int p = 0;
+                      p < importProgress.pendingTracks.length;
+                      p++) ...[
+                    PendingImportTrackTile(
+                        item: importProgress.pendingTracks[p]),
                     if (p < importProgress.pendingTracks.length - 1)
                       Divider(
                         height: 1,
@@ -366,329 +427,117 @@ class CloudsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
         ],
-
-        // 3. Tracks from Connected Clouds & Device Storage
-        if (allTracks.isNotEmpty) ...[
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.35),
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Material(
-                color: Colors.transparent,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.queue_music_rounded,
-                                color: cs.primary, size: 20),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Imported Tracks (${allTracks.length})',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (onNavigateToTab != null)
-                          TextButton.icon(
-                            onPressed: () {
-                              PixelHaptics.tick();
-                              onNavigateToTab!(1);
-                            },
-                            icon: const Icon(Icons.library_music_rounded,
-                                size: 16),
-                            label: const Text('Library',
-                                style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700)),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Divider(
-                    height: 1,
-                    color: cs.outlineVariant.withValues(alpha: 0.25),
-                  ),
-                  for (int i = 0;
-                      i < (allTracks.length > 15 ? 15 : allTracks.length);
-                      i++) ...[
-                    if (i > 0)
-                      Divider(
-                        height: 1,
-                        indent: 74,
-                        endIndent: 16,
-                        color: cs.outlineVariant.withValues(alpha: 0.2),
-                      ),
-                    SwipeToQueueWrapper(
-                      track: allTracks[i],
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        leading: MaterialYouAlbumCover(
-                          track: allTracks[i],
-                          size: 46,
-                          borderRadius: 14,
-                          showQualityBadge: false,
-                          showSourceBadge: true,
-                          isPlaying: activeTrackId == allTracks[i].id &&
-                              isPlaybackActive,
-                        ),
-                        title: Text(
-                          allTracks[i].title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: activeTrackId == allTracks[i].id
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            color: activeTrackId == allTracks[i].id
-                                ? cs.primary
-                                : cs.onSurface,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${allTracks[i].artist} • ${allTracks[i].codec} • ${_formatTrackDuration(allTracks[i].durationMs)}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                        trailing: MaterialYouDownloadButton(
-                          track: allTracks[i],
-                          size: 20,
-                        ),
-                        onTap: () {
-                          PixelHaptics.tick();
-                          ref.read(playbackProvider.notifier).playTrack(
-                                allTracks[i],
-                                newQueue: allTracks,
-                              );
-                        },
-                      ),
-                    ),
-                  ],
-                  if (allTracks.length > 15 && onNavigateToTab != null) ...[
-                    Divider(
-                      height: 1,
-                      color: cs.outlineVariant.withValues(alpha: 0.25),
-                    ),
-                    InkWell(
-                      onTap: () {
-                        PixelHaptics.tick();
-                        onNavigateToTab!(1);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: Text(
-                            'View all ${allTracks.length} tracks in Library →',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: cs.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        ],
-
-        // 3. Fast Cloud App Launchers (Open installed app or Google Play Store)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.apps_rounded, color: cs.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Installed Cloud Apps',
-                            style: textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            'Opens the app or Google Play Store if not installed',
-                            style: textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _AppLauncherRow(
-                  name: 'Google Drive',
-                  packageName: 'com.google.android.apps.docs',
-                  icon: Icons.add_to_drive_rounded,
-                  color: const Color(0xFF4285F4),
-                ),
-                const Divider(height: 14),
-                _AppLauncherRow(
-                  name: 'Microsoft OneDrive',
-                  packageName: 'com.microsoft.skydrive',
-                  icon: Icons.cloud_queue_rounded,
-                  color: const Color(0xFF0078D4),
-                ),
-                const Divider(height: 14),
-                _AppLauncherRow(
-                  name: 'Dropbox',
-                  packageName: 'com.dropbox.android',
-                  icon: Icons.inventory_2_rounded,
-                  color: const Color(0xFF0061FF),
-                ),
-                const Divider(height: 14),
-                _AppLauncherRow(
-                  name: 'Nextcloud',
-                  packageName: 'com.nextcloud.client',
-                  icon: Icons.language_rounded,
-                  color: const Color(0xFF0082C9),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // 4. Quick Device / SD Card Audio Import Card
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.sd_card_rounded, color: cs.secondary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Device & SD Card Storage',
-                            style: textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            'Import audio files downloaded on your phone',
-                            style: textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                FilledButton.tonalIcon(
-                  onPressed: () => _pickLocalAudioFiles(context, ref),
-                  icon: const Icon(Icons.folder_open_rounded, size: 18),
-                  label: const Text('Pick Music from Device Storage'),
-                  style: FilledButton.styleFrom(
-                    shape: const StadiumBorder(),
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     ),
   );
   }
 
-  Future<void> _pickLocalAudioFiles(BuildContext context, WidgetRef ref) async {
+  Future<void> _importTracksForAccount(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAccount account,
+  ) async {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
-    const safAccount = CloudAccount(
-      id: 'local_storage_saf',
-      providerType: CloudProviderType.androidSaf,
-      displayName: 'Device Storage',
-      endpointOrFolder: 'Local Music Files',
-    );
     final progressNotifier = ref.read(importProgressProvider.notifier);
-    await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
+    final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
 
-    final tracks = await authService.pickFromInstalledCloudApp(
-      account: safAccount,
-      batchSize: 10,
-      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
-        progressNotifier.startBatch(
-          batchFilenames: batchFilenames,
-          batchStartIndex: batchStartIndex,
-          totalFiles: totalFiles,
-        );
-      },
-      onProgress: (current, total, track) {
-        progressNotifier.update(
-          current: current,
-          total: total,
-          name: track?.title ?? '',
-          track: track,
-        );
-      },
-      onBatchCompleted: (batchTracks) async {
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
-      },
-    );
-    if (tracks.isNotEmpty) {
-      await PixelHaptics.hifiConfirm();
-      progressNotifier.complete();
+    try {
+      final tracks = await authService.pickFromInstalledCloudApp(
+        account: account,
+        batchSize: 10,
+        onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+          progressNotifier.startBatch(
+            batchFilenames: batchFilenames,
+            batchStartIndex: batchStartIndex,
+            totalFiles: totalFiles,
+          );
+        },
+        onProgress: (current, total, track) {
+          progressNotifier.update(
+            current: current,
+            total: total,
+            name: track?.title ?? '',
+            track: track,
+          );
+        },
+        onBatchCompleted: (batchTracks) async {
+          await catalogNotifier.addIndexedTracks(batchTracks);
+        },
+      );
+
+      if (tracks.isNotEmpty) {
+        await PixelHaptics.hifiConfirm();
+        progressNotifier.complete();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Imported ${tracks.length} audio tracks to ${account.displayName}!'),
+              action: onNavigateToTab != null
+                  ? SnackBarAction(
+                      label: 'View in Library',
+                      onPressed: () => onNavigateToTab!(1),
+                    )
+                  : null,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        progressNotifier.clearPending();
+      }
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text('Imported ${tracks.length} tracks from device storage!'),
-            action: onNavigateToTab != null
-                ? SnackBarAction(
-                    label: 'View in Library',
-                    onPressed: () => onNavigateToTab!(1),
-                  )
-                : null,
+            content: Text('Import failed: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
-    } else {
-      progressNotifier.clearPending();
+    }
+  }
+
+  Future<void> _importFolderForAccount(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAccount account,
+  ) async {
+    PixelHaptics.tick();
+    final authService = ref.read(nativeCloudAuthServiceProvider);
+    final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
+
+    try {
+      final tracks = await authService.pickFolder(account: account);
+      if (tracks.isNotEmpty) {
+        await catalogNotifier.addIndexedTracks(tracks);
+        await PixelHaptics.hifiConfirm();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Imported ${tracks.length} tracks to ${account.displayName}!'),
+              action: onNavigateToTab != null
+                  ? SnackBarAction(
+                      label: 'View in Library',
+                      onPressed: () => onNavigateToTab!(1),
+                    )
+                  : null,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Folder import failed: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -1428,7 +1277,9 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 children: [
                   Icon(Icons.add_to_drive_rounded, color: Color(0xFF4285F4), size: 28),
                   SizedBox(width: 12),
-                  Text('Google Drive', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Expanded(
+                    child: Text('Google Drive', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1463,50 +1314,6 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _mountViaSaf(
-                        providerType: CloudProviderType.googleDrive,
-                        defaultName: 'Google Drive',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: const StadiumBorder(),
-                      ),
-                      icon: const Icon(Icons.audio_file_rounded, size: 16),
-                      label: const Text(
-                        'Pick Audio Files from Google Drive',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _mountFolderViaSaf(
-                        providerType: CloudProviderType.googleDrive,
-                        defaultName: 'Google Drive Folder',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: const StadiumBorder(),
-                      ),
-                      icon: const Icon(Icons.folder_shared_rounded, size: 16),
-                      label: const Text(
-                        'Import Folder',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -1519,20 +1326,13 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           type: CloudProviderType.oneDrive,
           accentColor: const Color(0xFF0078D4),
           title: 'Microsoft OneDrive',
-          description: 'Sign in with your Microsoft 365 account or open the OneDrive app.',
+          description: 'Sign in with your Microsoft 365 account to stream your cloud library.',
           primaryActionLabel: 'Sign in with Microsoft 365',
           onPrimaryAction: () async {
             final authService = ref.read(nativeCloudAuthServiceProvider);
             await authService.launchOAuthAuthorization(
               provider: CloudProviderType.oneDrive,
               clientId: 'f9479b18-0524-460b-8d34-716b9b324d67',
-            );
-          },
-          secondaryActionLabel: 'Open OneDrive App / Play Store',
-          onSecondaryAction: () async {
-            final authService = ref.read(nativeCloudAuthServiceProvider);
-            await authService.launchOrOpenPlayStore(
-              packageName: 'com.microsoft.skydrive',
             );
           },
         ),
@@ -1545,20 +1345,13 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           type: CloudProviderType.dropbox,
           accentColor: const Color(0xFF0061FF),
           title: 'Dropbox',
-          description: 'Stream audio files directly from Dropbox cloud or app.',
+          description: 'Sign in to stream audio files directly from Dropbox cloud.',
           primaryActionLabel: 'Sign in with Dropbox',
           onPrimaryAction: () async {
             final authService = ref.read(nativeCloudAuthServiceProvider);
             await authService.launchOAuthAuthorization(
               provider: CloudProviderType.dropbox,
               clientId: 'dropbox_freebeat_client',
-            );
-          },
-          secondaryActionLabel: 'Open Dropbox App / Play Store',
-          onSecondaryAction: () async {
-            final authService = ref.read(nativeCloudAuthServiceProvider);
-            await authService.launchOrOpenPlayStore(
-              packageName: 'com.dropbox.android',
             );
           },
         ),
@@ -1574,8 +1367,6 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     required String description,
     required String primaryActionLabel,
     required VoidCallback onPrimaryAction,
-    required String secondaryActionLabel,
-    required VoidCallback onSecondaryAction,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1593,34 +1384,24 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
             children: [
               Icon(type.icon, color: accentColor, size: 24),
               const SizedBox(width: 10),
-              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              Expanded(
+                child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
             ],
           ),
           const SizedBox(height: 6),
           Text(description, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: onPrimaryAction,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: const StadiumBorder(),
-                  ),
-                  child: Text(primaryActionLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                ),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              onPressed: onPrimaryAction,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: const StadiumBorder(),
               ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: onSecondaryAction,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  shape: const StadiumBorder(),
-                ),
-                child: Text(secondaryActionLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-              ),
-            ],
+              child: Text(primaryActionLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
           ),
         ],
       ),
@@ -1738,7 +1519,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 children: [
                   Icon(Icons.phone_android_rounded, color: Color(0xFF3DDC84), size: 26),
                   SizedBox(width: 12),
-                  Text('Mount Any Installed Cloud App', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Expanded(
+                    child: Text(
+                      'Mount Any Installed Cloud App',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1781,6 +1567,126 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                   icon: const Icon(Icons.folder_shared_rounded, size: 20),
                   label: const Text('Import Entire Folder', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Device & SD Card Storage
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.sd_card_rounded, color: cs.secondary, size: 24),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Device & SD Card Storage',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          'Import audio files downloaded on your phone',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: _isConnecting
+                      ? null
+                      : () => _mountViaSaf(
+                            providerType: CloudProviderType.androidSaf,
+                            defaultName: 'Device Storage',
+                          ),
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  label: const Text('Pick Music from Device Storage', style: TextStyle(fontWeight: FontWeight.w700)),
+                  style: FilledButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Installed Cloud Apps Launchers
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.apps_rounded, size: 24),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Installed Cloud Apps',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          'Opens the app or Google Play Store if not installed',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              _AppLauncherRow(
+                name: 'Google Drive',
+                packageName: 'com.google.android.apps.docs',
+                icon: Icons.add_to_drive_rounded,
+                color: Color(0xFF4285F4),
+              ),
+              Divider(height: 14),
+              _AppLauncherRow(
+                name: 'Microsoft OneDrive',
+                packageName: 'com.microsoft.skydrive',
+                icon: Icons.cloud_queue_rounded,
+                color: Color(0xFF0078D4),
+              ),
+              Divider(height: 14),
+              _AppLauncherRow(
+                name: 'Dropbox',
+                packageName: 'com.dropbox.android',
+                icon: Icons.inventory_2_rounded,
+                color: Color(0xFF0061FF),
+              ),
+              Divider(height: 14),
+              _AppLauncherRow(
+                name: 'Nextcloud',
+                packageName: 'com.nextcloud.client',
+                icon: Icons.language_rounded,
+                color: Color(0xFF0082C9),
               ),
             ],
           ),

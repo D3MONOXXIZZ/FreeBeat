@@ -77,10 +77,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Clouds & Hi-Fi Quality'), findsOneWidget);
       expect(find.text('No Cloud Accounts Connected'), findsOneWidget);
+      expect(find.text('Connect a Cloud Drive'), findsOneWidget);
+
+      // Verify installed cloud apps are housed inside the Add Cloud card
+      await tester.tap(find.text('Add Cloud'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add Cloud & Media Drive'), findsOneWidget);
+      await tester.ensureVisible(find.text('Installed Apps'));
+      await tester.tap(find.text('Installed Apps'));
+      await tester.pumpAndSettle();
       expect(find.text('Installed Cloud Apps'), findsOneWidget);
-      expect(find.text('Google Drive'), findsOneWidget);
-      expect(find.text('Microsoft OneDrive'), findsOneWidget);
-      expect(find.text('Dropbox'), findsOneWidget);
+      expect(find.text('Google Drive'), findsWidgets);
+      expect(find.text('Microsoft OneDrive'), findsWidgets);
+      expect(find.text('Dropbox'), findsWidgets);
     },
   );
 }

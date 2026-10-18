@@ -170,12 +170,12 @@ void main() {
       await tester.tap(find.text('Add Cloud'));
       await tester.pumpAndSettle();
 
-      // Check header and 1-Tap Google Drive Card
+      // Check header and 1-Tap Google Drive Card (only sign-in button is displayed)
       expect(find.text('Add Cloud & Media Drive'), findsOneWidget);
       expect(find.text('Google Drive'), findsWidgets);
-      expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
-      expect(find.text('Import Folder'), findsOneWidget);
       expect(find.text('Cloud Sign-In'), findsOneWidget);
+      expect(find.text('Pick Audio Files from Google Drive'), findsNothing);
+      expect(find.text('Import Folder'), findsNothing);
       expect(find.text('Microsoft OneDrive'), findsWidgets);
       expect(find.text('Dropbox'), findsWidgets);
 
@@ -194,6 +194,9 @@ void main() {
       expect(find.text('Mount Any Installed Cloud App'), findsOneWidget);
       expect(find.text('Pick Music Files from Installed App'), findsOneWidget);
       expect(find.text('Import Entire Folder'), findsOneWidget);
+      expect(find.text('Device & SD Card Storage'), findsOneWidget);
+      expect(find.text('Pick Music from Device Storage'), findsOneWidget);
+      expect(find.text('Installed Cloud Apps'), findsOneWidget);
 
       // Switch to 'Manual / S3' mode
       await tester.ensureVisible(find.text('Manual / S3'));
