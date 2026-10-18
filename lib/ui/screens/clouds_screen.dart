@@ -8,6 +8,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
+import '../widgets/pending_import_track_tile.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import 'settings/settings_screen.dart';
 
@@ -222,44 +223,65 @@ class CloudsScreen extends ConsumerWidget {
         // Real-Time Import Progress Card on Clouds screen
         if (importProgress.pendingTracks.isNotEmpty) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(20),
+              color: cs.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: cs.primary.withValues(alpha: 0.3),
+                color: cs.primary.withValues(alpha: 0.35),
               ),
             ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: cs.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Importing ${importProgress.pendingTracks.length} Songs (${importProgress.current}/${importProgress.total})',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: cs.primary,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: cs.primaryContainer.withValues(alpha: 0.35),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cs.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Importing ${importProgress.pendingTracks.length} Songs (${importProgress.current}/${importProgress.total})',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          importProgress.progressPercentage,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                Text(
-                  importProgress.progressPercentage,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: cs.primary,
-                  ),
-                ),
-              ],
+                  for (int p = 0; p < importProgress.pendingTracks.length; p++) ...[
+                    PendingImportTrackTile(item: importProgress.pendingTracks[p]),
+                    if (p < importProgress.pendingTracks.length - 1)
+                      Divider(
+                        height: 1,
+                        indent: 74,
+                        endIndent: 16,
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                      ),
+                  ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -537,16 +559,23 @@ class CloudsScreen extends ConsumerWidget {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
     const safAccount = CloudAccount(
-      id: 'local_storage',
+      id: 'local_storage_saf',
       providerType: CloudProviderType.androidSaf,
       displayName: 'Device Storage',
       endpointOrFolder: 'Local Music Files',
     );
     final progressNotifier = ref.read(importProgressProvider.notifier);
+    await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
+
     final tracks = await authService.pickFromInstalledCloudApp(
       account: safAccount,
-      onFilesSelected: (filenames) {
-        progressNotifier.startWithFiles(filenames);
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
       },
       onProgress: (current, total, track) {
         progressNotifier.update(
@@ -555,16 +584,14 @@ class CloudsScreen extends ConsumerWidget {
           name: track?.title ?? '',
           track: track,
         );
-        if (track != null) {
-          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-        }
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
       },
     );
-    progressNotifier.complete();
     if (tracks.isNotEmpty) {
-      await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
-      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
       await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -580,6 +607,8 @@ class CloudsScreen extends ConsumerWidget {
           ),
         );
       }
+    } else {
+      progressNotifier.clearPending();
     }
   }
 
@@ -906,6 +935,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
     setState(() => _isConnecting = true);
     PixelHaptics.tick();
 
+    // Pop the wizard bottom sheet early so user sees real-time import progress on the screen
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    }
+
     try {
       final existingAccounts = ref.read(cloudAccountsProvider);
       final existing = existingAccounts.cast<CloudAccount?>().firstWhere(
@@ -926,10 +961,17 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       final accountsNotifier = ref.read(cloudAccountsProvider.notifier);
       final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
 
+      await accountsNotifier.addAccount(account, {});
+
       final tracks = await authService.pickFromInstalledCloudApp(
         account: account,
-        onFilesSelected: (filenames) {
-          progressNotifier.startWithFiles(filenames);
+        batchSize: 10,
+        onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+          progressNotifier.startBatch(
+            batchFilenames: batchFilenames,
+            batchStartIndex: batchStartIndex,
+            totalFiles: totalFiles,
+          );
         },
         onProgress: (current, total, track) {
           progressNotifier.update(
@@ -938,23 +980,17 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
             name: track?.title ?? '',
             track: track,
           );
-          if (track != null) {
-            catalogNotifier.addIndexedTracks([track]);
-          }
+        },
+        onBatchCompleted: (batchTracks) async {
+          await catalogNotifier.addIndexedTracks(batchTracks);
         },
       );
-      progressNotifier.complete();
 
       if (tracks.isNotEmpty) {
-        await accountsNotifier.addAccount(account, {});
-        await catalogNotifier.addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
+        progressNotifier.complete();
 
         final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-
         messenger?.showSnackBar(
           SnackBar(
             content: Text('Imported ${tracks.length} audio tracks from $defaultName!'),
@@ -968,6 +1004,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           ),
         );
       } else {
+        progressNotifier.clearPending();
         if (mounted) setState(() => _isConnecting = false);
       }
     } catch (e) {
@@ -989,6 +1026,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
   }) async {
     setState(() => _isConnecting = true);
     PixelHaptics.tick();
+
+    // Pop the wizard bottom sheet early so user returns smoothly to Clouds screen
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    }
 
     try {
       final existingAccounts = ref.read(cloudAccountsProvider);
@@ -1016,9 +1059,6 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
         await PixelHaptics.hifiConfirm();
 
         final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
 
         messenger?.showSnackBar(
           SnackBar(

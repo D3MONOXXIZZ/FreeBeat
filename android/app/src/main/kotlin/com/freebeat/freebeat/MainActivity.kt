@@ -44,6 +44,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enablePeakDisplayRefreshRate()
+        requestNotificationPermissionIfNeeded()
     }
 
     override fun onResume() {
@@ -185,9 +186,121 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(sha1)
                     }
+                    "startForegroundPlayback" -> {
+                        try {
+                            requestNotificationPermissionIfNeeded()
+                            val title = call.argument<String>("title") ?: "FreeBeat"
+                            val artist = call.argument<String>("artist") ?: "Unknown Artist"
+                            val album = call.argument<String>("album") ?: "Library"
+                            val artworkPath = call.argument<String>("artworkPath")
+                            val durationMs = (call.argument<Number>("durationMs") ?: 0).toLong()
+                            val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                            val isPlaying = call.argument<Boolean>("isPlaying") ?: true
+                            val volume = (call.argument<Number>("volume") ?: 0.8).toFloat()
+                            val dominantColor = (call.argument<Number>("dominantColor") ?: 0xFF1E293B).toInt()
+                            val outputDevice = call.argument<String>("outputDevice") ?: "Phone Speaker"
+                            val isShuffle = call.argument<Boolean>("isShuffle") ?: false
+                            val repeatMode = (call.argument<Number>("repeatMode") ?: 0).toInt()
+
+                            val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
+                                action = FreeBeatPlaybackService.ACTION_UPDATE
+                                putExtra("title", title)
+                                putExtra("artist", artist)
+                                putExtra("album", album)
+                                putExtra("artworkPath", artworkPath)
+                                putExtra("durationMs", durationMs)
+                                putExtra("positionMs", positionMs)
+                                putExtra("isPlaying", isPlaying)
+                                putExtra("volume", volume)
+                                putExtra("dominantColor", dominantColor)
+                                putExtra("outputDevice", outputDevice)
+                                putExtra("isShuffle", isShuffle)
+                                putExtra("repeatMode", repeatMode)
+                            }
+                            androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                            result.success(true)
+                        } catch (e: Throwable) {
+                            android.util.Log.e("MainActivity", "Failed startForegroundPlayback: ${e.message}", e)
+                            result.success(false)
+                        }
+                    }
+                    "updatePlaybackNotification" -> {
+                        try {
+                            val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                            val durationMs = (call.argument<Number>("durationMs") ?: 0).toLong()
+                            val isPlaying = call.argument<Boolean>("isPlaying") ?: true
+                            val volume = (call.argument<Number>("volume") ?: 0.8).toFloat()
+                            val dominantColor = (call.argument<Number>("dominantColor") ?: 0xFF1E293B).toInt()
+                            val title = call.argument<String>("title")
+                            val artist = call.argument<String>("artist")
+                            val artworkPath = call.argument<String>("artworkPath")
+                            val outputDevice = call.argument<String>("outputDevice")
+                            val isShuffle = call.argument<Boolean>("isShuffle")
+                            val repeatMode = call.argument<Number>("repeatMode")?.toInt()
+
+                            val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
+                                action = FreeBeatPlaybackService.ACTION_UPDATE
+                                putExtra("positionMs", positionMs)
+                                putExtra("durationMs", durationMs)
+                                putExtra("isPlaying", isPlaying)
+                                putExtra("volume", volume)
+                                putExtra("dominantColor", dominantColor)
+                                title?.let { putExtra("title", it) }
+                                artist?.let { putExtra("artist", it) }
+                                artworkPath?.let { putExtra("artworkPath", it) }
+                                outputDevice?.let { putExtra("outputDevice", it) }
+                                isShuffle?.let { putExtra("isShuffle", it) }
+                                repeatMode?.let { putExtra("repeatMode", it) }
+                            }
+                            if (FreeBeatPlaybackService.isServiceRunning) {
+                                startService(serviceIntent)
+                            } else {
+                                androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                            }
+                            result.success(true)
+                        } catch (e: Throwable) {
+                            android.util.Log.e("MainActivity", "Failed updatePlaybackNotification: ${e.message}", e)
+                            result.success(false)
+                        }
+                    }
+                    "stopForegroundPlayback" -> {
+                        val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
+                            action = FreeBeatPlaybackService.ACTION_STOP
+                        }
+                        startService(serviceIntent)
+                        result.success(true)
+                    }
+                    "takePersistableUriPermission" -> {
+                        val uriString = call.argument<String>("uri")
+                        if (uriString != null && uriString.startsWith("content://")) {
+                            try {
+                                val uri = android.net.Uri.parse(uriString)
+                                contentResolver.takePersistableUriPermission(
+                                    uri,
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                                result.success(true)
+                            } catch (_: Throwable) {
+                                result.success(false)
+                            }
+                        } else {
+                            result.success(false)
+                        }
+                    }
+                    "requestNotificationPermission" -> {
+                        requestNotificationPermissionIfNeeded()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+
+        FreeBeatPlaybackService.playerActionListener = { action, extras ->
+            runOnUiThread {
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+                    .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
+            }
+        }
     }
 
     private fun attachAudioSession(sessionId: Int) {
@@ -220,7 +333,7 @@ class MainActivity : FlutterActivity() {
                 dp.setInputGainAllChannelsTo(0.0f)
                 val limiter = DynamicsProcessing.Limiter(true, true, 0, 1.0f, 60.0f, 10.0f, -0.1f, 0.0f)
                 dp.setLimiterAllChannelsTo(limiter)
-                dp.enabled = true
+                dp.enabled = false // Keep bypassed until non-flat parameters or limiter are requested
                 dynamicsProcessing = dp
                 dspEngineMode = "DynamicsProcessing 64-bit Hardware (10-Band)"
             } catch (e: Throwable) {
@@ -231,23 +344,12 @@ class MainActivity : FlutterActivity() {
         } else {
             initFallbackEqualizer(sessionId)
         }
-
-        // Spatial & Tone Auxiliary Hardware Effects (initially disabled until activated by user)
-        try {
-            virtualizer = Virtualizer(0, sessionId).apply { enabled = false }
-        } catch (_: Throwable) {}
-        try {
-            bassBoost = BassBoost(0, sessionId).apply { enabled = false }
-        } catch (_: Throwable) {}
-        try {
-            presetReverb = PresetReverb(0, sessionId).apply { enabled = false }
-        } catch (_: Throwable) {}
     }
 
     private fun initFallbackEqualizer(sessionId: Int) {
         try {
-            legacyEqualizer = Equalizer(0, sessionId).apply { enabled = true }
-            loudnessEnhancer = LoudnessEnhancer(sessionId).apply { enabled = true }
+            legacyEqualizer = Equalizer(0, sessionId).apply { enabled = false }
+            loudnessEnhancer = LoudnessEnhancer(sessionId).apply { enabled = false }
             dspEngineMode = "Android Hardware Equalizer + LoudnessEnhancer (OEM Fallback)"
         } catch (_: Throwable) {
             dspEngineMode = "Software Biquad Float64 DSP"
@@ -255,6 +357,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun applyDspParameters(args: Map<*, *>) {
+        val bitPerfectDirect = args["bitPerfectDirectMode"] as? Boolean ?: false
         val eqEnabled = args["eqEnabled"] as? Boolean ?: true
         val limiterEnabled = args["limiterEnabled"] as? Boolean ?: true
         val preampDb = (args["preampDb"] as? Number)?.toFloat() ?: 0f
@@ -271,34 +374,56 @@ class MainActivity : FlutterActivity() {
             (bandFreqsRaw?.getOrNull(i) as? Number)?.toFloat() ?: isoBandFrequencies[i]
         }
 
+        // If Bit-Perfect Direct USB DAC Mode is active, bypass ALL hardware DSP nodes immediately
+        if (bitPerfectDirect) {
+            try { dynamicsProcessing?.enabled = false } catch (_: Throwable) {}
+            try { legacyEqualizer?.enabled = false } catch (_: Throwable) {}
+            try { loudnessEnhancer?.enabled = false } catch (_: Throwable) {}
+            try { virtualizer?.enabled = false } catch (_: Throwable) {}
+            try { bassBoost?.enabled = false } catch (_: Throwable) {}
+            return
+        }
+
+        val isDspFlat = Math.abs(preampDb) < 0.01f &&
+            Math.abs(bassGain) < 0.01f &&
+            Math.abs(trebleGain) < 0.01f &&
+            bandGains.all { Math.abs(it) < 0.01f }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && dynamicsProcessing != null) {
             try {
                 val dp = dynamicsProcessing!!
-                dp.setInputGainAllChannelsTo(if (eqEnabled) preampDb else 0f)
+                val shouldEnableDp = eqEnabled && (!isDspFlat || limiterEnabled)
 
-                for (i in 0 until 10) {
-                    val lowShelfBonus = if (i <= 2) bassGain * 8f * (1f - i * 0.28f) else 0f
-                    val highShelfBonus = if (i >= 7) trebleGain * 8f * ((i - 6) * 0.3f) else 0f
-                    val totalBandGain = if (eqEnabled) (bandGains[i] + lowShelfBonus + highShelfBonus) else 0f
+                if (shouldEnableDp) {
+                    dp.setInputGainAllChannelsTo(if (eqEnabled) preampDb else 0f)
 
-                    val cutoffFreq = if (i < 9) (bandFreqs[i] + bandFreqs[i + 1]) / 2f else 20000f
-                    val eqBand = DynamicsProcessing.EqBand(eqEnabled, cutoffFreq, totalBandGain)
-                    dp.setPreEqBandAllChannelsTo(i, eqBand)
+                    for (i in 0 until 10) {
+                        val lowShelfBonus = if (i <= 2) bassGain * 8f * (1f - i * 0.28f) else 0f
+                        val highShelfBonus = if (i >= 7) trebleGain * 8f * ((i - 6) * 0.3f) else 0f
+                        val totalBandGain = if (eqEnabled) (bandGains[i] + lowShelfBonus + highShelfBonus) else 0f
+
+                        val cutoffFreq = if (i < 9) (bandFreqs[i] + bandFreqs[i + 1]) / 2f else 20000f
+                        val eqBand = DynamicsProcessing.EqBand(eqEnabled, cutoffFreq, totalBandGain)
+                        dp.setPreEqBandAllChannelsTo(i, eqBand)
+                    }
+
+                    // Rule B2: Bluetooth Inter-Sample Peak (-0.5 dBFS) vs Wired (-0.1 dBFS) Hardware Limiter
+                    val ceilingDb = if (isBluetoothOutputActive) -0.5f else -0.1f
+                    val limiter = DynamicsProcessing.Limiter(
+                        true,
+                        limiterEnabled,
+                        0,
+                        1.0f, // 1ms fast attack
+                        60.0f, // 60ms release
+                        10.0f, // 10:1 brickwall ratio
+                        ceilingDb,
+                        0.0f
+                    )
+                    dp.setLimiterAllChannelsTo(limiter)
+                    dp.enabled = true
+                } else {
+                    dp.enabled = false
                 }
-
-                // Rule B2: Bluetooth Inter-Sample Peak (-0.5 dBFS) vs Wired (-0.1 dBFS) Hardware Limiter
-                val ceilingDb = if (isBluetoothOutputActive) -0.5f else -0.1f
-                val limiter = DynamicsProcessing.Limiter(
-                    true,
-                    limiterEnabled,
-                    0,
-                    1.0f, // 1ms fast attack
-                    60.0f, // 60ms release
-                    10.0f, // 10:1 brickwall ratio
-                    ceilingDb,
-                    0.0f
-                )
-                dp.setLimiterAllChannelsTo(limiter)
             } catch (_: Throwable) {}
         } else {
             // Apply to Tier 2 Fallback Equalizer + LoudnessEnhancer
@@ -312,6 +437,7 @@ class MainActivity : FlutterActivity() {
                         val targetMillibel = (bandGains[mappedIdx] * 100).roundToInt().toShort()
                         eq.setBandLevel(b.toShort(), if (eqEnabled) targetMillibel else 0)
                     }
+                    eq.enabled = eqEnabled && !isDspFlat
                 }
             } catch (_: Throwable) {}
         }
@@ -319,6 +445,9 @@ class MainActivity : FlutterActivity() {
         // Apply Stereo X Width Expansion & BassBoost only when activated
         try {
             if (stereoExpansion > 0.001f) {
+                if (virtualizer == null && currentSessionId > 0) {
+                    try { virtualizer = Virtualizer(0, currentSessionId) } catch (_: Throwable) {}
+                }
                 virtualizer?.enabled = true
                 virtualizer?.setStrength((stereoExpansion * 1000).roundToInt().toShort().coerceIn(0, 1000))
             } else {
@@ -326,6 +455,9 @@ class MainActivity : FlutterActivity() {
             }
 
             if (bassGain > 0.001f) {
+                if (bassBoost == null && currentSessionId > 0) {
+                    try { bassBoost = BassBoost(0, currentSessionId) } catch (_: Throwable) {}
+                }
                 bassBoost?.enabled = true
                 bassBoost?.setStrength((bassGain * 1000).roundToInt().toShort().coerceIn(0, 1000))
             } else {
@@ -531,6 +663,14 @@ class MainActivity : FlutterActivity() {
         virtualizer = null
         bassBoost = null
         presetReverb = null
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
     }
 
     override fun onDestroy() {

@@ -121,11 +121,18 @@ class SignalPathSheet extends ConsumerWidget {
             _SignalNodeCard(
               stepNumber: '3',
               title: 'Poweramp 64-Bit DSP Engine',
-              subtitle:
-                  '${route.dspEngineMode}\nPreamp: ${dsp.preampDb >= 0 ? "+" : ""}${dsp.preampDb.toStringAsFixed(1)} dB • 10-Band EQ: ${dsp.eqEnabled ? "ON" : "BYPASS"} • Limiter: ${dsp.limiterEnabled ? (route.isBluetooth ? "-0.5 dBFS BT ISP" : "-0.1 dBFS") : "OFF"}',
-              badge: dsp.eqEnabled ? '10-BAND EQ' : 'DIRECT BYPASS',
-              icon: Icons.tune_rounded,
-              accentColor: cs.primary,
+              subtitle: dsp.bitPerfectDirectMode
+                  ? 'Bit-Perfect Direct Hardware Mode\nAll DSP filters, tone shelves, and limiters bypassed for pure bit-for-bit PCM audio output to DAC.'
+                  : '${route.dspEngineMode}\nPreamp: ${dsp.preampDb >= 0 ? "+" : ""}${dsp.preampDb.toStringAsFixed(1)} dB • 10-Band EQ: ${dsp.eqEnabled ? "ON" : "BYPASS"} • Crossfeed: ${dsp.bs2bCrossfeedMode.label} • Headroom: ${dsp.dvcHeadroomDb.toStringAsFixed(1)} dB',
+              badge: dsp.bitPerfectDirectMode
+                  ? 'BIT-PERFECT DIRECT'
+                  : (dsp.eqEnabled ? '10-BAND EQ' : 'DIRECT BYPASS'),
+              icon: dsp.bitPerfectDirectMode
+                  ? Icons.album_rounded
+                  : Icons.tune_rounded,
+              accentColor: dsp.bitPerfectDirectMode
+                  ? const Color(0xFFFFB74D)
+                  : cs.primary,
             ),
             _SignalConnectorLine(color: cs.primary),
             _SignalNodeCard(
@@ -137,9 +144,56 @@ class SignalPathSheet extends ConsumerWidget {
               icon: route.isBluetooth
                   ? Icons.bluetooth_audio_rounded
                   : route.isUsbDac
-                      ? Icons.usb_rounded
+                      ? Icons.album_rounded
                       : Icons.speaker_group_rounded,
               accentColor: cs.secondary,
+            ),
+
+            const SizedBox(height: 20),
+
+            // 1-Tap Bit-Perfect Direct Hardware DAC Mode Switch
+            Card(
+              elevation: 0,
+              color: dsp.bitPerfectDirectMode
+                  ? const Color(0xFFFFB74D).withValues(alpha: 0.15)
+                  : cs.surfaceContainerHigh,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: dsp.bitPerfectDirectMode
+                      ? const Color(0xFFFFB74D)
+                      : Colors.transparent,
+                  width: 1.2,
+                ),
+              ),
+              child: SwitchListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                title: Text(
+                  'Bit-Perfect Direct USB DAC Mode',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: dsp.bitPerfectDirectMode
+                        ? const Color(0xFFFFB74D)
+                        : cs.onSurface,
+                  ),
+                ),
+                subtitle: Text(
+                  'Bypasses all DSP filtering, tone shelves, and limiters for pure bit-for-bit master PCM DAC output.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                value: dsp.bitPerfectDirectMode,
+                activeThumbColor: const Color(0xFFFFB74D),
+                activeTrackColor: const Color(0xFFFFB74D).withValues(alpha: 0.45),
+                onChanged: (val) {
+                  ref
+                      .read(powerampDspProvider.notifier)
+                      .toggleBitPerfectDirectMode(val);
+                },
+              ),
             ),
 
             const SizedBox(height: 24),

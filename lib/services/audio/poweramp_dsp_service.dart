@@ -38,6 +38,9 @@ class PowerampDspService {
         'monoMix': state.monoMix,
         'reverbPresetId': state.reverbPreset.androidPresetId,
         'reverbMix': state.reverbMix,
+        'bs2bCrossfeedLevel': state.bs2bCrossfeedMode.level,
+        'dvcHeadroomDb': state.dvcHeadroomDb,
+        'bitPerfectDirectMode': state.bitPerfectDirectMode,
         'bandGainsDb': state.bands.map((b) => b.gainDb).toList(),
         'bandFreqsHz': state.bands.map((b) => b.frequencyHz).toList(),
         'bandQs': state.bands.map((b) => b.qFactor).toList(),
@@ -56,5 +59,92 @@ class PowerampDspService {
       }
     } catch (_) {}
     return const AudioOutputRouteInfo();
+  }
+
+  Future<void> startForegroundPlayback({
+    required String title,
+    required String artist,
+    required String album,
+    String? artworkPath,
+    required int durationMs,
+    required int positionMs,
+    required bool isPlaying,
+    required double volume,
+    required int dominantColor,
+    String outputDevice = 'Phone Speaker',
+    bool isShuffle = false,
+    int repeatMode = 0,
+  }) async {
+    try {
+      await _channel.invokeMethod('startForegroundPlayback', {
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'artworkPath': artworkPath,
+        'durationMs': durationMs,
+        'positionMs': positionMs,
+        'isPlaying': isPlaying,
+        'volume': volume,
+        'dominantColor': dominantColor,
+        'outputDevice': outputDevice,
+        'isShuffle': isShuffle,
+        'repeatMode': repeatMode,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> updatePlaybackNotification({
+    int? positionMs,
+    int? durationMs,
+    bool? isPlaying,
+    double? volume,
+    int? dominantColor,
+    String? title,
+    String? artist,
+    String? artworkPath,
+    String? outputDevice,
+    bool? isShuffle,
+    int? repeatMode,
+  }) async {
+    try {
+      await _channel.invokeMethod('updatePlaybackNotification', {
+        if (positionMs != null) 'positionMs': positionMs,
+        if (durationMs != null) 'durationMs': durationMs,
+        if (isPlaying != null) 'isPlaying': isPlaying,
+        if (volume != null) 'volume': volume,
+        if (dominantColor != null) 'dominantColor': dominantColor,
+        if (title != null) 'title': title,
+        if (artist != null) 'artist': artist,
+        if (artworkPath != null) 'artworkPath': artworkPath,
+        if (outputDevice != null) 'outputDevice': outputDevice,
+        if (isShuffle != null) 'isShuffle': isShuffle,
+        if (repeatMode != null) 'repeatMode': repeatMode,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> stopForegroundPlayback() async {
+    try {
+      await _channel.invokeMethod('stopForegroundPlayback');
+    } catch (_) {}
+  }
+
+  Future<void> requestNotificationPermission() async {
+    try {
+      await _channel.invokeMethod('requestNotificationPermission');
+    } catch (_) {}
+  }
+
+  void setNotificationActionListener(
+      void Function(String action, Map<String, dynamic> extras) listener) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onNotificationAction') {
+        final args = call.arguments as Map<dynamic, dynamic>? ?? {};
+        final action = args['action'] as String? ?? '';
+        final extras = (args['extras'] as Map<dynamic, dynamic>? ?? {})
+            .map((k, v) => MapEntry(k.toString(), v));
+        listener(action, extras);
+      }
+    });
   }
 }

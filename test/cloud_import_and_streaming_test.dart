@@ -114,6 +114,21 @@ void main() {
       expect(playbackUrl, startsWith('http://127.0.0.1:${proxy.port}/stream/drive_track_abc'));
       expect(playbackUrl, contains('tier=hifi_lossless'));
 
+      // Test local cache path bypassing loopback proxy
+      final localTrack = testTrack.copyWith(
+        localCachePath: '/data/user/0/com.freebeat.freebeat/app_flutter/imported_music/song.flac',
+        isPinnedOffline: true,
+      );
+      expect(proxy.buildPlaybackUrl(localTrack, AudioQualityTier.hifiLossless),
+          '/data/user/0/com.freebeat.freebeat/app_flutter/imported_music/song.flac');
+
+      // Test content:// URI bypassing loopback proxy
+      final contentTrack = testTrack.copyWith(
+        streamUrl: 'content://com.android.providers.media.documents/document/audio%3A123',
+      );
+      expect(proxy.buildPlaybackUrl(contentTrack, AudioQualityTier.hifiLossless),
+          'content://com.android.providers.media.documents/document/audio%3A123');
+
       await proxy.dispose();
     });
 

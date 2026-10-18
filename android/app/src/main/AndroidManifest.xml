@@ -49,6 +49,12 @@
                 <data android:scheme="com.freebeat.app" android:host="oauth2redirect" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".FreeBeatPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

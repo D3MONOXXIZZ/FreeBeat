@@ -1,9 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -126,6 +127,21 @@ class NativeCloudAuthService {
     }
   }
 
+  /// Proactively requests a silent token refresh for Google Drive via Google Play Services.
+  Future<String?> getFreshGoogleAccessToken() async {
+    try {
+      var account = _googleSignIn.currentUser;
+      account ??= await _googleSignIn.signInSilently();
+      if (account != null) {
+        final auth = await account.authentication;
+        return auth.accessToken;
+      }
+    } catch (e) {
+      debugPrint('Silent Google sign-in failed: $e');
+    }
+    return null;
+  }
+
   /// Checks if an app is installed on the Android device.
   Future<bool> isAppInstalled(String packageName) async {
     try {
@@ -215,6 +231,21 @@ class NativeCloudAuthService {
     }
   }
 
+  static const MethodChannel _dspChannel = MethodChannel('com.freebeat.app/dsp');
+
+  /// Persists Android SAF content:// read permission across app closures and system reboots.
+  Future<bool> takePersistableUriPermission(String contentUri) async {
+    try {
+      final res = await _dspChannel.invokeMethod<bool>(
+        'takePersistableUriPermission',
+        {'uri': contentUri},
+      );
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Universal 1-Tap Mount for Any Installed Cloud App on Android (Google Drive,
   /// Microsoft OneDrive, Dropbox, Nextcloud, Mega, Proton Drive, Box, SD Card).
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
@@ -222,6 +253,9 @@ class NativeCloudAuthService {
     required CloudAccount account,
     void Function(List<String> filenames)? onFilesSelected,
     void Function(int current, int total, Track? track)? onProgress,
+    void Function(List<String> batchFilenames, int batchStartIndex, int totalFiles)? onBatchStarted,
+    Future<void> Function(List<Track> batchTracks)? onBatchCompleted,
+    int batchSize = 10,
   }) async {
     try {
       FilePickerResult? result;
@@ -245,17 +279,10 @@ class NativeCloudAuthService {
 
       if (result == null || result.files.isEmpty) return [];
 
-      final filenames = result.files.map((f) => f.name).toList();
+      final allFiles = result.files;
+      final totalFiles = allFiles.length;
+      final filenames = allFiles.map((f) => f.name).toList();
       onFilesSelected?.call(filenames);
-
-      Directory? appMusicDir;
-      try {
-        final appDir = await getApplicationDocumentsDirectory();
-        appMusicDir = Directory(p.join(appDir.path, 'imported_music'));
-        if (!appMusicDir.existsSync()) {
-          appMusicDir.createSync(recursive: true);
-        }
-      } catch (_) {}
 
       final tracks = <Track>[];
       final supportedAudioExts = {
@@ -273,156 +300,175 @@ class NativeCloudAuthService {
         '.dff',
       };
 
-      final totalFiles = result.files.length;
       onProgress?.call(0, totalFiles, null);
 
-      int fileIndex = 0;
-      for (final file in result.files) {
-        fileIndex++;
-        try {
-          final name = file.name;
-          final ext = p.extension(name).toLowerCase();
-          if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) {
-            onProgress?.call(fileIndex, totalFiles, null);
-            continue;
-          }
+      // Process in smooth batches of 10 tracks
+      for (int batchStart = 0; batchStart < totalFiles; batchStart += batchSize) {
+        final batchEnd = math.min(batchStart + batchSize, totalFiles);
+        final batchFiles = allFiles.sublist(batchStart, batchEnd);
+        final batchFilenames = batchFiles.map((f) => f.name).toList();
 
-          String finalPath = file.path ?? '';
+        onBatchStarted?.call(batchFilenames, batchStart, totalFiles);
 
-          // For cloud accounts or Content URIs, stream directly without forced local disk copying
-          if (account.providerType != CloudProviderType.androidSaf) {
-            finalPath = file.identifier ?? file.path ?? '';
-          } else {
-            // For device storage: use path if it exists, otherwise identifier / cache
-            if (file.path != null && File(file.path!).existsSync()) {
-              finalPath = file.path!;
+        final currentBatchTracks = <Track>[];
+        for (int i = 0; i < batchFiles.length; i++) {
+          final fileIndex = batchStart + i + 1;
+          final file = batchFiles[i];
+          try {
+            final name = file.name;
+            final ext = p.extension(name).toLowerCase();
+            if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) {
+              onProgress?.call(fileIndex, totalFiles, null);
+              continue;
+            }
+
+            // Direct Cloud Streaming: Persist SAF URI permission so closing the app never revokes access
+            String effectiveStreamUrl = '';
+            if (file.identifier != null && file.identifier!.startsWith('content://')) {
+              await takePersistableUriPermission(file.identifier!);
+              effectiveStreamUrl = file.identifier!;
+            } else if (file.path != null && !file.path!.contains('/cache/file_picker/')) {
+              effectiveStreamUrl = file.path!;
             } else if (file.identifier != null && file.identifier!.isNotEmpty) {
-              finalPath = file.identifier!;
-            } else if (appMusicDir != null && file.bytes != null && file.bytes!.isNotEmpty) {
-              try {
-                final destFile = File(p.join(appMusicDir.path, name));
-                if (!destFile.existsSync()) {
-                  await destFile.writeAsBytes(file.bytes!);
-                }
-                finalPath = destFile.path;
-              } catch (_) {
-                finalPath = file.path ?? '';
+              effectiveStreamUrl = file.identifier!;
+            } else {
+              effectiveStreamUrl = file.path ?? '';
+            }
+
+            if (effectiveStreamUrl.isEmpty) {
+              onProgress?.call(fileIndex, totalFiles, null);
+              continue;
+            }
+
+            File? localTagFile;
+            if (file.path != null && File(file.path!).existsSync()) {
+              localTagFile = File(file.path!);
+            } else if (File(effectiveStreamUrl).existsSync()) {
+              localTagFile = File(effectiveStreamUrl);
+            }
+
+            ParsedAudioMetadata parsed;
+            if (localTagFile != null) {
+              parsed = await RangeTagParser.parseLocalFile(localTagFile);
+            } else {
+              parsed = RangeTagParser.parseFromFilename(name);
+            }
+
+            final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
+                ? parsed.title!
+                : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+
+            bool isInvalidArtist(String? s) {
+              if (s == null) return true;
+              final lower = s.trim().toLowerCase();
+              return lower.isEmpty ||
+                  lower == 'cloud artist' ||
+                  lower == 'unknown artist' ||
+                  lower == 'unknown' ||
+                  lower.startsWith('com.') ||
+                  lower.startsWith('org.') ||
+                  lower.startsWith('net.') ||
+                  lower.startsWith('content:') ||
+                  lower.contains('.storage') ||
+                  lower.contains('android') ||
+                  lower.contains('documents') ||
+                  lower.contains('providers') ||
+                  lower.contains('/') ||
+                  lower.contains(':') ||
+                  lower.contains('local_storage');
+            }
+
+            String? artist = parsed.artist;
+            String? album = parsed.album;
+
+            if (isInvalidArtist(artist)) {
+              final fnParsed = RangeTagParser.parseFromFilename(name);
+              if (!isInvalidArtist(fnParsed.artist)) {
+                artist = fnParsed.artist;
               }
             }
-          }
 
-          if (finalPath.isEmpty) {
-            finalPath = file.identifier ?? file.path ?? '';
-          }
-          if (finalPath.isEmpty) {
+            if (isInvalidArtist(artist)) {
+              final parentDir = p.dirname(effectiveStreamUrl);
+              final parentName = p.basename(parentDir);
+              final grandParentName = p.basename(p.dirname(parentDir));
+              if (!isInvalidArtist(parentName) &&
+                  parentName != '.' &&
+                  parentName != 'Music' &&
+                  parentName != 'Download') {
+                if (!isInvalidArtist(grandParentName) &&
+                    grandParentName != '.' &&
+                    grandParentName != 'Music' &&
+                    grandParentName != 'Download') {
+                  artist = grandParentName;
+                  if (!isInvalidArtist(parentName)) album ??= parentName;
+                } else {
+                  artist = parentName;
+                }
+              }
+            }
+
+            final effectiveArtist = (!isInvalidArtist(artist))
+                ? artist!
+                : 'Unknown Artist';
+
+            final effectiveAlbum = (!isInvalidArtist(album) &&
+                    album != 'Cloud Library')
+                ? album!
+                : 'Local Library';
+
+            final trackId =
+                'cloud_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
+
+            String? embeddedArt;
+            if (localTagFile != null) {
+              embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
+                localTagFile,
+                trackId,
+              );
+            }
+
+            int dominantColor = 0xFF1E293B;
+            if (embeddedArt != null && embeddedArt.isNotEmpty) {
+              final palette =
+                  await ArtworkPaletteExtractor.extractPalette(embeddedArt);
+              dominantColor = palette.dominantColor.toARGB32();
+            }
+
+            final newTrack = Track(
+              id: trackId,
+              accountId: account.id,
+              providerType: account.providerType,
+              remotePathOrId: effectiveStreamUrl,
+              title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
+              artist: effectiveArtist,
+              album: effectiveAlbum,
+              durationMs: parsed.durationMs ?? 210000,
+              streamUrl: effectiveStreamUrl,
+              artworkUrl: embeddedArt,
+              codec: parsed.codec ??
+                  (ext.isNotEmpty
+                      ? ext.replaceAll('.', '').toUpperCase()
+                      : 'FLAC'),
+              bitDepth: parsed.bitDepth ?? 24,
+              sampleRateHz: parsed.sampleRateHz ?? 96000,
+              bitrateKbps: parsed.bitrateKbps ?? 1411,
+              sizeBytes: file.size > 0 ? file.size : 25000000,
+              dominantColorValue: dominantColor,
+              isPinnedOffline: false,
+              localCachePath: null,
+            );
+            currentBatchTracks.add(newTrack);
+            tracks.add(newTrack);
+            onProgress?.call(fileIndex, totalFiles, newTrack);
+          } catch (_) {
             onProgress?.call(fileIndex, totalFiles, null);
             continue;
           }
+        }
 
-          ParsedAudioMetadata parsed;
-          if (File(finalPath).existsSync()) {
-            parsed = await RangeTagParser.parseLocalFile(File(finalPath));
-          } else {
-            parsed = RangeTagParser.parseFromFilename(name);
-          }
-
-          final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
-              ? parsed.title!
-              : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-
-          String? artist = parsed.artist;
-          String? album = parsed.album;
-
-          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
-            final fnParsed = RangeTagParser.parseFromFilename(name);
-            if (fnParsed.artist != null && fnParsed.artist!.isNotEmpty) {
-              artist = fnParsed.artist;
-            }
-          }
-
-          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
-            final parentDir = p.dirname(finalPath);
-            final parentName = p.basename(parentDir);
-            final grandParentName = p.basename(p.dirname(parentDir));
-            if (parentName.isNotEmpty &&
-                parentName != '.' &&
-                parentName != 'Music' &&
-                parentName != 'Download') {
-              if (grandParentName.isNotEmpty &&
-                  grandParentName != '.' &&
-                  grandParentName != 'Music' &&
-                  grandParentName != 'Download') {
-                artist = grandParentName;
-                album ??= parentName;
-              } else {
-                artist = parentName;
-              }
-            }
-          }
-
-          final effectiveArtist = (artist != null &&
-                  artist.isNotEmpty &&
-                  artist != 'Cloud Artist')
-              ? artist
-              : (account.displayName.isNotEmpty
-                  ? account.displayName
-                  : 'Unknown Artist');
-
-          final effectiveAlbum = (album != null &&
-                  album.isNotEmpty &&
-                  album != 'Cloud Library')
-              ? album
-              : (account.displayName.isNotEmpty
-                  ? account.displayName
-                  : 'Local Library');
-
-          final trackId =
-              'drive_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
-
-          String? embeddedArt;
-          if (File(finalPath).existsSync()) {
-            embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
-              File(finalPath),
-              trackId,
-            );
-          }
-
-          int dominantColor = 0xFF1E293B;
-          if (embeddedArt != null && embeddedArt.isNotEmpty) {
-            final palette =
-                await ArtworkPaletteExtractor.extractPalette(embeddedArt);
-            dominantColor = palette.dominantColor.toARGB32();
-          }
-
-          final newTrack = Track(
-            id: trackId,
-            accountId: account.id,
-            providerType: account.providerType,
-            remotePathOrId: finalPath,
-            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: effectiveArtist,
-            album: effectiveAlbum,
-            durationMs: parsed.durationMs ?? 210000,
-            streamUrl: finalPath,
-            artworkUrl: embeddedArt,
-            codec: parsed.codec ??
-                (ext.isNotEmpty
-                    ? ext.replaceAll('.', '').toUpperCase()
-                    : 'FLAC'),
-            bitDepth: parsed.bitDepth ?? 24,
-            sampleRateHz: parsed.sampleRateHz ?? 96000,
-            bitrateKbps: parsed.bitrateKbps ?? 1411,
-            sizeBytes: file.size > 0 ? file.size : 25000000,
-            dominantColorValue: dominantColor,
-            isPinnedOffline: false,
-            localCachePath: null,
-          );
-          tracks.add(newTrack);
-          onProgress?.call(fileIndex, totalFiles, newTrack);
-        } catch (_) {
-          onProgress?.call(fileIndex, totalFiles, null);
-          // If one file fails in batch, continue importing remaining files
-          continue;
+        if (currentBatchTracks.isNotEmpty && onBatchCompleted != null) {
+          await onBatchCompleted(currentBatchTracks);
         }
       }
 
@@ -572,8 +618,8 @@ class NativeCloudAuthService {
             bitrateKbps: parsed.bitrateKbps ?? 1411,
             sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
             dominantColorValue: dominantColor,
-            isPinnedOffline: false,
-            localCachePath: null,
+            isPinnedOffline: file.existsSync(),
+            localCachePath: file.existsSync() ? file.path : null,
           );
           tracks.add(newTrack);
           onProgress?.call(folderFileIndex, totalFiles, newTrack);

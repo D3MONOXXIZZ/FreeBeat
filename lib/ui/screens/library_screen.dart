@@ -14,6 +14,7 @@ import '../../core/models/playlist.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
+import '../widgets/pending_import_track_tile.dart';
 import '../widgets/playlist_import_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 
@@ -25,7 +26,9 @@ import '../widgets/swipe_to_queue_wrapper.dart';
 /// 4. Playlists 2-Column Curated Cards (Organic Playlists, Daily Mix, Add Music)
 /// 5. Grouped 28dp Surface Card for Track List
 class LibraryScreen extends ConsumerStatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.showFab = true});
+
+  final bool showFab;
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
@@ -58,8 +61,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: safAccount,
-      onFilesSelected: (filenames) {
-        progressNotifier.startWithFiles(filenames);
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
       },
       onProgress: (current, total, track) {
         progressNotifier.update(
@@ -68,13 +76,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           name: track?.title ?? '',
           track: track,
         );
-        if (track != null) {
-          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-        }
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
       },
     );
-    progressNotifier.complete();
     if (picked.isNotEmpty) {
+      await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -86,6 +95,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         );
       }
+    } else {
+      progressNotifier.clearPending();
     }
   }
 
@@ -506,29 +517,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final bottomFabPadding = hasActiveTrack ? 58.0 : 8.0;
 
     return Scaffold(
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: bottomFabPadding),
-        child: SizedBox(
-          width: 50,
-          height: 50,
-          child: FloatingActionButton(
-            shape: const CircleBorder(),
-            elevation: 4,
-            backgroundColor: cs.primaryContainer,
-            foregroundColor: cs.onPrimaryContainer,
-            tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-            onPressed: _segment == 'playlists'
-                ? _showCreatePlaylistDialog
-                : _pickLocalFiles,
-            child: Icon(
-              _segment == 'playlists'
-                  ? Icons.playlist_add_rounded
-                  : Icons.add_rounded,
-              size: 26,
-            ),
-          ),
-        ),
-      ),
+      floatingActionButton: widget.showFab
+          ? Padding(
+              padding: EdgeInsets.only(bottom: bottomFabPadding),
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: FloatingActionButton(
+                  shape: const CircleBorder(),
+                  elevation: 4,
+                  backgroundColor: cs.primaryContainer,
+                  foregroundColor: cs.onPrimaryContainer,
+                  tooltip:
+                      _segment == 'playlists' ? 'New Playlist' : 'Add Music',
+                  onPressed: _segment == 'playlists'
+                      ? _showCreatePlaylistDialog
+                      : _pickLocalFiles,
+                  child: Icon(
+                    _segment == 'playlists'
+                        ? Icons.playlist_add_rounded
+                        : Icons.add_rounded,
+                    size: 26,
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -1086,7 +1100,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Importing ${importProgress.pendingTracks.length} Songs (${importProgress.current}/${importProgress.total})',
+                                    importProgress.total > 10
+                                        ? 'Importing Batch ${((importProgress.batchIndex ~/ 10) + 1)} of ${((importProgress.total + 9) ~/ 10)} (${importProgress.current}/${importProgress.total})'
+                                        : 'Importing ${importProgress.total} Songs (${importProgress.current}/${importProgress.total})',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w800,
@@ -1099,7 +1115,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             for (int p = 0;
                                 p < importProgress.pendingTracks.length;
                                 p++) ...[
-                              _PendingImportTrackTile(
+                              PendingImportTrackTile(
                                 item: importProgress.pendingTracks[p],
                               ),
                               Divider(
@@ -1742,157 +1758,6 @@ class _PlaylistGridCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PendingImportTrackTile extends StatelessWidget {
-  const _PendingImportTrackTile({required this.item});
-
-  final PendingImportTrack item;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Opacity(
-      opacity: item.isCompleted ? 0.95 : 0.60,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            // Album art container with circular progress indicator
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: item.isCompleted
-                    ? cs.primaryContainer
-                    : cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: cs.outlineVariant.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Center(
-                child: item.isCompleted
-                    ? Icon(
-                        Icons.check_circle_rounded,
-                        color: cs.onPrimaryContainer,
-                        size: 26,
-                      )
-                    : SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          value: item.progress > 0 ? item.progress : null,
-                          strokeWidth: 2.8,
-                          color: cs.primary,
-                          backgroundColor:
-                              cs.outlineVariant.withValues(alpha: 0.30),
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      color: item.isCompleted
-                          ? cs.onSurface
-                          : cs.onSurface.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.isCompleted ? '${item.artist} • Ready' : item.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: item.isCompleted ? cs.primary : cs.onSurfaceVariant,
-                      fontWeight: item.isCompleted
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (item.isCompleted)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.check_rounded,
-                      size: 14,
-                      color: cs.onPrimaryContainer,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Ready',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: cs.onPrimaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else if (item.progress > 0)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: cs.secondaryContainer,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Text(
-                  '${(item.progress * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSecondaryContainer,
-                  ),
-                ),
-              )
-            else
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Text(
-                  'Pending',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ),
           ],
         ),
       ),

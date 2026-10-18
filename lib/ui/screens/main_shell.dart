@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
@@ -55,14 +56,78 @@ class _MainShellState extends ConsumerState<MainShell> {
     );
   }
 
+  Future<void> _pickLocalAudioFromShell() async {
+    PixelHaptics.tick();
+    final authService = ref.read(nativeCloudAuthServiceProvider);
+    final accounts = ref.read(cloudAccountsProvider);
+    final safAccount = accounts.firstWhere(
+      (a) => a.providerType == CloudProviderType.androidSaf,
+      orElse: () => const CloudAccount(
+        id: 'local_storage_saf',
+        providerType: CloudProviderType.androidSaf,
+        displayName: 'Local Storage',
+        endpointOrFolder: 'Local Music Files',
+      ),
+    );
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final picked = await authService.pickFromInstalledCloudApp(
+      account: safAccount,
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
+      },
+      onProgress: (cur, tot, track) {
+        progressNotifier.update(
+          current: cur,
+          total: tot,
+          name: track?.title ?? '',
+          track: track,
+        );
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
+      },
+    );
+    if (picked.isNotEmpty) {
+      await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
+    } else {
+      progressNotifier.clearPending();
+    }
+  }
+
+  Widget _buildLibraryAddFab(ColorScheme cs) {
+    return SizedBox(
+      width: 50,
+      height: 50,
+      child: FloatingActionButton(
+        shape: const CircleBorder(),
+        elevation: 4,
+        backgroundColor: cs.primaryContainer,
+        foregroundColor: cs.onPrimaryContainer,
+        tooltip: 'Add Music',
+        onPressed: _pickLocalAudioFromShell,
+        child: const Icon(
+          Icons.add_rounded,
+          size: 26,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMiniPlayerPill(
     ColorScheme cs,
     bool isPlaying,
     Track track, {
-    bool isLibraryTab = false,
+    double? width,
+    bool fullWidth = false,
   }) {
     final pillWidget = SizedBox(
-      width: isLibraryTab ? double.infinity : 310,
+      width: fullWidth ? double.infinity : (width ?? 310),
       height: 50,
       child: SpringPressScale(
         onTap: _openFullNowPlaying,
@@ -92,109 +157,103 @@ class _MainShellState extends ConsumerState<MainShell> {
                     children: [
                       MaterialYouAlbumCover(
                         track: track,
-                        size: 36,
+                        size: 34,
                         borderRadius: 100,
                         showQualityBadge: false,
                         showSourceBadge: false,
                         isPlaying: isPlaying,
                         showPlayingAnimation: false,
                       ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                track.title.isEmpty ? 'FreeBeat' : track.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.title.isEmpty ? 'FreeBeat' : track.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
                               ),
-                              const SizedBox(height: 1),
-                              Text(
-                                '${track.artist} • ${track.codec}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: cs.onSurfaceVariant,
-                                ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              '${track.artist} • ${track.codec}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: cs.onSurfaceVariant,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
+                      ),
 
-                        // Play / Pause Circle Button
-                        FilledButton(
-                          onPressed: () {
-                            ref
-                                .read(playbackProvider.notifier)
-                                .togglePlayPause();
-                          },
-                          style: FilledButton.styleFrom(
-                            shape: const CircleBorder(),
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(34, 34),
-                            backgroundColor: cs.primaryContainer,
-                            foregroundColor: cs.onPrimaryContainer,
-                          ),
-                          child: Icon(
-                            isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 20,
-                          ),
-                        ),
-
-                        // Skip Next Button
-                        IconButton(
-                          icon: const Icon(Icons.skip_next_rounded),
-                          color: cs.onSurfaceVariant,
-                          iconSize: 20,
+                      // Play / Pause Circle Button
+                      FilledButton(
+                        onPressed: () {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .togglePlayPause();
+                        },
+                        style: FilledButton.styleFrom(
+                          shape: const CircleBorder(),
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 32,
-                            minHeight: 32,
-                          ),
-                          onPressed: () {
-                            PixelHaptics.tick();
-                            ref.read(playbackProvider.notifier).skipNext();
-                          },
+                          minimumSize: const Size(32, 32),
+                          backgroundColor: cs.primaryContainer,
+                          foregroundColor: cs.onPrimaryContainer,
                         ),
-                      ],
-                    ),
-                  ),
+                        child: Icon(
+                          isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 19,
+                        ),
+                      ),
 
-                  // Slim Track Progress Bar at bottom of mini player (isolated consumer)
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 0,
-                    child: _MiniPlayerProgressBar(
-                      primaryColor: cs.primary,
-                      backgroundColor:
-                          cs.onSurfaceVariant.withValues(alpha: 0.12),
-                    ),
+                      // Skip Next Button
+                      IconButton(
+                        icon: const Icon(Icons.skip_next_rounded),
+                        color: cs.onSurfaceVariant,
+                        iconSize: 19,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          ref.read(playbackProvider.notifier).skipNext();
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+
+                // Slim Track Progress Bar at bottom of mini player (isolated consumer)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 0,
+                  child: _MiniPlayerProgressBar(
+                    primaryColor: cs.primary,
+                    backgroundColor:
+                        cs.onSurfaceVariant.withValues(alpha: 0.12),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      );
+      ),
+    );
 
-    if (isLibraryTab) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 68),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: pillWidget,
-        ),
-      );
+    if (fullWidth) {
+      return pillWidget;
     }
     return Align(
       alignment: Alignment.center,
@@ -216,7 +275,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         onOpenNowPlaying: _openFullNowPlaying,
         onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
       ),
-      const LibraryScreen(),
+      const LibraryScreen(showFab: false),
       PowerampDspScreen(isActive: _selectedIndex == 2),
       CloudsScreen(
         onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
@@ -322,13 +381,46 @@ class _MainShellState extends ConsumerState<MainShell> {
                 const SizedBox(height: 6),
               ],
 
-              // Floating Docked Mini-Player Pill (Active playback only)
+              // Floating Docked Mini-Player Pill & Library Add FAB
               if (hasActiveQueue && track.id.isNotEmpty) ...[
-                _buildMiniPlayerPill(
-                  cs,
-                  isPlaying,
-                  track,
-                  isLibraryTab: _selectedIndex == 1,
+                if (_selectedIndex == 1)
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final availableWidth = constraints.maxWidth;
+                      // Keep mini player centered to nav pill with safe clearance for the 50dp right-aligned FAB
+                      final maxHalfWidth = (availableWidth / 2) - 58;
+                      final pillWidth = (maxHalfWidth * 2).clamp(230.0, 268.0);
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Center(
+                            child: _buildMiniPlayerPill(
+                              cs,
+                              isPlaying,
+                              track,
+                              width: pillWidth,
+                            ),
+                          ),
+                          Positioned(
+                            right: 0,
+                            child: _buildLibraryAddFab(cs),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                else
+                  _buildMiniPlayerPill(
+                    cs,
+                    isPlaying,
+                    track,
+                    width: 310,
+                  ),
+                const SizedBox(height: 8),
+              ] else if (_selectedIndex == 1) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildLibraryAddFab(cs),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -388,11 +480,13 @@ class _MiniPlayerProgressBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final progress =
         ref.watch(playbackProvider.select((p) => p.progressFraction));
-    return LinearProgressIndicator(
-      value: progress,
-      minHeight: 2,
-      backgroundColor: backgroundColor,
-      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+    return RepaintBoundary(
+      child: LinearProgressIndicator(
+        value: progress,
+        minHeight: 2,
+        backgroundColor: backgroundColor,
+        valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+      ),
     );
   }
 }

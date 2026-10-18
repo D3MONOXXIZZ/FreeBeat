@@ -69,48 +69,90 @@ class ArtworkAndLyricsService {
     return track.syncedLyrics;
   }
 
+  /// Returns true if the artist string is missing, generic, or an Android/cloud package/URI string.
+  static bool isInvalidOrGenericArtist(String? artist) {
+    if (artist == null) return true;
+    final trimmed = artist.trim();
+    if (trimmed.isEmpty) return true;
+    final lower = trimmed.toLowerCase();
+    return lower == 'cloud artist' ||
+        lower == 'unknown artist' ||
+        lower == 'unknown' ||
+        lower == 'various artists' ||
+        lower.contains('cloud') ||
+        lower.startsWith('com.') ||
+        lower.startsWith('org.') ||
+        lower.startsWith('net.') ||
+        lower.startsWith('content:') ||
+        lower.contains('.storage') ||
+        lower.contains('android') ||
+        lower.contains('documents') ||
+        lower.contains('providers') ||
+        lower.contains('/') ||
+        lower.contains(':') ||
+        lower.contains('local_storage');
+  }
+
   /// Searches iTunes for song metadata (real artist, album, high-res artwork).
   Future<({String? artworkUrl, String? artist, String? album})?> lookupSongMetadata({
     required String artist,
     required String title,
   }) async {
     try {
-      final isGenericArtist = artist.isEmpty ||
-          artist == 'Cloud Artist' ||
-          artist == 'Unknown Artist' ||
-          artist.toLowerCase().contains('cloud');
-
-      final cleanArtist = isGenericArtist
+      final isGeneric = isInvalidOrGenericArtist(artist);
+      final cleanArtist = isGeneric
           ? ''
           : artist.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
-      final cleanTitle =
-          title.replaceAll(RegExp(r'\s*\(.*?\)\s*'), '').trim();
-      final query =
-          cleanArtist.isNotEmpty ? '$cleanArtist $cleanTitle' : cleanTitle;
-      if (query.isEmpty) return null;
 
-      final uri = Uri.https('itunes.apple.com', '/search', {
-        'term': query,
-        'media': 'music',
-        'entity': 'song',
-        'limit': '1',
-      });
-      final resp =
-          await _client.get(uri).timeout(const Duration(seconds: 5));
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final results = data['results'] as List<dynamic>? ?? [];
-        if (results.isNotEmpty) {
-          final first = results.first as Map<String, dynamic>;
-          final art100 = first['artworkUrl100'] as String?;
-          final itunesArtist = first['artistName'] as String?;
-          final itunesAlbum = first['collectionName'] as String?;
-          final art600 = art100?.replaceAll('100x100bb', '600x600bb');
-          return (
-            artworkUrl: art600,
-            artist: itunesArtist,
-            album: itunesAlbum,
-          );
+      // Clean the title: remove file extension if present
+      final cleanTitle = title
+          .replaceAll(RegExp(r'\.[a-zA-Z0-9]{2,4}$'), '')
+          .trim();
+
+      // Candidate search queries:
+      // 1. With artist if valid + full title
+      // 2. Full title alone (e.g. "Needed You (StayLoose Remix)")
+      // 3. Title stripped of parentheses (e.g. "Needed You")
+      final candidates = <String>[];
+      if (cleanArtist.isNotEmpty) {
+        candidates.add('$cleanArtist $cleanTitle');
+      }
+      candidates.add(cleanTitle);
+      final strippedTitle = cleanTitle
+          .replaceAll(RegExp(r'\s*[\(\[].*?[\)\]]\s*'), '')
+          .trim();
+      if (strippedTitle.isNotEmpty && strippedTitle != cleanTitle) {
+        if (cleanArtist.isNotEmpty) {
+          candidates.add('$cleanArtist $strippedTitle');
+        }
+        candidates.add(strippedTitle);
+      }
+
+      for (final query in candidates) {
+        if (query.trim().isEmpty) continue;
+        final uri = Uri.https('itunes.apple.com', '/search', {
+          'term': query,
+          'media': 'music',
+          'entity': 'song',
+          'limit': '1',
+        });
+        final resp =
+            await _client.get(uri).timeout(const Duration(seconds: 5));
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final results = data['results'] as List<dynamic>? ?? [];
+          if (results.isNotEmpty) {
+            final first = results.first as Map<String, dynamic>;
+            final art100 = first['artworkUrl100'] as String?;
+            final itunesArtist = first['artistName'] as String?;
+            final itunesAlbum = first['collectionName'] as String?;
+            final art600 = art100?.replaceAll('100x100bb', '600x600bb');
+            return (
+              artworkUrl: art600,
+              artist: itunesArtist,
+              album: itunesAlbum,
+            );
+          }
         }
       }
     } catch (_) {}
@@ -134,14 +176,16 @@ class ArtworkAndLyricsService {
   Future<Track> enrichTrackArtwork(Track track) async {
     Track currentTrack = track;
 
-    // 0. If artist or album is generic, query iTunes for real metadata
-    final isGeneric = currentTrack.artist.isEmpty ||
-        currentTrack.artist == 'Cloud Artist' ||
-        currentTrack.artist == 'Unknown Artist' ||
-        currentTrack.album == 'Cloud Library';
+    // 0. If artist or album is generic or invalid, query iTunes for real metadata
+    final isGeneric = isInvalidOrGenericArtist(currentTrack.artist) ||
+        currentTrack.album == 'Cloud Library' ||
+        currentTrack.album.isEmpty ||
+        isInvalidOrGenericArtist(currentTrack.album);
 
     String? itunesArtUrl;
-    if (isGeneric) {
+    if (isGeneric ||
+        currentTrack.artworkUrl == null ||
+        currentTrack.artworkUrl!.isEmpty) {
       final meta = await lookupSongMetadata(
         artist: currentTrack.artist,
         title: currentTrack.title,
@@ -150,12 +194,16 @@ class ArtworkAndLyricsService {
         currentTrack = currentTrack.copyWith(
           artist: (meta.artist != null && meta.artist!.isNotEmpty)
               ? meta.artist
-              : currentTrack.artist,
+              : (isInvalidOrGenericArtist(currentTrack.artist)
+                  ? 'Unknown Artist'
+                  : currentTrack.artist),
           album: (meta.album != null && meta.album!.isNotEmpty)
               ? meta.album
               : currentTrack.album,
         );
         itunesArtUrl = meta.artworkUrl;
+      } else if (isInvalidOrGenericArtist(currentTrack.artist)) {
+        currentTrack = currentTrack.copyWith(artist: 'Unknown Artist');
       }
     }
 

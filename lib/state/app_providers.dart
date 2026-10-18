@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../core/models/audio_quality_settings.dart';
 import '../core/models/cloud_account.dart';
 import '../core/models/playlist.dart';
@@ -188,12 +191,15 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
             clean.dominantColorValue == 0xFF1DB954) {
           clean = clean.copyWith(dominantColorValue: 0xFF1E293B);
         }
-        if (clean.artist == 'Cloud Artist' || clean.album == 'Cloud Library') {
+        if (ArtworkAndLyricsService.isInvalidOrGenericArtist(clean.artist) ||
+            clean.album == 'Cloud Library' ||
+            clean.artist == 'Cloud Artist') {
           final file = File(clean.streamUrl);
           if (file.existsSync()) {
             try {
               final parsed = await RangeTagParser.parseLocalFile(file);
-              if (parsed.artist != null && parsed.artist!.isNotEmpty) {
+              if (parsed.artist != null &&
+                  !ArtworkAndLyricsService.isInvalidOrGenericArtist(parsed.artist)) {
                 clean = clean.copyWith(
                   artist: parsed.artist,
                   album: parsed.album ?? clean.album,
@@ -201,9 +207,42 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
                       ? parsed.title
                       : clean.title,
                 );
-                await _db.upsertTracks([clean]);
               }
             } catch (_) {}
+          }
+          if (ArtworkAndLyricsService.isInvalidOrGenericArtist(clean.artist)) {
+            clean = clean.copyWith(artist: 'Unknown Artist');
+          }
+
+          // Self-heal tracks whose streamUrl was ephemeral (e.g. in /cache/file_picker/)
+          if (!clean.streamUrl.startsWith('http://') &&
+              !clean.streamUrl.startsWith('https://') &&
+              !clean.streamUrl.startsWith('content://')) {
+            final streamFile = File(clean.streamUrl);
+            if (!streamFile.existsSync()) {
+              try {
+                final appDir = await getApplicationDocumentsDirectory();
+                final musicDir = Directory(p.join(appDir.path, 'imported_music'));
+                if (musicDir.existsSync()) {
+                  final baseName = p.basename(clean.streamUrl);
+                  final match = musicDir.listSync().whereType<File>().firstWhere(
+                    (f) => p.basename(f.path) == baseName || f.path.contains(clean.id),
+                    orElse: () => File(''),
+                  );
+                  if (match.path.isNotEmpty && match.existsSync()) {
+                    clean = clean.copyWith(
+                      streamUrl: match.path,
+                      localCachePath: match.path,
+                      isPinnedOffline: true,
+                    );
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+
+          if (clean != t) {
+            await _db.upsertTracks([clean]);
           }
         }
         sanitized.add(clean);
@@ -250,7 +289,9 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     unawaited(() async {
       final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
       for (final t in tracks) {
-        if (t.artworkUrl == null || t.artworkUrl!.isEmpty) {
+        final needsArtwork = t.artworkUrl == null || t.artworkUrl!.isEmpty;
+        final needsArtist = ArtworkAndLyricsService.isInvalidOrGenericArtist(t.artist);
+        if (needsArtwork || needsArtist) {
           try {
             final enriched = await artworkSvc.enrichTrackArtwork(t);
             if (enriched != t) {
@@ -550,17 +591,62 @@ final audioRouteInfoProvider = Provider<AudioOutputRouteInfo>((ref) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
-  PowerampDspNotifier(this._dspService) : super(PowerampDspState.initial()) {
+  PowerampDspNotifier(this._dspService, [this._db])
+      : super(PowerampDspState.initial()) {
     _dspService.applyDspState(state);
+    _loadPersistedState();
   }
 
   final PowerampDspService _dspService;
+  final LibraryDatabase? _db;
   final List<DspPreset> _customPresets = [];
 
   List<DspPreset> get allPresets => [...kBuiltInDspPresets, ..._customPresets];
+  List<DspPreset> get customPresets => List.unmodifiable(_customPresets);
+
+  Future<void> _loadPersistedState() async {
+    if (_db == null) return;
+    try {
+      final savedPresets = await _db.loadCustomPresets();
+      if (savedPresets.isNotEmpty) {
+        _customPresets.clear();
+        _customPresets.addAll(savedPresets);
+      }
+      final savedProfiles = await _db.loadDeviceProfiles();
+      if (savedProfiles.isNotEmpty) {
+        state = state.copyWith(deviceProfiles: savedProfiles);
+      }
+    } catch (_) {}
+  }
 
   void _syncToHardware() {
     _dspService.applyDspState(state);
+  }
+
+  void setVisualizerMode(VisualizerMode mode) {
+    PixelHaptics.tick();
+    state = state.copyWith(visualizerMode: mode);
+  }
+
+  void setBs2bCrossfeedMode(Bs2bCrossfeedMode mode) {
+    PixelHaptics.tick();
+    state = state.copyWith(bs2bCrossfeedMode: mode);
+    _syncToHardware();
+  }
+
+  void setDvcHeadroomDb(double db) {
+    state = state.copyWith(dvcHeadroomDb: db.clamp(-6.0, 0.0));
+    _syncToHardware();
+  }
+
+  void toggleBitPerfectDirectMode(bool enabled) {
+    if (enabled) {
+      PixelHaptics.hifiConfirm();
+    } else {
+      PixelHaptics.tick();
+    }
+    state = state.copyWith(bitPerfectDirectMode: enabled);
+    _syncToHardware();
   }
 
   void toggleEq(bool enabled) {
@@ -699,7 +785,9 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
       (i) => state.bands[i].copyWith(
         frequencyHz: kPoweramp10BandFrequencies[i],
         gainDb: i < preset.bandGainsDb.length ? preset.bandGainsDb[i] : 0.0,
-        qFactor: 1.41,
+        qFactor: preset.qFactors != null && i < preset.qFactors!.length
+            ? preset.qFactors![i]
+            : 1.41,
       ),
     );
     state = state.copyWith(
@@ -742,10 +830,10 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     applyPreset(kBuiltInDspPresets.first);
   }
 
-  void saveCustomPreset(String name) {
+  Future<DspPreset> saveCustomPreset(String name, {List<double>? customQs}) async {
     final custom = DspPreset(
       id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
+      name: name.trim().isEmpty ? 'My Custom EQ' : name.trim(),
       category: 'User Custom',
       preampDb: state.preampDb,
       bandGainsDb: state.bands.map((b) => b.gainDb).toList(),
@@ -753,16 +841,126 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
       trebleTone: state.trebleGain,
       stereoExpansion: state.stereoExpansion,
       isCustom: true,
+      qFactors: customQs ?? state.bands.map((b) => b.qFactor).toList(),
     );
+    _customPresets.removeWhere((p) => p.id == custom.id);
     _customPresets.add(custom);
+    await _db?.saveCustomPreset(custom);
     state = state.copyWith(activePresetId: custom.id);
     PixelHaptics.hifiConfirm();
+    return custom;
+  }
+
+  Future<void> renameCustomPreset(String id, String newName) async {
+    final idx = _customPresets.indexWhere((p) => p.id == id);
+    if (idx < 0) return;
+    final old = _customPresets[idx];
+    final updated = DspPreset(
+      id: old.id,
+      name: newName.trim().isEmpty ? old.name : newName.trim(),
+      category: old.category,
+      preampDb: old.preampDb,
+      bandGainsDb: old.bandGainsDb,
+      bassTone: old.bassTone,
+      trebleTone: old.trebleTone,
+      stereoExpansion: old.stereoExpansion,
+      isCustom: true,
+      qFactors: old.qFactors,
+    );
+    _customPresets[idx] = updated;
+    await _db?.saveCustomPreset(updated);
+    PixelHaptics.tick();
+  }
+
+  Future<void> deleteCustomPreset(String id) async {
+    _customPresets.removeWhere((p) => p.id == id);
+    await _db?.deleteCustomPreset(id);
+    if (state.activePresetId == id) {
+      applyPreset(kBuiltInDspPresets.first);
+    }
+    PixelHaptics.tick();
+  }
+
+  String exportPresetJson(String id) {
+    final match = allPresets.firstWhere(
+      (p) => p.id == id,
+      orElse: () => kBuiltInDspPresets.first,
+    );
+    return jsonEncode(match.toMap());
+  }
+
+  Future<DspPreset?> importPresetFromJson(String jsonStr) async {
+    try {
+      final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final preset = DspPreset.fromMap(map);
+      final uniquePreset = DspPreset(
+        id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+        name: preset.name,
+        category: 'Imported',
+        preampDb: preset.preampDb,
+        bandGainsDb: preset.bandGainsDb,
+        bassTone: preset.bassTone,
+        trebleTone: preset.trebleTone,
+        stereoExpansion: preset.stereoExpansion,
+        isCustom: true,
+        qFactors: preset.qFactors,
+      );
+      _customPresets.add(uniquePreset);
+      await _db?.saveCustomPreset(uniquePreset);
+      applyPreset(uniquePreset);
+      return uniquePreset;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setDeviceProfile(String routeKey, String presetId) async {
+    final updated = Map<String, String>.from(state.deviceProfiles);
+    updated[routeKey] = presetId;
+    state = state.copyWith(deviceProfiles: updated);
+    await _db?.saveDeviceProfile(routeKey, presetId);
+    PixelHaptics.tick();
+  }
+
+  void handleAudioRouteChanged(AudioOutputRouteInfo route) {
+    String routeKey;
+    if (route.isUsbDac || route.routeType.contains('USB')) {
+      routeKey = 'USB_DAC';
+    } else if (route.isBluetooth || route.routeType.contains('BLUETOOTH') || route.routeType.contains('BLE')) {
+      routeKey = 'BLUETOOTH';
+    } else if (route.routeType.contains('HEADSET') || route.routeType.contains('HEADPHONES')) {
+      routeKey = 'WIRED_HEADPHONES';
+    } else {
+      routeKey = 'BUILTIN_SPEAKER';
+    }
+
+    final targetPresetId = state.deviceProfiles[routeKey];
+    if (targetPresetId != null && targetPresetId != state.activePresetId) {
+      loadPresetById(targetPresetId);
+    }
   }
 }
 
 final powerampDspProvider =
     StateNotifierProvider<PowerampDspNotifier, PowerampDspState>((ref) {
-  return PowerampDspNotifier(ref.watch(powerampDspServiceProvider));
+  final notifier = PowerampDspNotifier(
+    ref.watch(powerampDspServiceProvider),
+    ref.watch(libraryDatabaseProvider),
+  );
+  ref.listen<AudioOutputRouteInfo>(audioRouteInfoProvider, (prev, next) {
+    if (prev?.deviceName != next.deviceName ||
+        prev?.routeType != next.routeType ||
+        prev?.isUsbDac != next.isUsbDac ||
+        prev?.isBluetooth != next.isBluetooth) {
+      notifier.handleAudioRouteChanged(next);
+      try {
+        ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+              outputDevice: next.deviceName,
+            );
+      } catch (_) {}
+    }
+  });
+  return notifier;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -936,9 +1134,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   DateTime? _sleepTimerTarget;
   bool _sleepTimerEndAfterTrack = false;
   bool _isInitializingPlayer = false;
+  bool _playerInitFailed = false;
+  int _lastNotifPosMs = -5000;
 
   Future<void> _initAudioPlayer() async {
-    if (_audioPlayer != null || _isInitializingPlayer) return;
+    if (_audioPlayer != null || _isInitializingPlayer || _playerInitFailed) return;
     _isInitializingPlayer = true;
     try {
       final proxy = _ref.read(cloudStreamProxyProvider);
@@ -952,14 +1152,48 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         debugPrint('AudioSession configuration notice: $e');
       }
 
+      final dspSvc = _ref.read(powerampDspServiceProvider);
+      dspSvc.setNotificationActionListener((action, extras) {
+        if (!mounted) return;
+        switch (action) {
+          case 'onPlayPause':
+            togglePlayPause();
+            break;
+          case 'onNext':
+            skipNext();
+            break;
+          case 'onPrevious':
+            skipPrevious();
+            break;
+          case 'onSeek':
+            final pos = extras['positionMs'] as num?;
+            if (pos != null) {
+              seekToMs(pos.toInt());
+            }
+            break;
+          case 'onVolume':
+            final vol = extras['volume'] as num?;
+            if (vol != null && _audioPlayer != null) {
+              _audioPlayer!.setVolume(vol.toDouble());
+            }
+            break;
+          case 'onShuffle':
+            toggleShuffle();
+            break;
+          case 'onRepeat':
+            cycleRepeatMode();
+            break;
+        }
+      });
+
       final player = AudioPlayer();
       await player.setVolume(1.0);
 
       player.androidAudioSessionIdStream.listen((sessionId) {
         if (sessionId != null && sessionId > 0) {
-          final dspSvc = _ref.read(powerampDspServiceProvider);
-          dspSvc.attachAudioSession(sessionId);
-          dspSvc.applyDspState(_ref.read(powerampDspProvider));
+          final dsp = _ref.read(powerampDspServiceProvider);
+          dsp.attachAudioSession(sessionId);
+          dsp.applyDspState(_ref.read(powerampDspProvider));
         }
       });
 
@@ -971,6 +1205,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           skipNext();
         } else if (state.isPlaying != playing) {
           state = state.copyWith(isPlaying: playing);
+          try {
+            _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+                  isPlaying: playing,
+                  positionMs: state.positionMs,
+                );
+          } catch (_) {}
         }
       });
 
@@ -991,6 +1231,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             lastEmittedPosMs = posMs;
             state = state.copyWith(positionMs: posMs);
           }
+          if ((posMs - _lastNotifPosMs).abs() >= 1000) {
+            _lastNotifPosMs = posMs;
+            try {
+              _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+                    positionMs: posMs,
+                    durationMs: state.currentTrack.durationMs,
+                    isPlaying: state.isPlaying,
+                  );
+            } catch (_) {}
+          }
         }
       });
 
@@ -1009,13 +1259,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } catch (_) {
       // Headless widget test environment fallback uses smooth internal ticker
       _audioPlayer = null;
+      _playerInitFailed = true;
     } finally {
       _isInitializingPlayer = false;
     }
   }
 
   Future<void> _ensureAudioPlayerInitialized() async {
-    if (_audioPlayer == null) {
+    if (_audioPlayer == null && !_playerInitFailed) {
       await _initAudioPlayer();
     }
   }
@@ -1036,6 +1287,30 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         );
       }
     });
+  }
+
+  void _syncForegroundNotification({Track? track, bool? isPlaying}) {
+    final t = track ?? state.currentTrack;
+    if (t.id.isEmpty) return;
+    final playing = isPlaying ?? state.isPlaying;
+    final routeInfo = _ref.read(audioRouteInfoProvider);
+    try {
+      final dspSvc = _ref.read(powerampDspServiceProvider);
+      dspSvc.startForegroundPlayback(
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        artworkPath: t.artworkUrl,
+        durationMs: t.durationMs,
+        positionMs: state.positionMs,
+        isPlaying: playing,
+        volume: 1.0,
+        dominantColor: t.dominantColorValue,
+        outputDevice: routeInfo.deviceName,
+        isShuffle: state.isShuffle,
+        repeatMode: state.repeatMode,
+      );
+    } catch (_) {}
   }
 
   Future<void> togglePlayPause() async {
@@ -1065,11 +1340,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       } catch (e) {
         debugPrint('Toggle play error: $e');
       }
+      _syncForegroundNotification(isPlaying: true);
     } else {
       _progressTicker?.cancel();
       try {
         await _audioPlayer?.pause();
       } catch (_) {}
+      _syncForegroundNotification(isPlaying: false);
     }
   }
 
@@ -1094,14 +1371,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
 
       // 1. If pinned offline or explicitly cached on disk, play local file directly (0ms latency)
-      if (track.isPinnedOffline && cachedPath != null && File(cachedPath).existsSync()) {
+      if (cachedPath != null && File(cachedPath).existsSync()) {
         await _audioPlayer!.setFilePath(cachedPath);
         await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
+        _syncForegroundNotification(track: track, isPlaying: true);
         return;
       }
 
-      // 2. If it is a local file on device storage
+      if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
+        await _audioPlayer!.setFilePath(track.localCachePath!);
+        await _audioPlayer!.setVolume(1.0);
+        await _audioPlayer!.play();
+        _syncForegroundNotification(track: track, isPlaying: true);
+        return;
+      }
+
+      // 2. If it is a local file on device storage or app documents
       if (!track.streamUrl.startsWith('http://') &&
           !track.streamUrl.startsWith('https://') &&
           !track.streamUrl.startsWith('content://')) {
@@ -1110,21 +1396,77 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           await _audioPlayer!.setFilePath(track.streamUrl);
           await _audioPlayer!.setVolume(1.0);
           await _audioPlayer!.play();
+          _syncForegroundNotification(track: track, isPlaying: true);
           return;
         }
+
+        // Check imported_music directory for filename / id match
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final musicDir = Directory(p.join(appDir.path, 'imported_music'));
+          if (musicDir.existsSync()) {
+            final fileName = p.basename(track.streamUrl);
+            final match = musicDir.listSync().whereType<File>().firstWhere(
+              (f) => p.basename(f.path) == fileName || f.path.contains(track.id),
+              orElse: () => File(''),
+            );
+            if (match.path.isNotEmpty && match.existsSync()) {
+              await _audioPlayer!.setFilePath(match.path);
+              await _audioPlayer!.setVolume(1.0);
+              await _audioPlayer!.play();
+              _syncForegroundNotification(track: track, isPlaying: true);
+              return;
+            }
+          }
+        } catch (_) {}
       }
 
       // 3. If it is a content:// URI from Android SAF
       if (track.streamUrl.startsWith('content://')) {
-        await _audioPlayer!.setAudioSource(
-          AudioSource.uri(Uri.parse(track.streamUrl)),
-        );
-        await _audioPlayer!.setVolume(1.0);
-        await _audioPlayer!.play();
-        return;
+        try {
+          await _audioPlayer!.setAudioSource(
+            AudioSource.uri(Uri.parse(track.streamUrl)),
+          );
+          await _audioPlayer!.setVolume(1.0);
+          await _audioPlayer!.play();
+          _syncForegroundNotification(track: track, isPlaying: true);
+          return;
+        } catch (e) {
+          debugPrint('Content URI direct playback failed: $e. Checking persistent cache fallback...');
+          try {
+            final appDir = await getApplicationDocumentsDirectory();
+            final musicDir = Directory(p.join(appDir.path, 'imported_music'));
+            if (musicDir.existsSync()) {
+              final match = musicDir.listSync().whereType<File>().firstWhere(
+                (f) => f.path.contains(track.id) || f.path.contains(track.title),
+                orElse: () => File(''),
+              );
+              if (match.path.isNotEmpty && match.existsSync()) {
+                await _audioPlayer!.setFilePath(match.path);
+                await _audioPlayer!.setVolume(1.0);
+                await _audioPlayer!.play();
+                _syncForegroundNotification(track: track, isPlaying: true);
+                return;
+              }
+            }
+          } catch (_) {}
+        }
       }
 
       // 4. Remote Cloud Stream (Google Drive, OneDrive, WebDAV, HTTP/HTTPS):
+      // Ensure Google Drive OAuth token is fresh so closed apps reconnect seamlessly
+      if (track.providerType == CloudProviderType.googleDrive) {
+        try {
+          final authService = _ref.read(nativeCloudAuthServiceProvider);
+          final freshToken = await authService.getFreshGoogleAccessToken();
+          if (freshToken != null && freshToken.isNotEmpty) {
+            await _ref
+                .read(credentialStoreProvider)
+                .saveSecrets(track.accountId, {'accessToken': freshToken});
+          }
+        } catch (_) {}
+      }
+
       // Route through local loopback proxy (127.0.0.1) for instant, unbuffered streaming
       // with OAuth token injection and 206 Partial Content byte-range support.
       final proxy = _ref.read(cloudStreamProxyProvider);
@@ -1160,6 +1502,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
       await _audioPlayer!.setVolume(1.0);
       await _audioPlayer!.play();
+      _syncForegroundNotification(track: track, isPlaying: true);
 
     } catch (e, st) {
       debugPrint('Error playing track "${track.title}": $e\n$st');
@@ -1184,17 +1527,32 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   }
 
   void updateCurrentTrack(Track updated) {
+    final newQueue =
+        state.queue.map((t) => t.id == updated.id ? updated : t).toList();
     if (state.currentTrack.id == updated.id) {
-      state = state.copyWith(currentTrack: updated);
+      state = state.copyWith(currentTrack: updated, queue: newQueue);
+      try {
+        _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+              title: updated.title,
+              artist: updated.artist,
+              artworkPath: updated.artworkUrl,
+              dominantColor: updated.dominantColorValue,
+            );
+      } catch (_) {}
+    } else {
+      state = state.copyWith(queue: newQueue);
     }
   }
 
   Future<void> playTrack(Track track, {List<Track>? newQueue}) async {
     await PixelHaptics.playPauseToggle();
-    final effectiveTrack = (track.dominantColorValue == 0xFF3DDC84 ||
-            track.dominantColorValue == 0xFF1DB954)
-        ? track.copyWith(dominantColorValue: 0xFF1E293B)
-        : track;
+    final catalog = _ref.read(tracksCatalogProvider);
+    final freshTrack =
+        catalog.firstWhere((t) => t.id == track.id, orElse: () => track);
+    final effectiveTrack = (freshTrack.dominantColorValue == 0xFF3DDC84 ||
+            freshTrack.dominantColorValue == 0xFF1DB954)
+        ? freshTrack.copyWith(dominantColorValue: 0xFF1E293B)
+        : freshTrack;
 
     final List<Track> effectiveQueue = newQueue ??
         (state.queue.isEmpty ? _ref.read(tracksCatalogProvider) : state.queue);
@@ -1228,6 +1586,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _loadAndPlayTrack(effectiveTrack);
       }
     } catch (_) {}
+    _syncForegroundNotification(track: effectiveTrack, isPlaying: true);
 
     if (effectiveTrack.artworkUrl == null ||
         effectiveTrack.artworkUrl!.isEmpty) {
@@ -1257,6 +1616,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       );
       try {
         await _audioPlayer?.pause();
+        _ref.read(powerampDspServiceProvider).stopForegroundPlayback();
       } catch (_) {}
       return;
     }
@@ -1281,6 +1641,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       state = state.copyWith(isPlaying: false, positionMs: 0);
       try {
         await _audioPlayer?.pause();
+        _ref.read(powerampDspServiceProvider).stopForegroundPlayback();
       } catch (_) {}
     }
   }
@@ -1301,12 +1662,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   void toggleShuffle() {
     PixelHaptics.tick();
-    state = state.copyWith(isShuffle: !state.isShuffle);
+    final newShuffle = !state.isShuffle;
+    state = state.copyWith(isShuffle: newShuffle);
+    try {
+      _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+            isShuffle: newShuffle,
+          );
+    } catch (_) {}
   }
 
   void cycleRepeatMode() {
     PixelHaptics.tick();
-    state = state.copyWith(repeatMode: (state.repeatMode + 1) % 3);
+    final newRepeat = (state.repeatMode + 1) % 3;
+    state = state.copyWith(repeatMode: newRepeat);
+    try {
+      _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+            repeatMode: newRepeat,
+          );
+    } catch (_) {}
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -1547,7 +1920,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   void dispose() {
     _progressTicker?.cancel();
     _sleepTimer?.cancel();
-    _audioPlayer?.dispose();
+    try {
+      _audioPlayer?.dispose();
+    } catch (_) {}
+    try {
+      _ref.read(powerampDspServiceProvider).stopForegroundPlayback();
+    } catch (_) {}
     super.dispose();
   }
 }
@@ -1604,6 +1982,8 @@ class ImportProgressState {
     this.total = 0,
     this.currentItemName = '',
     this.pendingTracks = const [],
+    this.batchIndex = 0,
+    this.batchSize = 10,
   });
 
   final bool isImporting;
@@ -1611,6 +1991,8 @@ class ImportProgressState {
   final int total;
   final String currentItemName;
   final List<PendingImportTrack> pendingTracks;
+  final int batchIndex;
+  final int batchSize;
 
   double get progressFraction =>
       total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
@@ -1626,16 +2008,22 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
       current: 0,
       total: total,
       pendingTracks: state.pendingTracks,
+      batchIndex: 0,
+      batchSize: 10,
     );
   }
 
-  void startWithFiles(List<String> filenames) {
-    final pending = filenames.asMap().entries.map((entry) {
+  void startBatch({
+    required List<String> batchFilenames,
+    required int batchStartIndex,
+    required int totalFiles,
+  }) {
+    final pending = batchFilenames.asMap().entries.map((entry) {
       final idx = entry.key;
       final fn = entry.value;
       final cleanTitle = fn.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
       return PendingImportTrack(
-        id: 'pending_${idx}_$fn',
+        id: 'pending_${batchStartIndex + idx}_$fn',
         filename: fn,
         title: cleanTitle,
         artist: 'Queued for import...',
@@ -1646,9 +2034,20 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
 
     state = ImportProgressState(
       isImporting: true,
-      current: 0,
-      total: filenames.length,
+      current: batchStartIndex,
+      total: totalFiles,
       pendingTracks: pending,
+      batchIndex: batchStartIndex,
+      batchSize: batchFilenames.length,
+    );
+  }
+
+  void startWithFiles(List<String> filenames) {
+    final batch = filenames.take(10).toList();
+    startBatch(
+      batchFilenames: batch,
+      batchStartIndex: 0,
+      totalFiles: filenames.length,
     );
   }
 
@@ -1659,17 +2058,19 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
     Track? track,
   }) {
     final updatedPending = List<PendingImportTrack>.from(state.pendingTracks);
+    final localIndex = current - 1 - state.batchIndex;
+
     if (updatedPending.isNotEmpty) {
       for (int i = 0; i < updatedPending.length; i++) {
         final item = updatedPending[i];
-        if (i < current - 1) {
+        if (i < localIndex) {
           if (!item.isCompleted) {
             updatedPending[i] = item.copyWith(
               progress: 1.0,
               isCompleted: true,
             );
           }
-        } else if (i == current - 1) {
+        } else if (i == localIndex) {
           updatedPending[i] = item.copyWith(
             title: track?.title.isNotEmpty == true ? track!.title : item.title,
             artist:
@@ -1677,7 +2078,7 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
             progress: 1.0,
             isCompleted: true,
           );
-        } else if (i == current) {
+        } else if (i == localIndex + 1) {
           updatedPending[i] = item.copyWith(
             artist: 'Importing & analyzing audio...',
             progress: 0.5,
@@ -1692,6 +2093,8 @@ class ImportProgressNotifier extends StateNotifier<ImportProgressState> {
       total: total,
       currentItemName: name,
       pendingTracks: updatedPending,
+      batchIndex: state.batchIndex,
+      batchSize: state.batchSize,
     );
   }
 

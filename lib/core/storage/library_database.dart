@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../models/cloud_account.dart';
 import '../models/playlist.dart';
+import '../models/poweramp_dsp_state.dart';
 import '../models/track.dart';
 
 /// Unified SQLite catalog storing connected cloud account metadata, indexed tracks,
@@ -11,6 +13,13 @@ class LibraryDatabase {
   final List<CloudAccount> _memoryAccounts = [];
   final List<Track> _memoryTracks = [];
   final List<Playlist> _memoryPlaylists = [];
+  final List<DspPreset> _memoryCustomPresets = [];
+  final Map<String, String> _memoryDeviceProfiles = {
+    'BLUETOOTH': 'harman_target',
+    'USB_DAC': 'flat',
+    'WIRED_HEADPHONES': 'hifi_warm_tube',
+    'BUILTIN_SPEAKER': 'vocal_clarity',
+  };
 
   bool _initAttempted = false;
 
@@ -21,7 +30,7 @@ class LibraryDatabase {
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
       _db = await openDatabase(
         fullPath,
-        version: 2,
+        version: 3,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE cloud_accounts (
@@ -76,6 +85,25 @@ class LibraryDatabase {
               colorSeedValue INTEGER DEFAULT 6770852
             )
           ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS custom_dsp_presets (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              category TEXT NOT NULL,
+              preampDb REAL NOT NULL,
+              bandGainsJson TEXT NOT NULL,
+              bassTone REAL NOT NULL,
+              trebleTone REAL NOT NULL,
+              stereoExpansion REAL NOT NULL,
+              qFactorsJson TEXT
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS device_preset_profiles (
+              routeKey TEXT PRIMARY KEY,
+              presetId TEXT NOT NULL
+            )
+          ''');
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) {
@@ -91,6 +119,27 @@ class LibraryDatabase {
                 smartType TEXT,
                 customArtworkUrl TEXT,
                 colorSeedValue INTEGER DEFAULT 6770852
+              )
+            ''');
+          }
+          if (oldVersion < 3) {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS custom_dsp_presets (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                preampDb REAL NOT NULL,
+                bandGainsJson TEXT NOT NULL,
+                bassTone REAL NOT NULL,
+                trebleTone REAL NOT NULL,
+                stereoExpansion REAL NOT NULL,
+                qFactorsJson TEXT
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS device_preset_profiles (
+                routeKey TEXT PRIMARY KEY,
+                presetId TEXT NOT NULL
               )
             ''');
           }
@@ -209,6 +258,96 @@ class LibraryDatabase {
         batch.delete('tracks', where: 'id = ?', whereArgs: [id]);
       }
       await batch.commit(noResult: true);
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Phase 3: Custom Audiophile DSP Presets & Hardware Device Routing Profiles
+  // ───────────────────────────────────────────────────────────────────────────
+
+  Future<List<DspPreset>> loadCustomPresets() async {
+    await _ensureInitialized();
+    if (_db == null) return List.unmodifiable(_memoryCustomPresets);
+    final rows = await _db!.query('custom_dsp_presets');
+    return rows.map((r) {
+      final bandGains = (jsonDecode(r['bandGainsJson'] as String) as List<dynamic>)
+          .map((e) => (e as num).toDouble())
+          .toList();
+      List<double>? qFactors;
+      if (r['qFactorsJson'] != null) {
+        qFactors = (jsonDecode(r['qFactorsJson'] as String) as List<dynamic>)
+            .map((e) => (e as num).toDouble())
+            .toList();
+      }
+      return DspPreset(
+        id: r['id'] as String,
+        name: r['name'] as String,
+        category: r['category'] as String,
+        preampDb: (r['preampDb'] as num).toDouble(),
+        bandGainsDb: bandGains,
+        bassTone: (r['bassTone'] as num).toDouble(),
+        trebleTone: (r['trebleTone'] as num).toDouble(),
+        stereoExpansion: (r['stereoExpansion'] as num).toDouble(),
+        isCustom: true,
+        qFactors: qFactors,
+      );
+    }).toList();
+  }
+
+  Future<void> saveCustomPreset(DspPreset preset) async {
+    await _ensureInitialized();
+    _memoryCustomPresets.removeWhere((p) => p.id == preset.id);
+    _memoryCustomPresets.add(preset);
+    if (_db != null) {
+      await _db!.insert(
+        'custom_dsp_presets',
+        {
+          'id': preset.id,
+          'name': preset.name,
+          'category': preset.category,
+          'preampDb': preset.preampDb,
+          'bandGainsJson': jsonEncode(preset.bandGainsDb),
+          'bassTone': preset.bassTone,
+          'trebleTone': preset.trebleTone,
+          'stereoExpansion': preset.stereoExpansion,
+          'qFactorsJson': jsonEncode(preset.effectiveQFactors),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> deleteCustomPreset(String id) async {
+    await _ensureInitialized();
+    _memoryCustomPresets.removeWhere((p) => p.id == id);
+    if (_db != null) {
+      await _db!.delete('custom_dsp_presets', where: 'id = ?', whereArgs: [id]);
+    }
+  }
+
+  Future<Map<String, String>> loadDeviceProfiles() async {
+    await _ensureInitialized();
+    if (_db == null) return Map.unmodifiable(_memoryDeviceProfiles);
+    final rows = await _db!.query('device_preset_profiles');
+    if (rows.isEmpty) {
+      return Map.unmodifiable(_memoryDeviceProfiles);
+    }
+    final map = <String, String>{};
+    for (final r in rows) {
+      map[r['routeKey'] as String] = r['presetId'] as String;
+    }
+    return map;
+  }
+
+  Future<void> saveDeviceProfile(String routeKey, String presetId) async {
+    await _ensureInitialized();
+    _memoryDeviceProfiles[routeKey] = presetId;
+    if (_db != null) {
+      await _db!.insert(
+        'device_preset_profiles',
+        {'routeKey': routeKey, 'presetId': presetId},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
   }
 }

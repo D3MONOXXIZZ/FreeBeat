@@ -58,10 +58,15 @@ class CloudStreamProxy {
 
   /// Returns the loopback proxy URL for [track] at [tier], or direct URL if proxy isn't active.
   String buildPlaybackUrl(Track track, AudioQualityTier tier) {
-    if (track.isPinnedOffline &&
-        track.localCachePath != null &&
-        track.localCachePath!.isNotEmpty) {
+    if (track.localCachePath != null &&
+        track.localCachePath!.isNotEmpty &&
+        (track.isPinnedOffline || File(track.localCachePath!).existsSync())) {
       return track.localCachePath!;
+    }
+    // If streamUrl is a local file on device storage or imported music, return direct path
+    if (!track.streamUrl.startsWith('http://') &&
+        !track.streamUrl.startsWith('https://')) {
+      return track.streamUrl;
     }
     if (_port <= 0) return track.streamUrl;
     return 'http://127.0.0.1:$_port/stream/${Uri.encodeComponent(track.id)}?tier=${tier.id}';

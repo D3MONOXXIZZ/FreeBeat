@@ -235,8 +235,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: driveAccount,
-      onFilesSelected: (filenames) {
-        progressNotifier.startWithFiles(filenames);
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
       },
       onProgress: (current, total, track) {
         progressNotifier.update(
@@ -245,15 +250,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           name: track?.title ?? '',
           track: track,
         );
-        if (track != null) {
-          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-        }
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
       },
     );
-    progressNotifier.complete();
     if (picked.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(driveAccount, {});
       await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -262,6 +267,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
       }
+    } else {
+      progressNotifier.clearPending();
     }
   }
 
@@ -277,8 +284,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final progressNotifier = ref.read(importProgressProvider.notifier);
     final picked = await authService.pickFromInstalledCloudApp(
       account: safAccount,
-      onFilesSelected: (filenames) {
-        progressNotifier.startWithFiles(filenames);
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
       },
       onProgress: (current, total, track) {
         progressNotifier.update(
@@ -287,15 +299,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           name: track?.title ?? '',
           track: track,
         );
-        if (track != null) {
-          ref.read(tracksCatalogProvider.notifier).addIndexedTracks([track]);
-        }
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
       },
     );
-    progressNotifier.complete();
     if (picked.isNotEmpty) {
       await ref.read(cloudAccountsProvider.notifier).addAccount(safAccount, {});
       await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -305,6 +317,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
       }
+    } else {
+      progressNotifier.clearPending();
     }
   }
 

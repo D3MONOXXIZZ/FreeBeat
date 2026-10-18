@@ -81,6 +81,28 @@ enum ReverbPresetType {
   final int androidPresetId;
 }
 
+enum VisualizerMode {
+  spectrumBars('Spectrum Bars', 'Retro multi-band rainbow equalizer'),
+  waveformRibbon('Waveform Ribbon', 'Fluid oscilloscope dynamic ribbon'),
+  vinylPulse('Vinyl Pulse', 'Acoustic concentric soundwave ripples');
+
+  const VisualizerMode(this.label, this.description);
+  final String label;
+  final String description;
+}
+
+enum Bs2bCrossfeedMode {
+  off('Off', 'Stereo separation unaltered', 0),
+  subtle('Subtle', 'Chu Moy 700 Hz / 4.5 dB crossfeed', 1),
+  defaultMode('Default', 'Bauer BS2B 700 Hz / 6.0 dB standard', 2),
+  aggressive('Nearfield', 'Studio Nearfield 650 Hz / 9.5 dB', 3);
+
+  const Bs2bCrossfeedMode(this.label, this.description, this.level);
+  final String label;
+  final String description;
+  final int level;
+}
+
 class DspPreset {
   const DspPreset({
     required this.id,
@@ -92,6 +114,7 @@ class DspPreset {
     this.trebleTone = 0.0,
     this.stereoExpansion = 0.0,
     this.isCustom = false,
+    this.qFactors,
   });
 
   final String id;
@@ -103,8 +126,49 @@ class DspPreset {
   final double trebleTone;
   final double stereoExpansion;
   final bool isCustom;
+  final List<double>? qFactors; // 10 Q factors (0.3 to 10.0)
 
-  String get description => '$category Preset • Preamp: ${preampDb >= 0 ? "+" : ""}${preampDb.toStringAsFixed(1)} dB';
+  List<double> get effectiveQFactors =>
+      qFactors ?? List<double>.filled(10, 1.41);
+
+  String get description =>
+      '$category Preset • Preamp: ${preampDb >= 0 ? "+" : ""}${preampDb.toStringAsFixed(1)} dB';
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'category': category,
+        'preampDb': preampDb,
+        'bandGainsDb': bandGainsDb,
+        'bassTone': bassTone,
+        'trebleTone': trebleTone,
+        'stereoExpansion': stereoExpansion,
+        'isCustom': isCustom,
+        'qFactors': effectiveQFactors,
+      };
+
+  factory DspPreset.fromMap(Map<String, dynamic> map) {
+    final rawGains = (map['bandGainsDb'] as List<dynamic>? ?? [])
+        .map((e) => (e as num).toDouble())
+        .toList();
+    final rawQs = (map['qFactors'] as List<dynamic>?)
+        ?.map((e) => (e as num).toDouble())
+        .toList();
+    return DspPreset(
+      id: map['id'] as String? ?? 'custom',
+      name: map['name'] as String? ?? 'Custom Preset',
+      category: map['category'] as String? ?? 'Custom',
+      preampDb: (map['preampDb'] as num?)?.toDouble() ?? 0.0,
+      bandGainsDb: rawGains.length == 10
+          ? rawGains
+          : List<double>.filled(10, 0.0),
+      bassTone: (map['bassTone'] as num?)?.toDouble() ?? 0.0,
+      trebleTone: (map['trebleTone'] as num?)?.toDouble() ?? 0.0,
+      stereoExpansion: (map['stereoExpansion'] as num?)?.toDouble() ?? 0.0,
+      isCustom: map['isCustom'] as bool? ?? true,
+      qFactors: rawQs != null && rawQs.length == 10 ? rawQs : null,
+    );
+  }
 }
 
 /// Built-in audiophile & Poweramp-style presets.
@@ -213,6 +277,16 @@ class PowerampDspState {
     this.reverbPreset = ReverbPresetType.none,
     this.reverbMix = 0.0,
     this.activePresetId = 'flat',
+    this.visualizerMode = VisualizerMode.spectrumBars,
+    this.bs2bCrossfeedMode = Bs2bCrossfeedMode.off,
+    this.dvcHeadroomDb = -3.0,
+    this.bitPerfectDirectMode = false,
+    this.deviceProfiles = const {
+      'BLUETOOTH': 'harman_target',
+      'USB_DAC': 'flat',
+      'WIRED_HEADPHONES': 'hifi_warm_tube',
+      'BUILTIN_SPEAKER': 'vocal_clarity',
+    },
   });
 
   final bool eqEnabled;
@@ -234,6 +308,11 @@ class PowerampDspState {
   final ReverbPresetType reverbPreset;
   final double reverbMix; // 0.0 to 1.0
   final String activePresetId;
+  final VisualizerMode visualizerMode;
+  final Bs2bCrossfeedMode bs2bCrossfeedMode;
+  final double dvcHeadroomDb; // -6.0 to 0.0 dB
+  final bool bitPerfectDirectMode;
+  final Map<String, String> deviceProfiles;
 
   double get toneFrequencyHz => bassFreqHz;
   double get bassGainDb => (bassGain * 20.0) - 10.0;
@@ -256,12 +335,17 @@ class PowerampDspState {
       trebleGain: preset.trebleTone,
       stereoExpansion: preset.stereoExpansion,
       activePresetId: preset.id,
+      visualizerMode: VisualizerMode.spectrumBars,
+      bs2bCrossfeedMode: Bs2bCrossfeedMode.off,
+      dvcHeadroomDb: -3.0,
+      bitPerfectDirectMode: false,
     );
   }
 
   /// Calculates the combined frequency response in dB at any frequency `freqHz` (20Hz - 20kHz)
   /// combining Preamp + 10 Parametric/Graphic Biquad Bell filters + Bass/Treble Shelves.
   double evaluateResponseAtFrequency(double freqHz) {
+    if (bitPerfectDirectMode) return 0.0;
     double totalDb = eqEnabled ? preampDb : 0.0;
     final logF = math.log(freqHz) / math.ln10;
 
@@ -299,6 +383,7 @@ class PowerampDspState {
 
   /// Peak gain across the spectrum to detect potential clipping if Limiter/DVC is off.
   double get maxPeakDb {
+    if (bitPerfectDirectMode) return 0.0;
     double peak = -24.0;
     for (final f in kPoweramp10BandFrequencies) {
       final val = evaluateResponseAtFrequency(f);
@@ -307,7 +392,7 @@ class PowerampDspState {
     return peak;
   }
 
-  bool get isClippingRisk => !limiterEnabled && maxPeakDb > 0.5;
+  bool get isClippingRisk => !bitPerfectDirectMode && !limiterEnabled && maxPeakDb > 0.5;
 
   PowerampDspState copyWith({
     bool? eqEnabled,
@@ -329,6 +414,11 @@ class PowerampDspState {
     ReverbPresetType? reverbPreset,
     double? reverbMix,
     String? activePresetId,
+    VisualizerMode? visualizerMode,
+    Bs2bCrossfeedMode? bs2bCrossfeedMode,
+    double? dvcHeadroomDb,
+    bool? bitPerfectDirectMode,
+    Map<String, String>? deviceProfiles,
   }) {
     return PowerampDspState(
       eqEnabled: eqEnabled ?? this.eqEnabled,
@@ -350,6 +440,11 @@ class PowerampDspState {
       reverbPreset: reverbPreset ?? this.reverbPreset,
       reverbMix: (reverbMix ?? this.reverbMix).clamp(0.0, 1.0),
       activePresetId: activePresetId ?? this.activePresetId,
+      visualizerMode: visualizerMode ?? this.visualizerMode,
+      bs2bCrossfeedMode: bs2bCrossfeedMode ?? this.bs2bCrossfeedMode,
+      dvcHeadroomDb: (dvcHeadroomDb ?? this.dvcHeadroomDb).clamp(-6.0, 0.0),
+      bitPerfectDirectMode: bitPerfectDirectMode ?? this.bitPerfectDirectMode,
+      deviceProfiles: deviceProfiles ?? this.deviceProfiles,
     );
   }
 
@@ -374,6 +469,11 @@ class PowerampDspState {
       'reverbPreset': reverbPreset.name,
       'reverbMix': reverbMix,
       'activePresetId': activePresetId,
+      'visualizerMode': visualizerMode.name,
+      'bs2bCrossfeedMode': bs2bCrossfeedMode.name,
+      'dvcHeadroomDb': dvcHeadroomDb,
+      'bitPerfectDirectMode': bitPerfectDirectMode,
+      'deviceProfiles': deviceProfiles,
     });
   }
 
@@ -382,6 +482,16 @@ class PowerampDspState {
     final rawBands = (map['bands'] as List<dynamic>? ?? [])
         .map((e) => EqBandConfig.fromMap(e as Map<String, dynamic>))
         .toList();
+    final rawProfiles = (map['deviceProfiles'] as Map<String, dynamic>?)?.map(
+          (k, v) => MapEntry(k, v.toString()),
+        ) ??
+        const {
+          'BLUETOOTH': 'harman_target',
+          'USB_DAC': 'flat',
+          'WIRED_HEADPHONES': 'hifi_warm_tube',
+          'BUILTIN_SPEAKER': 'vocal_clarity',
+        };
+
     return PowerampDspState(
       eqEnabled: map['eqEnabled'] as bool? ?? true,
       toneEnabled: map['toneEnabled'] as bool? ?? true,
@@ -403,6 +513,17 @@ class PowerampDspState {
       pitchSemitones: (map['pitchSemitones'] as num?)?.toDouble() ?? 0.0,
       reverbMix: (map['reverbMix'] as num?)?.toDouble() ?? 0.0,
       activePresetId: map['activePresetId'] as String? ?? 'custom',
+      visualizerMode: VisualizerMode.values.firstWhere(
+        (v) => v.name == map['visualizerMode'],
+        orElse: () => VisualizerMode.spectrumBars,
+      ),
+      bs2bCrossfeedMode: Bs2bCrossfeedMode.values.firstWhere(
+        (v) => v.name == map['bs2bCrossfeedMode'],
+        orElse: () => Bs2bCrossfeedMode.off,
+      ),
+      dvcHeadroomDb: (map['dvcHeadroomDb'] as num?)?.toDouble() ?? -3.0,
+      bitPerfectDirectMode: map['bitPerfectDirectMode'] as bool? ?? false,
+      deviceProfiles: rawProfiles,
     );
   }
 }

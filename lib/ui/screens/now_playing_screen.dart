@@ -10,7 +10,6 @@ import '../widgets/ab_loop_modal.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
-import '../widgets/nav_pill.dart';
 import '../widgets/playback_speed_modal.dart';
 import '../widgets/queue_bottom_sheet.dart';
 import '../widgets/signal_path_sheet.dart';
@@ -42,9 +41,26 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
   ConsumerState<NowPlayingScreen> createState() => _NowPlayingScreenState();
 }
 
-class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
+class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
+    with SingleTickerProviderStateMixin {
   ArtworkPalette? _palette;
   String? _lastArtworkKey;
+  late final AnimationController _auraAnimController;
+
+  @override
+  void initState() {
+    super.initState();
+    _auraAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+  }
+
+  @override
+  void dispose() {
+    _auraAnimController.dispose();
+    super.dispose();
+  }
 
   void _resolvePalette(Track track) {
     final artKey = '${track.id}_${track.artworkUrl}';
@@ -113,6 +129,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final cs = Theme.of(context).colorScheme;
     final track = ref.watch(playbackProvider.select((p) => p.currentTrack));
     final isPlaying = ref.watch(playbackProvider.select((p) => p.isPlaying));
+    final bassGain = ref.watch(powerampDspProvider.select((p) => p.bassGain));
     final isShuffle = ref.watch(playbackProvider.select((p) => p.isShuffle));
     final repeatMode = ref.watch(playbackProvider.select((p) => p.repeatMode));
     final queueLength = ref.watch(playbackProvider.select((p) => p.upNextQueue.length));
@@ -123,6 +140,16 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
         p.isLoopActive));
     final lyrics = track.syncedLyrics;
     _resolvePalette(track);
+
+    if (isPlaying) {
+      if (!_auraAnimController.isAnimating) {
+        _auraAnimController.repeat(reverse: true);
+      }
+    } else {
+      if (_auraAnimController.isAnimating) {
+        _auraAnimController.stop();
+      }
+    }
 
     final isStaleGreen = track.dominantColorValue == 0xFF3DDC84 ||
         track.dominantColorValue == 0xFF1DB954;
@@ -231,79 +258,97 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           // Ambient Edge-Matched Glow & Gaussian Blur Backdrop
                           // Wrapped in RepaintBoundary to cache rasterization and avoid GPU lag
                           Positioned.fill(
-                            child: RepaintBoundary(
-                              child: Stack(
-                                alignment: Alignment.center,
-                                clipBehavior: Clip.none,
-                                children: [
-                                  // 3a. Directional Edge Lighting Aura: Top, Bottom, Left, Right Blooms
-                                  Positioned.fill(
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 600),
-                                      curve: Curves.easeOutCubic,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(36),
-                                        boxShadow: [
-                                          // Top edge glow
-                                          BoxShadow(
-                                            color: effectiveTopEdge.withValues(alpha: 0.45),
-                                            blurRadius: 52,
-                                            spreadRadius: 10,
-                                            offset: const Offset(0, -14),
-                                          ),
-                                          // Bottom edge glow
-                                          BoxShadow(
-                                            color: effectiveBottomEdge.withValues(alpha: 0.50),
-                                            blurRadius: 56,
-                                            spreadRadius: 12,
-                                            offset: const Offset(0, 16),
-                                          ),
-                                          // Left edge glow
-                                          BoxShadow(
-                                            color: effectiveLeftEdge.withValues(alpha: 0.40),
-                                            blurRadius: 46,
-                                            spreadRadius: 8,
-                                            offset: const Offset(-12, 0),
-                                          ),
-                                          // Right edge glow
-                                          BoxShadow(
-                                            color: effectiveRightEdge.withValues(alpha: 0.40),
-                                            blurRadius: 46,
-                                            spreadRadius: 8,
-                                            offset: const Offset(12, 0),
-                                          ),
-                                          // Deep center dominant ambient bloom
-                                          BoxShadow(
-                                            color: effectiveDominant.withValues(alpha: 0.55),
-                                            blurRadius: 68,
-                                            spreadRadius: 16,
-                                          ),
-                                        ],
+                            child: AnimatedBuilder(
+                              animation: _auraAnimController,
+                              builder: (context, child) {
+                                final auraVal = _auraAnimController.value;
+                                final dynamicOpacity =
+                                    (0.70 + (auraVal * (0.15 + bassGain * 0.05))).clamp(0.0, 1.0);
+
+                                return Opacity(
+                                  opacity: isPlaying ? dynamicOpacity : 0.65,
+                                  child: child,
+                                );
+                              },
+                              child: RepaintBoundary(
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    // 3a. Directional Edge Lighting Aura: Top, Bottom, Left, Right Blooms
+                                    Positioned.fill(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(36),
+                                          boxShadow: [
+                                            // Top edge glow
+                                            BoxShadow(
+                                              color: effectiveTopEdge
+                                                  .withValues(alpha: 0.45),
+                                              blurRadius: 52,
+                                              spreadRadius: 10,
+                                              offset: const Offset(0, -14),
+                                            ),
+                                            // Bottom edge glow
+                                            BoxShadow(
+                                              color: effectiveBottomEdge
+                                                  .withValues(alpha: 0.50),
+                                              blurRadius: 56,
+                                              spreadRadius: 12,
+                                              offset: const Offset(0, 16),
+                                            ),
+                                            // Left edge glow
+                                            BoxShadow(
+                                              color: effectiveLeftEdge
+                                                  .withValues(alpha: 0.40),
+                                              blurRadius: 46,
+                                              spreadRadius: 8,
+                                              offset: const Offset(-12, 0),
+                                            ),
+                                            // Right edge glow
+                                            BoxShadow(
+                                              color: effectiveRightEdge
+                                                  .withValues(alpha: 0.40),
+                                              blurRadius: 46,
+                                              spreadRadius: 8,
+                                              offset: const Offset(12, 0),
+                                            ),
+                                            // Deep center dominant ambient bloom
+                                            BoxShadow(
+                                              color: effectiveDominant
+                                                  .withValues(alpha: 0.55),
+                                              blurRadius: 68,
+                                              spreadRadius: 16,
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
 
-                                  // 3b. Blurred scaled duplicate of actual artwork
-                                  // Extends seamlessly 25-35dp past the card edges.
-                                  // Because it's literally a blurred version of the artwork image,
-                                  // every edge glows with the exact colors of that edge!
-                                  if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty)
-                                    Positioned.fill(
-                                      child: Transform.scale(
-                                        scale: 1.14,
-                                        child: ImageFiltered(
-                                          imageFilter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
-                                          child: Opacity(
-                                            opacity: 0.75,
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(32),
-                                              child: _buildArtworkBackdrop(track.artworkUrl!),
+                                    // 3b. Blurred scaled duplicate of actual artwork
+                                    if (track.artworkUrl != null &&
+                                        track.artworkUrl!.isNotEmpty)
+                                      Positioned.fill(
+                                        child: Transform.scale(
+                                          scale: 1.14,
+                                          child: ImageFiltered(
+                                            imageFilter: ui.ImageFilter.blur(
+                                                sigmaX: 38, sigmaY: 38),
+                                            child: Opacity(
+                                              opacity: 0.75,
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(32),
+                                                child: _buildArtworkBackdrop(
+                                                    track.artworkUrl!),
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -335,7 +380,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     ),
                   ),
 
-                  const Spacer(flex: 1),
+                  const Spacer(flex: 3),
 
                   // 4. Track Title, Artist & Actions
                   Row(
@@ -511,14 +556,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Secondary Action Bar (Queue, Lyrics Button, Hamburger Menu)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildActionPill(
+                  // Secondary Action Bar (Queue, Lyrics Button, Hamburger Menu) - Equally spaced out
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionPill(
                           context: context,
                           icon: Icons.queue_music_rounded,
                           label: queueLength > 0
@@ -527,30 +569,34 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           isActive: queueLength > 0,
                           onTap: () => showQueueBottomSheet(context),
                         ),
-                        const SizedBox(width: 10),
-                        _buildActionPill(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildActionPill(
                           context: context,
                           icon: Icons.lyrics_rounded,
                           label: 'Lyrics',
                           isActive: lyrics.isNotEmpty,
                           onTap: _openFullscreenLyrics,
                         ),
-                        const SizedBox(width: 10),
-                        _buildActionPill(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildActionPill(
                           context: context,
                           icon: Icons.menu_rounded,
                           label: 'More',
                           isActive: hasActiveOptions,
                           onTap: () => _showPlaybackOptionsMenu(context),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
 
-                  const Spacer(flex: 1),
-
-                  const AndroidGestureHandle(
-                    margin: EdgeInsets.only(top: 6, bottom: 8),
+                  SizedBox(
+                    height: MediaQuery.of(context).padding.bottom > 0
+                        ? MediaQuery.of(context).padding.bottom + 8
+                        : 24,
                   ),
                 ],
               ),
@@ -818,7 +864,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         decoration: BoxDecoration(
           color: isActive
               ? cs.primaryContainer
@@ -831,20 +877,25 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.max,
           children: [
             Icon(
               icon,
               size: 16,
               color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                  color: isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                ),
               ),
             ),
           ],
