@@ -294,6 +294,33 @@ class MainActivity : FlutterActivity() {
                             result.success(false)
                         }
                     }
+                    "copyContentUriToFile" -> {
+                        val uriString = call.argument<String>("uri")
+                        val destPath = call.argument<String>("destPath")
+                        if (uriString != null && destPath != null) {
+                            try {
+                                val uri = android.net.Uri.parse(uriString)
+                                val destFile = File(destPath)
+                                destFile.parentFile?.mkdirs()
+                                val inStream = contentResolver.openInputStream(uri)
+                                if (inStream != null) {
+                                    inStream.use { input ->
+                                        FileOutputStream(destFile).use { output ->
+                                            input.copyTo(output)
+                                        }
+                                    }
+                                    result.success(true)
+                                } else {
+                                    result.success(false)
+                                }
+                            } catch (e: Throwable) {
+                                android.util.Log.e("MainActivity", "Failed to copy content URI: ${e.message}")
+                                result.success(false)
+                            }
+                        } else {
+                            result.success(false)
+                        }
+                    }
                     "requestNotificationPermission" -> {
                         requestNotificationPermissionIfNeeded()
                         result.success(true)
@@ -318,7 +345,7 @@ class MainActivity : FlutterActivity() {
                         Thread {
                             val decoded = transcodeWmaToWav(path, cacheFile)
                             runOnUiThread {
-                                result.success(decoded ?: path)
+                                result.success(decoded)
                             }
                         }.start()
                     }

@@ -27,6 +27,7 @@ dependencies:
   file_picker: ^8.1.4
   google_sign_in: ^6.2.2
   qr_flutter: ^4.1.0
+  ffmpeg_kit_flutter_new_audio: ^2.5.7
 
 dev_dependencies:
   flutter_test:

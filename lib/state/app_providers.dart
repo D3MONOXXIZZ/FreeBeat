@@ -20,6 +20,7 @@ import '../services/audio/cloud_audio_cache_service.dart';
 import '../services/audio/cloud_stream_proxy.dart';
 import '../services/audio/poweramp_dsp_service.dart';
 import '../services/auth/native_cloud_auth_service.dart';
+import '../services/audio/universal_audio_transcoder_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 import '../services/metadata/artwork_and_lyrics_service.dart';
@@ -52,6 +53,11 @@ final localMediaServerDiscoveryServiceProvider =
 
 final powerampDspServiceProvider = Provider<PowerampDspService>((ref) {
   return PowerampDspService();
+});
+
+final universalAudioTranscoderServiceProvider =
+    Provider<UniversalAudioTranscoderService>((ref) {
+  return UniversalAudioTranscoderService();
 });
 
 final cloudStreamProxyProvider = Provider<CloudStreamProxy>((ref) {
@@ -1370,15 +1376,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         } catch (_) {}
       }
 
-      // 0. Hardware / Codec Transcode check (WMA, ASF, AIFF) to 16-bit PCM WAV if needed
+      // 0. Hardware & Universal FFmpeg Transcode check (WMA, ASF, AIFF, etc.) to 16-bit PCM WAV
       final pathLower = (cachedPath ?? track.localCachePath ?? track.streamUrl).toLowerCase();
-      final isWmaOrTranscode = pathLower.endsWith('.wma') ||
-          pathLower.endsWith('.asf') ||
-          pathLower.endsWith('.aiff') ||
-          pathLower.endsWith('.aif') ||
-          track.codec.toLowerCase() == 'wma' ||
-          track.codec.toLowerCase() == 'asf' ||
-          track.codec.toLowerCase() == 'aiff';
+      final isWmaOrTranscode = UniversalAudioTranscoderService.requiresTranscoding(track, pathLower);
 
       if (isWmaOrTranscode) {
         try {
@@ -1395,8 +1395,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           }
 
           if (sourceToDecode != null && sourceToDecode.isNotEmpty) {
-            final dspService = _ref.read(powerampDspServiceProvider);
-            final transcoded = await dspService.transcodeAudioIfNeeded(sourceToDecode);
+            final transcoder = _ref.read(universalAudioTranscoderServiceProvider);
+            final transcoded = await transcoder.transcodeToWav(
+              track: track,
+              sourcePath: sourceToDecode,
+            );
             if (transcoded != null && transcoded.isNotEmpty && File(transcoded).existsSync()) {
               await _audioPlayer!.setFilePath(transcoded);
               await _audioPlayer!.setVolume(1.0);
@@ -1546,6 +1549,32 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
     } catch (e, st) {
       debugPrint('Error playing track "${track.title}": $e\n$st');
+      // Automatic recovery: if normal playback failed (e.g. unhandled container or ExoPlayer format error),
+      // attempt universal PCM WAV transcoding with FFmpeg
+      try {
+        final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+        final cachedPath = await cacheSvc.getCachedFilePath(track);
+        final transcoder = _ref.read(universalAudioTranscoderServiceProvider);
+        String? src = cachedPath ?? track.localCachePath;
+        if (src == null || !File(src).existsSync()) {
+          src = track.streamUrl;
+        }
+        if (src.isNotEmpty) {
+          final recovered = await transcoder.transcodeToWav(
+            track: track,
+            sourcePath: src,
+          );
+          if (recovered != null && File(recovered).existsSync()) {
+            await _audioPlayer!.setFilePath(recovered);
+            await _audioPlayer!.setVolume(1.0);
+            await _audioPlayer!.play();
+            _syncForegroundNotification(track: track, isPlaying: true);
+            return;
+          }
+        }
+      } catch (recoveryErr) {
+        debugPrint('Universal transcode recovery failed for ${track.title}: $recoveryErr');
+      }
     }
   }
 
