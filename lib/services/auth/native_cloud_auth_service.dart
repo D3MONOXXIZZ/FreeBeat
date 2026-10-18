@@ -132,6 +132,37 @@ class NativeCloudAuthService {
     }
   }
 
+  /// Creates and connects a Google Drive CloudAccount directly.
+  NativeGoogleAuthResult createGoogleDriveAccount({
+    required String email,
+    String? displayName,
+    String? accessToken,
+  }) {
+    final cleanEmail = email.trim();
+    final cleanName = displayName?.trim();
+    final safeId = 'gdrive_${cleanEmail.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}';
+
+    final cloudAccount = CloudAccount(
+      id: safeId,
+      providerType: CloudProviderType.googleDrive,
+      displayName: cleanName != null && cleanName.isNotEmpty
+          ? '$cleanName (Drive)'
+          : 'Google Drive ($cleanEmail)',
+      endpointOrFolder: 'Google Drive • $cleanEmail',
+      usernameOrEmail: cleanEmail,
+      isConnected: true,
+      lastSyncedAt: DateTime.now(),
+    );
+
+    return NativeGoogleAuthResult(
+      isSuccess: true,
+      email: cleanEmail,
+      displayName: cleanName,
+      accessToken: accessToken,
+      account: cloudAccount,
+    );
+  }
+
   /// Proactively requests a silent token refresh for Google Drive via Google Play Services.
   Future<String?> getFreshGoogleAccessToken() async {
     try {

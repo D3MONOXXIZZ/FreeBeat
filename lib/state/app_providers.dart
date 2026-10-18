@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/models/audio_quality_settings.dart';
 import '../core/models/cloud_account.dart';
 import '../core/models/playlist.dart';
@@ -158,16 +159,63 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
 
   final LibraryDatabase _db;
   final SecureCredentialStore _credStore;
+  static const String _prefsKey = 'freebeat_persisted_cloud_accounts';
 
   Future<void> _loadFromDb() async {
-    final loaded = await _db.loadAccounts();
-    if (loaded.isNotEmpty) {
-      state = loaded;
+    // 1. Immediately restore from SharedPreferences for zero-latency UI persistence
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_prefsKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final decoded = jsonDecode(jsonStr) as List<dynamic>;
+        final prefAccounts = decoded
+            .map((item) => CloudAccount.fromMap(item as Map<String, dynamic>))
+            .toList();
+        if (prefAccounts.isNotEmpty && state.isEmpty) {
+          state = prefAccounts;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading cloud accounts from SharedPreferences: $e');
+    }
+
+    // 2. Synchronize and merge with SQLite database
+    try {
+      final loaded = await _db.loadAccounts();
+      if (loaded.isNotEmpty) {
+        final mergedMap = <String, CloudAccount>{};
+        for (final a in state) {
+          mergedMap[a.id] = a;
+        }
+        for (final a in loaded) {
+          mergedMap[a.id] = a;
+        }
+        state = mergedMap.values.toList();
+        _saveToPrefs();
+      } else if (state.isNotEmpty) {
+        // SQLite was empty on clean boot or test, backfill from SharedPreferences
+        for (final a in state) {
+          await _db.upsertAccount(a);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading cloud accounts from SQLite: $e');
+    }
+  }
+
+  Future<void> _saveToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = state.map((a) => a.toMap()).toList();
+      await prefs.setString(_prefsKey, jsonEncode(jsonList));
+    } catch (e) {
+      debugPrint('Error saving cloud accounts to SharedPreferences: $e');
     }
   }
 
   void loadSampleDemoAccounts() {
     state = DemoCloudConnector.defaultShowcaseAccounts();
+    _saveToPrefs();
   }
 
   Future<void> addAccount(
@@ -177,6 +225,7 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
     await _credStore.saveSecrets(account.id, secrets);
     await _db.upsertAccount(account);
     state = [...state.where((a) => a.id != account.id), account];
+    await _saveToPrefs();
     await PixelHaptics.hifiConfirm();
   }
 
@@ -184,6 +233,7 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
     await _credStore.deleteSecrets(accountId);
     await _db.removeAccount(accountId);
     state = state.where((a) => a.id != accountId).toList();
+    await _saveToPrefs();
     await PixelHaptics.tick();
   }
 }

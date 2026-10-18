@@ -1,13 +1,20 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
+import 'package:freebeat/core/storage/library_database.dart';
 import 'package:freebeat/providers/implementations/oauth_cloud_connectors.dart';
 import 'package:freebeat/services/auth/native_cloud_auth_service.dart';
+import 'package:freebeat/core/storage/secure_credential_store.dart';
 import 'package:freebeat/services/discovery/local_media_server_discovery_service.dart';
+import 'package:freebeat/state/app_providers.dart';
 import 'package:freebeat/ui/screens/clouds_screen.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:freebeat/providers/implementations/network_and_saf_connectors.dart';
+import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('1-Tap Cloud Auth & Native Google Sign-In Contract', () {
@@ -196,5 +203,101 @@ void main() {
       expect(find.text('Server URL / Endpoint / IP Address'), findsOneWidget);
       expect(find.text('Mount Cloud Drive'), findsOneWidget);
     });
+
+    test('NativeCloudAuthService.createGoogleDriveAccount creates direct Google Drive account', () {
+      final auth = NativeCloudAuthService();
+      final res = auth.createGoogleDriveAccount(
+        email: 'audiophile@gmail.com',
+        displayName: 'Studio Master',
+        accessToken: 'ya29.direct_test_token',
+      );
+
+      expect(res.isSuccess, isTrue);
+      expect(res.email, 'audiophile@gmail.com');
+      expect(res.account, isNotNull);
+      expect(res.account!.providerType, CloudProviderType.googleDrive);
+      expect(res.account!.displayName, 'Studio Master (Drive)');
+      expect(res.account!.isConnected, isTrue);
+    });
+
+    test('CloudAccountsNotifier restores accounts from SharedPreferences across app restart', () async {
+      SharedPreferences.setMockInitialValues({
+        'freebeat_persisted_cloud_accounts': jsonEncode([
+          {
+            'id': 'gdrive_persisted_1',
+            'providerType': 'googleDrive',
+            'displayName': 'Persistent Drive',
+            'endpointOrFolder': 'Google Drive • user@gmail.com',
+            'usernameOrEmail': 'user@gmail.com',
+            'isConnected': 1,
+            'lastSyncedAt': DateTime.now().millisecondsSinceEpoch,
+            'indexedTrackCount': 42,
+          }
+        ]),
+      });
+
+      final notifier = CloudAccountsNotifier(LibraryDatabase(), SecureCredentialStore());
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(notifier.state, isNotEmpty);
+      expect(notifier.state.first.id, 'gdrive_persisted_1');
+      expect(notifier.state.first.providerType, CloudProviderType.googleDrive);
+      expect(notifier.state.first.displayName, 'Persistent Drive');
+    });
+
+    testWidgets('CloudsScreen displays connected Google Drive account with active badge', (WidgetTester tester) async {
+      const persistedAccount = CloudAccount(
+        id: 'gdrive_active_1',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'Studio Master (Drive)',
+        endpointOrFolder: 'Google Drive • master@studio.com',
+        usernameOrEmail: 'master@studio.com',
+        isConnected: true,
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          cloudStreamProxyProvider.overrideWithValue(_FakeCloudStreamProxy()),
+          cloudAccountsProvider.overrideWith((ref) {
+            final acc = CloudAccountsNotifier(LibraryDatabase(), SecureCredentialStore());
+            acc.state = [persistedAccount];
+            return acc;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: CloudsScreen(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connected Cloud Drives (1)'), findsOneWidget);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('Studio Master (Drive)'), findsOneWidget);
+      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
+    });
   });
+}
+
+class _FakeCloudStreamProxy extends CloudStreamProxy {
+  _FakeCloudStreamProxy()
+      : super(
+          connectorRegistry: CloudConnectorRegistry(),
+          credentialStore: SecureCredentialStore(),
+        );
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> dispose() async {}
 }

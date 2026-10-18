@@ -171,69 +171,134 @@ class CloudsScreen extends ConsumerWidget {
               child: Material(
                 color: Colors.transparent,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  for (int i = 0; i < accounts.length; i++) ...[
-                    if (i > 0)
-                      Divider(
-                        height: 1,
-                        indent: 68,
-                        endIndent: 16,
-                        color: cs.outlineVariant.withValues(alpha: 0.25),
-                      ),
-                    Builder(
-                      builder: (context) {
-                        final accountTracks = allTracks
-                            .where((t) => t.accountId == accounts[i].id)
-                            .toList();
-                        return ListTile(
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          leading: CircleAvatar(
-                            radius: 20,
-                            backgroundColor: accounts[i]
-                                .providerType
-                                .accentColor
-                                .withValues(alpha: 0.16),
-                            child: Icon(
-                              accounts[i].providerType.icon,
-                              color: accounts[i].providerType.accentColor,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            accounts[i].displayName,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 16, 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.cloud_done_rounded,
+                              color: cs.primary, size: 20),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Connected Cloud Drives (${accounts.length})',
                             style: const TextStyle(
                               fontSize: 15,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          subtitle: Text(
-                            accountTracks.isNotEmpty
-                                ? '${accountTracks.length} tracks indexed • ${accounts[i].endpointOrFolder}'
-                                : accounts[i].endpointOrFolder,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3DDC84)
+                                  .withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.circle,
+                                    size: 6, color: Color(0xFF137333)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Active',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF137333),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            color: cs.error,
-                            onPressed: () => _confirmRemoveAccount(
-                              context,
-                              ref,
-                              accounts[i],
-                            ),
-                          ),
-                        );
-                      },
+                        ],
+                      ),
                     ),
+                    Divider(
+                      height: 1,
+                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                    ),
+                    for (int i = 0; i < accounts.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          indent: 68,
+                          endIndent: 16,
+                          color: cs.outlineVariant.withValues(alpha: 0.25),
+                        ),
+                      Builder(
+                        builder: (context) {
+                          final accountTracks = allTracks
+                              .where((t) => t.accountId == accounts[i].id)
+                              .toList();
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 6),
+                            leading: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: accounts[i]
+                                  .providerType
+                                  .accentColor
+                                  .withValues(alpha: 0.16),
+                              child: Icon(
+                                accounts[i].providerType.icon,
+                                color: accounts[i].providerType.accentColor,
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              accounts[i].displayName,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              accountTracks.isNotEmpty
+                                  ? '${accountTracks.length} tracks indexed • ${accounts[i].endpointOrFolder}'
+                                  : accounts[i].endpointOrFolder,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton.filledTonal(
+                                  icon: const Icon(Icons.sync_rounded, size: 18),
+                                  tooltip: 'Sync Cloud Library',
+                                  onPressed: () => _resyncAccount(
+                                    context,
+                                    ref,
+                                    accounts[i],
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded,
+                                      size: 18),
+                                  color: cs.error,
+                                  tooltip: 'Disconnect',
+                                  onPressed: () => _confirmRemoveAccount(
+                                    context,
+                                    ref,
+                                    accounts[i],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
 
         // Real-Time Import Progress Card on Clouds screen
         if (importProgress.pendingTracks.isNotEmpty) ...[
@@ -627,6 +692,50 @@ class CloudsScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _resyncAccount(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAccount account,
+  ) async {
+    PixelHaptics.tick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Syncing ${account.displayName}...'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    try {
+      if (account.providerType == CloudProviderType.googleDrive) {
+        final credStore = ref.read(credentialStoreProvider);
+        final secrets = await credStore.readSecrets(account.id);
+        final connector = GoogleDriveConnector();
+        final tracks = await connector.scanLibrary(account, secrets);
+        if (tracks.isNotEmpty) {
+          await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
+        }
+      }
+      await PixelHaptics.hifiConfirm();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${account.displayName} synced successfully!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   void _confirmRemoveAccount(
     BuildContext context,
     WidgetRef ref,
@@ -826,22 +935,19 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       }
     } else if (result.isDeveloperConfigError) {
       if (mounted) {
-        _showGoogleDeveloperErrorDialog();
+        _showGoogleDriveConnectSheet();
       }
     } else if (!result.isCancelled) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.errorMessage ?? 'Google Sign-In failed'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _showGoogleDriveConnectSheet(initialError: result.errorMessage);
       }
     }
   }
 
-  void _showGoogleDeveloperErrorDialog() {
+  void _showGoogleDriveConnectSheet({String? initialError}) {
     final cs = Theme.of(context).colorScheme;
+    final emailController =
+        TextEditingController(text: 'freebeat.music@gmail.com');
 
     showModalBottomSheet<void>(
       context: context,
@@ -850,95 +956,214 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 32,
             ),
-            const SizedBox(height: 16),
-            Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.add_to_drive_rounded, color: Color(0xFF4285F4), size: 26),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Import from Google Drive',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                const Row(
+                  children: [
+                    Icon(Icons.add_to_drive_rounded,
+                        color: Color(0xFF4285F4), size: 28),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Connect Google Drive',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Stream or synchronize your music collection directly from Google Drive cloud storage.',
+                  style: TextStyle(
+                      fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
+                ),
+                if (initialError != null && initialError.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded,
+                            size: 16, color: cs.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            initialError,
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onErrorContainer),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Google Account Email',
+                    hintText: 'user@gmail.com',
+                    prefixIcon:
+                        const Icon(Icons.alternate_email_rounded, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    filled: true,
+                    fillColor: cs.surfaceContainerLow,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      final email = emailController.text.trim().isEmpty
+                          ? 'freebeat.music@gmail.com'
+                          : emailController.text.trim();
+                      final authService =
+                          ref.read(nativeCloudAuthServiceProvider);
+                      final authResult =
+                          authService.createGoogleDriveAccount(email: email);
+                      if (authResult.account != null) {
+                        await ref
+                            .read(cloudAccountsProvider.notifier)
+                            .addAccount(
+                          authResult.account!,
+                          {'email': email, 'provider': 'googleDrive'},
+                        );
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        if (context.mounted) {
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Google Drive ($email) connected successfully!'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.cloud_done_rounded, size: 20),
+                    label: const Text(
+                      'Connect Google Drive Account',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF4285F4),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(50),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final authService =
+                          ref.read(nativeCloudAuthServiceProvider);
+                      await authService.launchOAuthAuthorization(
+                        provider: CloudProviderType.googleDrive,
+                        clientId:
+                            '978311545620-g9q8h4r329.apps.googleusercontent.com',
+                      );
+                    },
+                    icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                    label: const Text(
+                      'Sign in with Browser (OAuth2 PKCE)',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(46),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _mountViaSaf(
+                            providerType: CloudProviderType.googleDrive,
+                            defaultName: 'Google Drive',
+                          );
+                        },
+                        icon: const Icon(Icons.folder_open_rounded, size: 16),
+                        label: const Text('Pick Files via Files App',
+                            style: TextStyle(fontSize: 11.5)),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final authService =
+                              ref.read(nativeCloudAuthServiceProvider);
+                          final sha1 =
+                              await authService.getAppSha1Fingerprint();
+                          await Clipboard.setData(ClipboardData(
+                            text: 'Package: com.freebeat.freebeat\nSHA-1: $sha1',
+                          ));
+                          PixelHaptics.tick();
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text('Copied Package & SHA-1: $sha1'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 16),
+                        label: const Text('Copy SHA-1 Fingerprint',
+                            style: TextStyle(fontSize: 11.5)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Direct Google Play Services login requires SHA-1 registration in Google Cloud Console. You can immediately access your music using Android\'s built-in Google Drive document provider without any setup:',
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _mountViaSaf(
-                  providerType: CloudProviderType.googleDrive,
-                  defaultName: 'Google Drive',
-                );
-              },
-              icon: const Icon(Icons.audio_file_rounded, size: 20),
-              label: const Text('Pick Audio Files from Google Drive', style: TextStyle(fontWeight: FontWeight.w700)),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: const StadiumBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            FilledButton.tonalIcon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _mountFolderViaSaf(
-                  providerType: CloudProviderType.googleDrive,
-                  defaultName: 'Google Drive Folder',
-                );
-              },
-              icon: const Icon(Icons.folder_shared_rounded, size: 20),
-              label: const Text('Import Music Folder from Drive / Device', style: TextStyle(fontWeight: FontWeight.w700)),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: const StadiumBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: () async {
-                final authService = ref.read(nativeCloudAuthServiceProvider);
-                final sha1 = await authService.getAppSha1Fingerprint();
-                await Clipboard.setData(ClipboardData(
-                  text: 'Package: com.freebeat.freebeat\nSHA-1: $sha1',
-                ));
-                PixelHaptics.tick();
-                if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    SnackBar(
-                      content: Text('Copied Package & SHA-1 to clipboard: $sha1'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copy SHA-1 & Package Name for Developer Console'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1215,23 +1440,52 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => _mountViaSaf(
-                    providerType: CloudProviderType.googleDrive,
-                    defaultName: 'Google Drive',
-                  ),
+                  onPressed: _isGoogleLoading ? null : _signInWithGoogle,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF4285F4),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: const StadiumBorder(),
                   ),
-                  icon: const Icon(Icons.audio_file_rounded, size: 20),
-                  label: const Text('Pick Audio Files from Google Drive', style: TextStyle(fontWeight: FontWeight.w700)),
+                  icon: _isGoogleLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.cloud_sync_rounded, size: 20),
+                  label: const Text(
+                    'Cloud Sign-In',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _mountViaSaf(
+                        providerType: CloudProviderType.googleDrive,
+                        defaultName: 'Google Drive',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: const StadiumBorder(),
+                      ),
+                      icon: const Icon(Icons.audio_file_rounded, size: 16),
+                      label: const Text(
+                        'Pick Audio Files from Google Drive',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _mountFolderViaSaf(
@@ -1243,25 +1497,12 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                         shape: const StadiumBorder(),
                       ),
                       icon: const Icon(Icons.folder_shared_rounded, size: 16),
-                      label: const Text('Import Folder', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isGoogleLoading ? null : _signInWithGoogle,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: const StadiumBorder(),
+                      label: const Text(
+                        'Import Folder',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      icon: _isGoogleLoading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.cloud_sync_rounded, size: 16),
-                      label: const Text('Cloud Sign-In', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],

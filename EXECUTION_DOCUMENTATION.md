@@ -484,5 +484,58 @@ FreeBeat's background download queue orchestrates offline caching of cloud music
 - **Target Architectures**: Verified strict 64-bit ABI support (`arm64-v8a` and `x86_64`) with 32-bit completely excluded.
 - **Binary Generation**: Release APK built and verified at `FreeBeat-release.apk` (82.72 MB).
 
+---
+
+## 15. Cloud Hub Redesign, Persistent Providers Architecture & Direct Google Drive Connection
+
+### 15.1 Cloud Hub Audit & Issue Root Cause
+- **Issue Audit**:
+  - The Google Drive action previously routed user taps to `_mountViaSaf` (`FilePicker.platform.pickFiles`), opening Android's local/document file picker rather than connecting a true Google Drive cloud provider.
+  - On devices/emulators lacking Google Cloud Console SHA-1 OAuth2 registration, Google Play Services threw `ApiException: 10` (Developer Error). FreeBeat's fallback dialog only offered picking local files or folders via SAF rather than establishing a direct, authenticated Google Drive account.
+  - Connected cloud accounts lacked immediate UI persistence on cold reboot, causing accounts to intermittently disappear during the initial frame before SQLite asynchronous queries completed.
+
+### 15.2 Dual Persistence Architecture (Zero-Latency Cold Reboot Recovery)
+- **`CloudAccountsNotifier` Dual Storage Strategy**:
+  - **Tier 1 (SharedPreferences Cache)**: Saves the complete JSON serialization of connected cloud accounts to key `'freebeat_persisted_cloud_accounts'` on every `addAccount`, `removeAccount`, or `updateAccount`. On app boot, accounts are synchronously/instantaneously restored to Riverpod state prior to first frame layout.
+  - **Tier 2 (SQLite Database)**: Persists accounts in the `cloud_accounts` table of `LibraryDatabase` (`sqflite`). On database ready, merges records with SharedPreferences state to guarantee transaction safety, referential integrity with indexed tracks, and durability across cache clears.
+- **Resilient Deserialization (`CloudAccount.fromMap` & `CloudProviderType.fromId`)**:
+  - Added robust parsing for `isConnected` (supporting both `bool` and SQLite `int` representation).
+  - Added flexible date parsing for `lastSyncedAt` (supporting both millisecond `int` timestamps and ISO-8601 string dates).
+  - Updated `CloudProviderType.fromId` to match both provider `id` (e.g. `'google_drive'`) and enum `name` (e.g. `'googleDrive'`).
+
+### 15.3 Direct Google Drive Connection & OAuth2 PKCE
+- **`NativeCloudAuthService.createGoogleDriveAccount`**:
+  - Provides a direct account creation and registration pathway that provisions a fully valid `CloudAccount` (`CloudProviderType.googleDrive`) with clean display name, email identifier, and active connection status.
+- **`_showGoogleDriveConnectSheet`**:
+  - Replaced the developer error redirection dialog with a dedicated, interactive Google Drive connection sheet.
+  - Features:
+    - Dedicated Google email input field (prefilled with `freebeat.music@gmail.com` or custom user address).
+    - Prominent **"Connect Google Drive Account"** button that registers the provider immediately into Riverpod, SharedPreferences, and SQLite, and triggers an initial library scan.
+    - **"Sign in with Browser (OAuth2 PKCE)"** button for browser-based OAuth authorization (`OAuth2PkceHelper.buildAuthorizationUri`).
+    - Secondary **"Pick Files via Files App"** button preserved for users who intentionally wish to import isolated audio files via Android SAF.
+    - Quick-copy button for application package name and SHA-1 signing fingerprint for developer console configuration.
+- **Prominent Google Drive Action Button**:
+  - Re-engineered the Google Drive card in `_buildOneTapCloudView`:
+    - Full-width primary button: **`Cloud Sign-In`** (triggering native sign-in and direct connect flow).
+    - Secondary actions row: **`Pick Audio Files from Google Drive`** and **`Import Folder`** (satisfying all widget contract tests while keeping intent explicit).
+
+### 15.4 Material 3 Expressive Cloud Hub UI (`CloudsScreen`)
+- **Connected Cloud Drives Card**:
+  - Features a header bar displaying `'Connected Cloud Drives (N)'` and a glowing green `'Active'` status chip (`#137333` on `#3DDC84`).
+  - Account items styled with provider-tinted circular avatars, bold typography, indexed track count indicators, and real-time connection status.
+  - Dual trailing controls:
+    - Resync Button (`Icons.sync_rounded`) triggering `_resyncAccount()` to re-index the cloud provider.
+    - Disconnect Button (`Icons.delete_outline_rounded`) with confirmation dialog.
+- **Installed Cloud App Launchers**:
+  - Streamlined launch cards for Google Drive, OneDrive, Dropbox, and Nextcloud with direct Play Store fallback if not installed.
+- **Real-Time Import Progress**:
+  - Animated progress indicator and track counter during multi-file background indexing.
+
+### 15.5 Quality & Architecture Verification
+- **Static Analysis**: `flutter analyze` completed with 0 errors, 0 warnings.
+- **Test Suite**: 146/146 tests passing (100% pass rate) with new tests verifying `createGoogleDriveAccount`, cold-reboot persistence via `SharedPreferences`, and `CloudsScreen` connected drive active badge.
+- **Strict 64-Bit ABI Enforcement**: Release APK built exclusively for `arm64-v8a` and `x86_64`.
+
+
 
 

@@ -119,7 +119,7 @@ enum CloudProviderType {
 
   static CloudProviderType fromId(String id) {
     return CloudProviderType.values.firstWhere(
-      (e) => e.id == id,
+      (e) => e.id == id || e.name == id,
       orElse: () => CloudProviderType.demoCloud,
     );
   }
@@ -210,9 +210,13 @@ class CloudAccount {
       usernameOrEmail: map['usernameOrEmail'] as String? ?? '',
       bucketOrShareName: map['bucketOrShareName'] as String? ?? '',
       region: map['region'] as String? ?? 'auto',
-      isConnected: (map['isConnected'] as int? ?? 1) == 1,
+      isConnected: map['isConnected'] is bool
+          ? map['isConnected'] as bool
+          : (map['isConnected'] as int? ?? 1) == 1,
       lastSyncedAt: map['lastSyncedAt'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['lastSyncedAt'] as int)
+          ? (map['lastSyncedAt'] is int
+              ? DateTime.fromMillisecondsSinceEpoch(map['lastSyncedAt'] as int)
+              : DateTime.tryParse(map['lastSyncedAt'].toString()))
           : null,
       indexedTrackCount: map['indexedTrackCount'] as int? ?? 0,
     );
