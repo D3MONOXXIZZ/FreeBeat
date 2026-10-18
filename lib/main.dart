@@ -48,6 +48,8 @@ class FreeBeatApp extends ConsumerStatefulWidget {
 
 class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
     with WidgetsBindingObserver {
+  bool _isAppInForeground = true;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +60,17 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final inForeground = state == AppLifecycleState.resumed;
+    if (_isAppInForeground != inForeground) {
+      setState(() {
+        _isAppInForeground = inForeground;
+      });
+    }
   }
 
   @override
@@ -102,12 +115,14 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
           Brightness.dark,
         );
 
-        return MaterialApp(
-          title: 'FreeBeat',
-          debugShowCheckedModeBanner: false,
-          theme: lightTheme,
-          darkTheme: darkTheme,
-          themeMode: themeMode, // Strictly bound to ThemeMode.system by default
+        return TickerMode(
+          enabled: _isAppInForeground,
+          child: MaterialApp(
+            title: 'FreeBeat',
+            debugShowCheckedModeBanner: false,
+            theme: lightTheme,
+            darkTheme: darkTheme,
+            themeMode: themeMode, // Strictly bound to ThemeMode.system by default
           builder: (context, child) {
             // Read active effective theme brightness (respects ThemeMode.system / light / dark)
             final effectiveTheme = Theme.of(context);
@@ -128,7 +143,8 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
             );
           },
           home: const MainShell(),
-        );
+        ),
+      );
       },
     );
   }

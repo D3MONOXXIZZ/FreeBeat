@@ -55,16 +55,26 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enablePeakDisplayRefreshRate()
+        enableAdaptiveDisplayRefreshRate()
         requestNotificationPermissionIfNeeded()
     }
 
     override fun onResume() {
         super.onResume()
-        enablePeakDisplayRefreshRate()
+        enableAdaptiveDisplayRefreshRate()
     }
 
-    private fun enablePeakDisplayRefreshRate() {
+    override fun onPause() {
+        super.onPause()
+        clearDisplayRefreshRateOverrides()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        clearDisplayRefreshRateOverrides()
+    }
+
+    private fun enableAdaptiveDisplayRefreshRate() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -74,44 +84,57 @@ class MainActivity : FlutterActivity() {
                     windowManager.defaultDisplay
                 }
 
-                val currentMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    currentDisplay?.mode
-                } else {
-                    @Suppress("DEPRECATION")
-                    currentDisplay?.mode
-                }
-
-                val targetWidth = currentMode?.physicalWidth ?: 0
-                val targetHeight = currentMode?.physicalHeight ?: 0
-
                 val supportedModes = currentDisplay?.supportedModes ?: emptyArray()
-                if (supportedModes.isNotEmpty()) {
-                    // Match current resolution to prevent mode-switch desync and lock peak refresh rate (120Hz/144Hz)
-                    val peakMode = supportedModes.filter {
-                        (targetWidth == 0 || it.physicalWidth == targetWidth) &&
-                        (targetHeight == 0 || it.physicalHeight == targetHeight)
-                    }.maxByOrNull { it.refreshRate } ?: supportedModes.maxByOrNull { it.refreshRate }
+                val peakRate = supportedModes.maxOfOrNull { it.refreshRate } ?: 60f
 
-                    if (peakMode != null && peakMode.refreshRate > 60f) {
-                        val params = window.attributes
-                        params.preferredDisplayModeId = peakMode.modeId
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            params.preferredRefreshRate = peakMode.refreshRate
-                        }
-                        try {
-                            val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
-                            minRateField.setFloat(params, peakMode.refreshRate)
-                            val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
-                            maxRateField.setFloat(params, peakMode.refreshRate)
-                        } catch (_: Throwable) {
-                            // Fields may not exist on older API stubs
-                        }
-                        window.attributes = params
-                    }
+                val params = window.attributes
+                // 1. Never force a fixed display mode ID. Mode 0 allows Android LTPO dynamic mode switching.
+                params.preferredDisplayModeId = 0
+
+                // 2. Clear preferredMinDisplayRefreshRate to 0f.
+                // Setting a minimum rate prevents the hardware/display driver from scaling down when idle.
+                try {
+                    val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
+                    minRateField.setFloat(params, 0f)
+                } catch (_: Throwable) {}
+
+                // 3. Set the ceiling (preferredMaxDisplayRefreshRate) to the screen's peak refresh rate (120Hz/144Hz).
+                // This allows buttery-smooth 120Hz scrolling and touch interaction without being capped by OEM battery limits,
+                // while permitting the adaptive refresh rate governor to ramp down to 60Hz/30Hz/10Hz/1Hz when static.
+                try {
+                    val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
+                    maxRateField.setFloat(params, if (peakRate > 60f) peakRate else 0f)
+                } catch (_: Throwable) {}
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    params.preferredRefreshRate = 0f
                 }
+
+                window.attributes = params
             } catch (_: Throwable) {
                 // Ignore if device OEM restricts custom display mode
             }
+        }
+    }
+
+    private fun clearDisplayRefreshRateOverrides() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val params = window?.attributes ?: return
+                params.preferredDisplayModeId = 0
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    params.preferredRefreshRate = 0f
+                }
+                try {
+                    val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
+                    minRateField.setFloat(params, 0f)
+                } catch (_: Throwable) {}
+                try {
+                    val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
+                    maxRateField.setFloat(params, 0f)
+                } catch (_: Throwable) {}
+                window.attributes = params
+            } catch (_: Throwable) {}
         }
     }
 
@@ -184,7 +207,7 @@ class MainActivity : FlutterActivity() {
                         result.success(rate.toDouble())
                     }
                     "setHighRefreshRate" -> {
-                        enablePeakDisplayRefreshRate()
+                        enableAdaptiveDisplayRefreshRate()
                         result.success(true)
                     }
                     "getAppSha1Fingerprint" -> {
@@ -1204,6 +1227,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        clearDisplayRefreshRateOverrides()
         releaseEffects()
         super.onDestroy()
     }
