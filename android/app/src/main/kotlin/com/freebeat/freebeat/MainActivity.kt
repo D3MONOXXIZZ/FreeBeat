@@ -69,23 +69,39 @@ class MainActivity : FlutterActivity() {
                     windowManager.defaultDisplay
                 }
 
+                val currentMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    currentDisplay?.mode
+                } else {
+                    @Suppress("DEPRECATION")
+                    currentDisplay?.mode
+                }
+
+                val targetWidth = currentMode?.physicalWidth ?: 0
+                val targetHeight = currentMode?.physicalHeight ?: 0
+
                 val supportedModes = currentDisplay?.supportedModes ?: emptyArray()
                 if (supportedModes.isNotEmpty()) {
-                    // Pick the mode with the highest refresh rate (e.g. 90Hz, 120Hz, 144Hz)
-                    val peakMode = supportedModes.maxWithOrNull(
-                        compareBy<android.view.Display.Mode> { it.refreshRate }
-                            .thenBy { it.physicalWidth * it.physicalHeight }
-                    )
+                    // Match current resolution to prevent mode-switch desync and lock peak refresh rate (120Hz/144Hz)
+                    val peakMode = supportedModes.filter {
+                        (targetWidth == 0 || it.physicalWidth == targetWidth) &&
+                        (targetHeight == 0 || it.physicalHeight == targetHeight)
+                    }.maxByOrNull { it.refreshRate } ?: supportedModes.maxByOrNull { it.refreshRate }
 
                     if (peakMode != null && peakMode.refreshRate > 60f) {
                         val params = window.attributes
-                        if (params.preferredDisplayModeId != peakMode.modeId) {
-                            params.preferredDisplayModeId = peakMode.modeId
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                params.preferredRefreshRate = peakMode.refreshRate
-                            }
-                            window.attributes = params
+                        params.preferredDisplayModeId = peakMode.modeId
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            params.preferredRefreshRate = peakMode.refreshRate
                         }
+                        try {
+                            val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
+                            minRateField.setFloat(params, peakMode.refreshRate)
+                            val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
+                            maxRateField.setFloat(params, peakMode.refreshRate)
+                        } catch (_: Throwable) {
+                            // Fields may not exist on older API stubs
+                        }
+                        window.attributes = params
                     }
                 }
             } catch (_: Throwable) {

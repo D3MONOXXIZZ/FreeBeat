@@ -1,4 +1,5 @@
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,9 @@ import 'ui/theme/pixel_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
+  GestureBinding.instance.resamplingEnabled = true;
 
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

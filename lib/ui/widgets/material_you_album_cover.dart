@@ -53,15 +53,24 @@ class MaterialYouAlbumCover extends StatelessWidget {
             color: cs.outlineVariant.withValues(alpha: 0.3),
             width: 1.0,
           ),
-          boxShadow: [
-            // M3 Surface Tint / Tonal Elevation glow
-            BoxShadow(
-              color: trackColor.withValues(alpha: 0.18),
-              blurRadius: 18,
-              spreadRadius: 1,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          boxShadow: size > 52
+              ? [
+                  // M3 Surface Tint / Tonal Elevation glow for hero artwork
+                  BoxShadow(
+                    color: trackColor.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [
+                  // Lightweight elevation for fast 120Hz scrolling list thumbnails
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius),

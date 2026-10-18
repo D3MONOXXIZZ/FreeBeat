@@ -1001,249 +1001,315 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
           // ───────────────────────────────────────────────────────────────────
-          // 4. Edge-to-Edge Surface Card for Track List
+          // 4. Edge-to-Edge Surface Card for Track List (Virtualized 120Hz Slivers)
           // ───────────────────────────────────────────────────────────────────
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
-            sliver: SliverToBoxAdapter(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  border: Border(
-                    top: BorderSide(
-                      color: cs.outlineVariant.withValues(alpha: 0.25),
-                      width: 1,
+          if (allTracks.isEmpty && importProgress.pendingTracks.isEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
+              sliver: SliverToBoxAdapter(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    border: Border(
+                      top: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                        width: 1,
+                      ),
+                      bottom: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                        width: 1,
+                      ),
                     ),
-                    bottom: BorderSide(
-                      color: cs.outlineVariant.withValues(alpha: 0.25),
-                      width: 1,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Icon(
+                              Icons.queue_music_rounded,
+                              size: 32,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Your Library is Empty',
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Add music files from your device or connect cloud storage to start listening.',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: _pickLocalFiles,
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('Add Music from Device'),
+                            style: FilledButton.styleFrom(
+                              shape: const StadiumBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextButton.icon(
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              ref
+                                  .read(cloudAccountsProvider.notifier)
+                                  .loadSampleDemoAccounts();
+                              ref
+                                  .read(tracksCatalogProvider.notifier)
+                                  .loadSampleDemoTracks();
+                            },
+                            icon: const Icon(Icons.auto_awesome_rounded,
+                                size: 16),
+                            label: const Text('Load Demo Showcase'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                child: allTracks.isEmpty && importProgress.pendingTracks.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  color: cs.primaryContainer,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Icon(
-                                  Icons.queue_music_rounded,
-                                  size: 32,
-                                  color: cs.onPrimaryContainer,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Your Library is Empty',
-                                style: textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Add music files from your device or connect cloud storage to start listening.',
-                                textAlign: TextAlign.center,
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              FilledButton.icon(
-                                onPressed: _pickLocalFiles,
-                                icon: const Icon(Icons.add_rounded, size: 18),
-                                label: const Text('Add Music from Device'),
-                                style: FilledButton.styleFrom(
-                                  shape: const StadiumBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              TextButton.icon(
-                                onPressed: () {
-                                  PixelHaptics.tick();
-                                  ref
-                                      .read(cloudAccountsProvider.notifier)
-                                      .loadSampleDemoAccounts();
-                                  ref
-                                      .read(tracksCatalogProvider.notifier)
-                                      .loadSampleDemoTracks();
-                                },
-                                icon: const Icon(Icons.auto_awesome_rounded,
-                                    size: 16),
-                                label: const Text('Load Demo Showcase'),
-                              ),
-                            ],
-                          ),
+              ),
+            )
+          else ...[
+            // 1. Pending Import Songs (all show up together, greyed out with filling circle indicators)
+            if (importProgress.pendingTracks.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    border: Border(
+                      top: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                        width: 1,
+                      ),
+                      bottom: filtered.isEmpty
+                          ? BorderSide(
+                              color: cs.outlineVariant.withValues(alpha: 0.25),
+                              width: 1,
+                            )
+                          : BorderSide.none,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // 1. Pending Import Songs (all show up together, greyed out with filling circle indicators)
-                          if (importProgress.pendingTracks.isNotEmpty) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              color: cs.primaryContainer.withValues(alpha: 0.35),
-                              child: Row(
-                                children: [
-                                  SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: cs.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    importProgress.total > 10
-                                        ? 'Importing Batch ${((importProgress.batchIndex ~/ 10) + 1)} of ${((importProgress.total + 9) ~/ 10)} (${importProgress.current}/${importProgress.total})'
-                                        : 'Importing ${importProgress.total} Songs (${importProgress.current}/${importProgress.total})',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: cs.primary,
-                                    ),
-                                  ),
-                                ],
+                        color: cs.primaryContainer.withValues(alpha: 0.35),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.primary,
                               ),
                             ),
-                            for (int p = 0;
-                                p < importProgress.pendingTracks.length;
-                                p++) ...[
-                              PendingImportTrackTile(
-                                item: importProgress.pendingTracks[p],
+                            const SizedBox(width: 8),
+                            Text(
+                              importProgress.total > 10
+                                  ? 'Importing Batch ${((importProgress.batchIndex ~/ 10) + 1)} of ${((importProgress.total + 9) ~/ 10)} (${importProgress.current}/${importProgress.total})'
+                                  : 'Importing ${importProgress.total} Songs (${importProgress.current}/${importProgress.total})',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: cs.primary,
                               ),
-                              Divider(
-                                height: 1,
-                                indent: 74,
-                                endIndent: 16,
-                                color: cs.outlineVariant.withValues(alpha: 0.25),
-                              ),
-                            ],
+                            ),
                           ],
-
-                          // 2. Existing tracks in view
-                          if (filtered.isEmpty &&
-                              importProgress.pendingTracks.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.all(28),
-                              child: Center(
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      _segment == 'offline'
-                                          ? Icons.download_for_offline_outlined
-                                          : Icons.filter_list_off_rounded,
-                                      size: 36,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      _segment == 'offline'
-                                          ? 'No Pinned Offline Tracks'
-                                          : 'No tracks in this view',
-                                      style: textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      _segment == 'offline'
-                                          ? 'Pin any song, playlist, or artist to listen without an internet connection.'
-                                          : 'Try selecting a different filter or adding music to your library.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        color: cs.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    if (_segment == 'offline')
-                                      FilledButton.tonalIcon(
-                                        onPressed: () {
-                                          PixelHaptics.tick();
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const CloudSyncSettingsScreen(),
-                                            ),
-                                          );
-                                        },
-                                        icon: const Icon(
-                                          Icons.storage_rounded,
-                                          size: 18,
-                                        ),
-                                        label: const Text('Manage Downloads'),
-                                      )
-                                    else
-                                      TextButton(
-                                        onPressed: () => setState(() {
-                                          _segment = 'all';
-                                          _selectedArtist = null;
-                                        }),
-                                        child: const Text('View All Tracks'),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          else
-                            for (int i = 0; i < filtered.length; i++) ...[
-                              if (i > 0 &&
-                                  importProgress.pendingTracks.isEmpty)
-                                Divider(
-                                  height: 1,
-                                  indent: 74,
-                                  endIndent: 16,
-                                  color: cs.outlineVariant
-                                      .withValues(alpha: 0.25),
-                                ),
-                              SwipeToQueueWrapper(
-                                track: filtered[i],
-                                child: _LibraryTrackTile(
-                                  track: filtered[i],
-                                  isCurrent:
-                                      activeTrackId == filtered[i].id,
-                                  isPlaying:
-                                      activeTrackId == filtered[i].id &&
-                                          isPlaybackActive,
-                                  durationText: _formatTrackDuration(
-                                      filtered[i].durationMs),
-                                  onTap: () {
-                                    ref
-                                        .read(playbackProvider.notifier)
-                                        .playTrack(filtered[i]);
-                                  },
-                                  onToggleFavorite: () {
-                                    ref
-                                        .read(tracksCatalogProvider.notifier)
-                                        .toggleFavorite(filtered[i].id);
-                                  },
-                                  onTogglePin: () {
-                                    ref
-                                        .read(tracksCatalogProvider.notifier)
-                                        .togglePinOffline(filtered[i].id);
-                                  },
-                                  onOptionsTap: () =>
-                                      _showTrackOptions(filtered[i]),
-                                ),
-                              ),
-                            ],
-                        ],
+                        ),
                       ),
+                      for (int p = 0;
+                          p < importProgress.pendingTracks.length;
+                          p++) ...[
+                        PendingImportTrackTile(
+                          item: importProgress.pendingTracks[p],
+                        ),
+                        Divider(
+                          height: 1,
+                          indent: 74,
+                          endIndent: 16,
+                          color: cs.outlineVariant.withValues(alpha: 0.25),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
+
+            // 2. Existing tracks empty filter view
+            if (filtered.isEmpty && importProgress.pendingTracks.isEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
+                sliver: SliverToBoxAdapter(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      border: Border(
+                        top: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 0.25),
+                          width: 1,
+                        ),
+                        bottom: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 0.25),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              _segment == 'offline'
+                                  ? Icons.download_for_offline_outlined
+                                  : Icons.filter_list_off_rounded,
+                              size: 36,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _segment == 'offline'
+                                  ? 'No Pinned Offline Tracks'
+                                  : 'No tracks in this view',
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _segment == 'offline'
+                                  ? 'Pin any song, playlist, or artist to listen without an internet connection.'
+                                  : 'Try selecting a different filter or adding music to your library.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            if (_segment == 'offline')
+                              FilledButton.tonalIcon(
+                                onPressed: () {
+                                  PixelHaptics.tick();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const CloudSyncSettingsScreen(),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.storage_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('Manage Downloads'),
+                              )
+                            else
+                              TextButton(
+                                onPressed: () => setState(() {
+                                  _segment = 'all';
+                                  _selectedArtist = null;
+                                }),
+                                child: const Text('View All Tracks'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else if (filtered.isNotEmpty) ...[
+              // 3. Fully Virtualized Track List with RepaintBoundary per item for smooth 120Hz scrolling
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
+                sliver: DecoratedSliver(
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    border: Border(
+                      top: importProgress.pendingTracks.isEmpty
+                          ? BorderSide(
+                              color: cs.outlineVariant.withValues(alpha: 0.25),
+                              width: 1,
+                            )
+                          : BorderSide.none,
+                      bottom: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.25),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  sliver: SliverList.separated(
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      indent: 74,
+                      endIndent: 16,
+                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                    ),
+                    itemBuilder: (context, i) {
+                      final track = filtered[i];
+                      final isCurrent = activeTrackId == track.id;
+                      final isPlaying = isCurrent && isPlaybackActive;
+
+                      return RepaintBoundary(
+                        child: SwipeToQueueWrapper(
+                          track: track,
+                          child: _LibraryTrackTile(
+                            track: track,
+                            isCurrent: isCurrent,
+                            isPlaying: isPlaying,
+                            durationText:
+                                _formatTrackDuration(track.durationMs),
+                            onTap: () {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .playTrack(track);
+                            },
+                            onToggleFavorite: () {
+                              ref
+                                  .read(tracksCatalogProvider.notifier)
+                                  .toggleFavorite(track.id);
+                            },
+                            onTogglePin: () {
+                              ref
+                                  .read(tracksCatalogProvider.notifier)
+                                  .togglePinOffline(track.id);
+                            },
+                            onOptionsTap: () => _showTrackOptions(track),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ] else if (importProgress.pendingTracks.isNotEmpty)
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 160),
+              ),
+          ],
         ],
       ],
       ),
