@@ -28,8 +28,13 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val REQUEST_CODE_PICK_DIRECTORY = 4201
+    }
+
     private val channelName = "com.freebeat.app/dsp"
     private var currentSessionId: Int = 0
+    private var pendingDirectoryResult: MethodChannel.Result? = null
 
     // Tier 1: Android 9+ (API 28+) Studio-Grade 10-Band DynamicsProcessing
     private var dynamicsProcessing: DynamicsProcessing? = null
@@ -371,6 +376,57 @@ class MainActivity : FlutterActivity() {
                                 result.success(decoded)
                             }
                         }.start()
+                    }
+                    "pickDirectory" -> {
+                        if (pendingDirectoryResult != null) {
+                            result.error("ALREADY_ACTIVE", "A folder picker is already active", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingDirectoryResult = result
+                        try {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                                addFlags(
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                                )
+                            }
+                            startActivityForResult(intent, REQUEST_CODE_PICK_DIRECTORY)
+                        } catch (e: Throwable) {
+                            pendingDirectoryResult = null
+                            result.error("PICK_DIR_ERROR", e.message, null)
+                        }
+                    }
+                    "readContentUriHeaderBytes" -> {
+                        val uriString = call.argument<String>("uri")
+                        val maxBytes = call.argument<Int>("maxBytes") ?: 131072
+                        if (uriString != null) {
+                            Thread {
+                                try {
+                                    val uri = android.net.Uri.parse(uriString)
+                                    val inStream = contentResolver.openInputStream(uri)
+                                    if (inStream != null) {
+                                        inStream.use { input ->
+                                            val buffer = ByteArray(maxBytes)
+                                            var totalRead = 0
+                                            while (totalRead < maxBytes) {
+                                                val count = input.read(buffer, totalRead, maxBytes - totalRead)
+                                                if (count <= 0) break
+                                                totalRead += count
+                                            }
+                                            val out = if (totalRead == maxBytes) buffer else buffer.copyOf(totalRead)
+                                            runOnUiThread { result.success(out) }
+                                        }
+                                    } else {
+                                        runOnUiThread { result.success(null) }
+                                    }
+                                } catch (_: Throwable) {
+                                    runOnUiThread { result.success(null) }
+                                }
+                            }.start()
+                        } else {
+                            result.success(null)
+                        }
                     }
                     "scanDirectory" -> {
                         val pathOrUri = call.argument<String>("uri") ?: call.argument<String>("path")
@@ -884,11 +940,69 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun scanPathOrUri(pathOrUri: String): List<Map<String, Any>> {
-        if (pathOrUri.startsWith("content://")) {
-            return scanDirectoryTree(pathOrUri)
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_PICK_DIRECTORY) {
+            val pending = pendingDirectoryResult
+            pendingDirectoryResult = null
+            if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
+                val treeUri = data.data!!
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Throwable) {}
+                val folderName = getTreeDisplayName(treeUri) ?: "Music Folder"
+                pending?.success(
+                    mapOf(
+                        "uri" to treeUri.toString(),
+                        "name" to folderName
+                    )
+                )
+            } else {
+                pending?.success(null)
+            }
         }
-        val dir = File(pathOrUri)
+    }
+
+    private fun getTreeDisplayName(treeUri: android.net.Uri): String? {
+        try {
+            val docId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            contentResolver.query(
+                docUri,
+                arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val name = cursor.getString(0)
+                    if (!name.isNullOrEmpty()) return name
+                }
+            }
+        } catch (_: Throwable) {}
+        val last = treeUri.lastPathSegment
+        return if (!last.isNullOrEmpty()) {
+            last.substringAfterLast(':').substringAfterLast('/')
+        } else {
+            "Music Folder"
+        }
+    }
+
+    private fun scanPathOrUri(pathOrUri: String): List<Map<String, Any>> {
+        val trimmed = pathOrUri.trim().trimEnd('/')
+        // Safety: If the path is empty or root directory, NEVER scan the entire device!
+        if (trimmed.isEmpty() || trimmed == "/" || trimmed == "/storage" || trimmed == "/storage/emulated" || trimmed == "/storage/emulated/0") {
+            return emptyList()
+        }
+
+        if (trimmed.startsWith("content://")) {
+            return scanDirectoryTree(trimmed)
+        }
+
+        val dir = File(trimmed)
         if (dir.exists() && dir.isDirectory) {
             val results = mutableListOf<Map<String, Any>>()
             val supportedExtensions = setOf(
@@ -914,7 +1028,7 @@ class MainActivity : FlutterActivity() {
                 return results
             }
         }
-        return scanMediaStoreForFolder(pathOrUri)
+        return scanMediaStoreForFolder(trimmed)
     }
 
     private fun scanDirectoryTree(treeUriString: String): List<Map<String, Any>> {
@@ -996,6 +1110,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun scanMediaStoreForFolder(folderPath: String): List<Map<String, Any>> {
+        val trimmed = folderPath.trim().trimEnd('/')
+        // Strictly guard against empty, root or device-level paths
+        if (trimmed.isEmpty() || trimmed == "/" || trimmed == "/storage" || trimmed == "/storage/emulated" || trimmed == "/storage/emulated/0") {
+            return emptyList()
+        }
+
         val results = mutableListOf<Map<String, Any>>()
         try {
             val uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
@@ -1003,11 +1123,19 @@ class MainActivity : FlutterActivity() {
                 android.provider.MediaStore.Audio.Media._ID,
                 android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
                 android.provider.MediaStore.Audio.Media.DATA,
-                android.provider.MediaStore.Audio.Media.SIZE
+                android.provider.MediaStore.Audio.Media.SIZE,
+                android.provider.MediaStore.Audio.Media.DURATION
             )
-            val normalizedPath = folderPath.trimEnd('/') + "/%"
-            val selection = "${android.provider.MediaStore.Audio.Media.DATA} LIKE ?"
-            val selectionArgs = arrayOf(normalizedPath)
+            val normalizedPath = "$trimmed/%"
+            val relativeFilter = if (trimmed.contains("/storage/emulated/0/")) {
+                trimmed.substringAfter("/storage/emulated/0/").trimStart('/') + "/%"
+            } else {
+                trimmed.trimStart('/') + "/%"
+            }
+
+            // Exclude non-music audio, short notification chirps (<15s), and filter by path
+            val selection = "${android.provider.MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${android.provider.MediaStore.Audio.Media.DURATION} >= 15000 AND (${android.provider.MediaStore.Audio.Media.DATA} LIKE ? OR ${android.provider.MediaStore.Audio.Media.RELATIVE_PATH} LIKE ?)"
+            val selectionArgs = arrayOf(normalizedPath, relativeFilter)
 
             contentResolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
                 val idCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media._ID)
@@ -1020,6 +1148,19 @@ class MainActivity : FlutterActivity() {
                     val name = cursor.getString(nameCol) ?: "Audio Track"
                     val path = cursor.getString(dataCol) ?: ""
                     val size = cursor.getLong(sizeCol)
+
+                    // Skip noisy app folders
+                    val lowerPath = path.lowercase()
+                    if (lowerPath.contains("/whatsapp/") ||
+                        lowerPath.contains("/telegram/") ||
+                        lowerPath.contains("/notifications/") ||
+                        lowerPath.contains("/ringtones/") ||
+                        lowerPath.contains("/alarms/") ||
+                        lowerPath.contains("/recordings/") ||
+                        lowerPath.contains("/android/data/")) {
+                        continue
+                    }
+
                     val contentUri = android.content.ContentUris.withAppendedId(
                         android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                         id

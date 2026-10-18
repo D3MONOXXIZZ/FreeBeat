@@ -50,6 +50,15 @@ void main() {
         if (methodCall.method == 'takePersistableUriPermission') {
           return true;
         }
+        if (methodCall.method == 'pickDirectory') {
+          return {
+            'uri': 'content://com.android.externalstorage.documents/tree/primary%3AMusic',
+            'name': 'Music',
+          };
+        }
+        if (methodCall.method == 'readContentUriHeaderBytes') {
+          return Uint8List.fromList([0x66, 0x4C, 0x61, 0x43]); // 'fLaC' header
+        }
         return null;
       },
     );
@@ -299,6 +308,18 @@ void main() {
       expect(entry.path, '/storage/emulated/0/Music/test_song.flac');
       expect(entry.identifier, 'content://primary:Music/test_song.flac');
       expect(entry.size, 32000000);
+    });
+
+    test('pickDirectoryNative and readContentUriHeaderBytes work correctly', () async {
+      final authService = NativeCloudAuthService();
+      final picked = await authService.pickDirectoryNative();
+      expect(picked, isNotNull);
+      expect(picked!.uri, 'content://com.android.externalstorage.documents/tree/primary%3AMusic');
+      expect(picked.name, 'Music');
+
+      final bytes = await authService.readContentUriHeaderBytes('content://test');
+      expect(bytes, isNotNull);
+      expect(bytes!.length, 4);
     });
   });
 }

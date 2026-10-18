@@ -295,6 +295,36 @@ class NativeCloudAuthService {
     return [];
   }
 
+  /// Opens the native Android Storage Access Framework directory picker
+  /// (ACTION_OPEN_DOCUMENT_TREE), returning the tree URI and folder display name.
+  Future<({String uri, String name})?> pickDirectoryNative() async {
+    try {
+      final res = await _channel.invokeMethod<dynamic>('pickDirectory');
+      if (res != null && res is Map && res['uri'] != null) {
+        return (
+          uri: res['uri'] as String,
+          name: res['name'] as String? ?? 'Music Folder',
+        );
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Reads initial header bytes (up to 128 KB) from a content:// URI.
+  Future<Uint8List?> readContentUriHeaderBytes(String uri, {int maxBytes = 131072}) async {
+    try {
+      final bytes = await _channel.invokeMethod<Uint8List>(
+        'readContentUriHeaderBytes',
+        {'uri': uri, 'maxBytes': maxBytes},
+      );
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Universal 1-Tap Mount for Any Installed Cloud App on Android (Google Drive,
   /// Microsoft OneDrive, Dropbox, Nextcloud, Mega, Proton Drive, Box, SD Card).
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
@@ -359,10 +389,37 @@ class NativeCloudAuthService {
     int batchSize = 10,
   }) async {
     try {
-      final dirPath = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: 'Select ${account.displayName} Music Folder',
-      );
-      if (dirPath == null || dirPath.isEmpty) return [];
+      String? targetDirUriOrPath;
+
+      // 1. On Android, prioritize the native SAF tree directory picker
+      // (ACTION_OPEN_DOCUMENT_TREE) so Google Drive, cloud providers, and SD cards
+      // provide their true tree URI without returning "/" or failing scoped storage.
+      if (Platform.isAndroid) {
+        final nativePicked = await pickDirectoryNative();
+        if (nativePicked != null && nativePicked.uri.isNotEmpty) {
+          targetDirUriOrPath = nativePicked.uri;
+        } else if (nativePicked == null) {
+          // User intentionally cancelled the system picker
+          return [];
+        }
+      }
+
+      // 2. Fallback to FilePicker if not on Android or native picker wasn't used
+      if (targetDirUriOrPath == null) {
+        final dirPath = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: 'Select ${account.displayName} Music Folder',
+        );
+        if (dirPath == null || dirPath.trim().isEmpty) return [];
+        final trimmed = dirPath.trim();
+        // Guard against selecting device root, which would query all files
+        if (trimmed == '/' ||
+            trimmed == '/storage' ||
+            trimmed == '/storage/emulated' ||
+            trimmed == '/storage/emulated/0') {
+          return [];
+        }
+        targetDirUriOrPath = trimmed;
+      }
 
       final supportedAudioExts = {
         '.mp3',
@@ -387,7 +444,7 @@ class NativeCloudAuthService {
       final allFiles = <SelectedFileEntry>[];
 
       // 1. Try native Directory scan (handles Android SAF tree URIs and Scoped Storage MediaStore)
-      final nativeFiles = await scanDirectoryNative(dirPath);
+      final nativeFiles = await scanDirectoryNative(targetDirUriOrPath);
       if (nativeFiles.isNotEmpty) {
         for (final m in nativeFiles) {
           final uri = m['uri'] as String?;
@@ -404,9 +461,9 @@ class NativeCloudAuthService {
       }
 
       // 2. If native scan returned empty and local directory exists, scan dart:io Directory
-      if (allFiles.isEmpty) {
+      if (allFiles.isEmpty && !targetDirUriOrPath.startsWith('content://')) {
         try {
-          final dir = Directory(dirPath);
+          final dir = Directory(targetDirUriOrPath);
           if (dir.existsSync()) {
             final entities = dir.listSync(recursive: true, followLinks: false);
             for (final entity in entities) {
@@ -531,6 +588,16 @@ class NativeCloudAuthService {
             ParsedAudioMetadata parsed;
             if (localTagFile != null) {
               parsed = await RangeTagParser.parseLocalFile(localTagFile);
+            } else if (effectiveStreamUrl.startsWith('content://')) {
+              final headerBytes = await readContentUriHeaderBytes(effectiveStreamUrl);
+              if (headerBytes != null && headerBytes.isNotEmpty) {
+                parsed = RangeTagParser.parseHeaderBytes(
+                  headerBytes,
+                  fallbackFilename: name,
+                );
+              } else {
+                parsed = RangeTagParser.parseFromFilename(name);
+              }
             } else {
               parsed = RangeTagParser.parseFromFilename(name);
             }

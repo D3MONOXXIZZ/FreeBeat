@@ -109,6 +109,13 @@ class ArtworkAndLyricsService {
           .replaceAll(RegExp(r'\.[a-zA-Z0-9]{2,4}$'), '')
           .trim();
 
+      // Guard: If artist is unknown and title is generic/numeric (e.g. "01", "track 1", "audio"),
+      // do not search iTunes, as it will return a random popular song matching that number/word.
+      final isGenericTitle = RegExp(r'^(\d+|track\s*\d+|audio\s*\d+|recording\s*\d*)$', caseSensitive: false).hasMatch(cleanTitle);
+      if (cleanArtist.isEmpty && (cleanTitle.length < 4 || isGenericTitle)) {
+        return null;
+      }
+
       // Candidate search queries:
       // 1. With artist if valid + full title
       // 2. Full title alone (e.g. "Needed You (StayLoose Remix)")
