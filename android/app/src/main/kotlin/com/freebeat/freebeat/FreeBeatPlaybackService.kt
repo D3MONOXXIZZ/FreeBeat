@@ -14,9 +14,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.RectF
 import android.graphics.Shader
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -27,11 +24,12 @@ import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import java.io.File
 import java.net.URL
+
 
 class FreeBeatPlaybackService : Service() {
 
@@ -177,6 +175,7 @@ class FreeBeatPlaybackService : Service() {
     private fun initMediaSession() {
         mediaSession = MediaSessionCompat(this, "FreeBeatMediaSession").apply {
             isActive = true
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     isPlaying = true
@@ -204,6 +203,37 @@ class FreeBeatPlaybackService : Service() {
                     updateNotification()
                 }
 
+                override fun onSetShuffleMode(shuffleMode: Int) {
+                    isShuffle = (shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE)
+                    playerActionListener?.invoke("onShuffle", mapOf("isShuffle" to isShuffle))
+                    updateNotification()
+                }
+
+                override fun onSetRepeatMode(newRepeatMode: Int) {
+                    repeatMode = when (newRepeatMode) {
+                        PlaybackStateCompat.REPEAT_MODE_ONE -> 2
+                        PlaybackStateCompat.REPEAT_MODE_ALL -> 1
+                        else -> 0
+                    }
+                    playerActionListener?.invoke("onRepeat", mapOf("repeatMode" to repeatMode))
+                    updateNotification()
+                }
+
+                override fun onCustomAction(action: String?, extras: android.os.Bundle?) {
+                    when (action) {
+                        ACTION_SHUFFLE -> {
+                            isShuffle = !isShuffle
+                            playerActionListener?.invoke("onShuffle", mapOf("isShuffle" to isShuffle))
+                            updateNotification()
+                        }
+                        ACTION_REPEAT -> {
+                            repeatMode = (repeatMode + 1) % 3
+                            playerActionListener?.invoke("onRepeat", mapOf("repeatMode" to repeatMode))
+                            updateNotification()
+                        }
+                    }
+                }
+
                 override fun onStop() {
                     stopPlaybackService()
                 }
@@ -213,92 +243,82 @@ class FreeBeatPlaybackService : Service() {
 
     private fun updateNotification() {
         try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val detectedOutput = detectOutputDevice(audioManager)
-            val outputDeviceName = if (detectedOutput.isNotEmpty()) detectedOutput else currentOutputDevice
-
-            // 1. Resolve & prepare rounded album artwork bitmap (16dp rounded corners)
+            // 1. Resolve safe artwork bitmap (max 384x384 for Binder safety)
             val rawArtBitmap = loadArtworkBitmap(currentArtworkPath, currentTitle, currentDominantColor)
-            val artBitmap = getRoundedCornerBitmap(rawArtBitmap, 16f)
 
-            // 2. Update MediaSession state & metadata (powers Bluetooth, lockscreen, car audio)
+            // 2. Update MediaSession state & rich metadata for Quick Settings Media Carousel
             try {
                 val playbackState = PlaybackStateCompat.Builder()
                     .setActions(
                         PlaybackStateCompat.ACTION_PLAY or
                         PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
                         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                         PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                         PlaybackStateCompat.ACTION_SEEK_TO or
+                        PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
+                        PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
                         PlaybackStateCompat.ACTION_STOP
+                    )
+                    .addCustomAction(
+                        PlaybackStateCompat.CustomAction.Builder(
+                            ACTION_SHUFFLE,
+                            "Shuffle",
+                            R.drawable.ic_shuffle
+                        ).build()
+                    )
+                    .addCustomAction(
+                        PlaybackStateCompat.CustomAction.Builder(
+                            ACTION_REPEAT,
+                            "Repeat",
+                            R.drawable.ic_repeat
+                        ).build()
                     )
                     .setState(
                         if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
                         currentPositionMs,
-                        1.0f
+                        if (isPlaying) 1.0f else 0.0f
                     )
                     .build()
-                mediaSession?.setPlaybackState(playbackState)
 
-                val mediaMetadata = MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, currentAlbum)
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
-                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artBitmap)
-                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, artBitmap)
-                    .build()
-                mediaSession?.setMetadata(mediaMetadata)
-            } catch (_: Throwable) {}
+                mediaSession?.apply {
+                    setPlaybackState(playbackState)
+                    setShuffleMode(if (isShuffle) PlaybackStateCompat.SHUFFLE_MODE_ALL else PlaybackStateCompat.SHUFFLE_MODE_NONE)
+                    setRepeatMode(
+                        when (repeatMode) {
+                            2 -> PlaybackStateCompat.REPEAT_MODE_ONE
+                            1 -> PlaybackStateCompat.REPEAT_MODE_ALL
+                            else -> PlaybackStateCompat.REPEAT_MODE_NONE
+                        }
+                    )
 
-            // 3. Build RemoteViews matching user reference layout
-            val compactViews = RemoteViews(packageName, R.layout.notification_media_player)
-            val expandedViews = RemoteViews(packageName, R.layout.notification_media_player_expanded)
-
-            // Compact View
-            compactViews.setTextViewText(R.id.tv_title, currentTitle)
-            compactViews.setTextViewText(R.id.tv_artist, currentArtist)
-            compactViews.setImageViewBitmap(R.id.iv_artwork, artBitmap)
-            val playPauseDarkIcon = if (isPlaying) R.drawable.ic_pause_dark else R.drawable.ic_play_arrow_dark
-            compactViews.setImageViewResource(R.id.btn_play_pause, playPauseDarkIcon)
-
-            // Expanded View (Full Reference Mockup)
-            expandedViews.setTextViewText(R.id.tv_title_expanded, currentTitle)
-            expandedViews.setTextViewText(R.id.tv_artist_expanded, currentArtist)
-            expandedViews.setImageViewBitmap(R.id.iv_artwork_expanded, artBitmap)
-
-            // Output Device Icon (Earbuds/Bluetooth/Speaker)
-            val deviceIconRes = when {
-                outputDeviceName.contains("Bluetooth", true) -> R.drawable.ic_bluetooth
-                outputDeviceName.contains("Speaker", true) -> R.drawable.ic_speaker
-                else -> R.drawable.ic_earbuds
+                    val mediaMetadata = MediaMetadataCompat.Builder()
+                        .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currentTitle)
+                        .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist)
+                        .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, currentAlbum)
+                        .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, currentTitle)
+                        .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, currentArtist)
+                        .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, currentAlbum)
+                        .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, currentDurationMs)
+                        .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, rawArtBitmap)
+                        .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, rawArtBitmap)
+                        .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, rawArtBitmap)
+                        .build()
+                    setMetadata(mediaMetadata)
+                }
+            } catch (e: Throwable) {
+                android.util.Log.w("FreeBeatPlayback", "Error updating MediaSession: ${e.message}")
             }
-            expandedViews.setImageViewResource(R.id.iv_output_device, deviceIconRes)
-            expandedViews.setImageViewResource(R.id.btn_more, R.drawable.ic_more_horiz_dark)
 
-            // Progress & Time
-            val progressPercent = if (currentDurationMs > 0) {
-                ((currentPositionMs.toFloat() / currentDurationMs.toFloat()) * 1000).toInt().coerceIn(0, 1000)
-            } else 0
-            expandedViews.setProgressBar(R.id.pb_seek_bar, 1000, progressPercent, false)
-            expandedViews.setTextViewText(R.id.tv_time_current, formatDuration(currentPositionMs))
-            expandedViews.setTextViewText(R.id.tv_time_total, formatDuration(currentDurationMs))
-
-            // Play/Pause Dark Icon on Solid White Circle
-            expandedViews.setImageViewResource(R.id.btn_play_pause_expanded, playPauseDarkIcon)
-
-            // Card backgrounds are natively defined in XML drawables (@drawable/notification_card_bg and @drawable/notification_compact_bg)
-            // keeping the Binder IPC transaction size under 120KB to completely prevent TransactionTooLargeException.
-
+            // 3. Pending intents for standard media transport controls
             val launchIntent = PendingIntent.getActivity(
-                this, 6,
+                this, 0,
                 Intent(this, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Pending intents for notification actions
             val playPauseIntent = PendingIntent.getService(
                 this, 1,
                 Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_PLAY_PAUSE },
@@ -324,26 +344,62 @@ class FreeBeatPlaybackService : Service() {
                 Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_REPEAT },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            val stopIntent = PendingIntent.getService(
+                this, 6,
+                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_STOP },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-            // Button Click Pending Intents
-            bindActionIntents(
-                compactViews,
-                expandedViews,
-                playPauseIntent,
-                nextIntent,
-                prevIntent,
-                shuffleIntent,
-                repeatIntent,
-                launchIntent
+            // 4. Standard MediaStyle Notification for Android SystemUI Media Carousel
+            // In Android 11, 12, 13, 14, 15, SystemUI intercepts this standard MediaStyle notification
+            // and renders it directly inside the Quick Settings Media Carousel (next to Spotify/YouTube)
+            // with live wave seekbar, full-bleed artwork, audio output switcher, and squircle buttons!
+            val mediaStyle = MediaStyle()
+                .setMediaSession(mediaSession?.sessionToken)
+                .setShowActionsInCompactView(0, 1, 2)
+                .setShowCancelButton(true)
+                .setCancelButtonIntent(stopIntent)
+
+            val prevAction = NotificationCompat.Action(
+                R.drawable.ic_skip_previous,
+                "Previous",
+                prevIntent
+            )
+            val playPauseAction = NotificationCompat.Action(
+                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow,
+                if (isPlaying) "Pause" else "Play",
+                playPauseIntent
+            )
+            val nextAction = NotificationCompat.Action(
+                R.drawable.ic_skip_next,
+                "Next",
+                nextIntent
+            )
+            val shuffleAction = NotificationCompat.Action(
+                R.drawable.ic_shuffle,
+                "Shuffle",
+                shuffleIntent
+            )
+            val repeatAction = NotificationCompat.Action(
+                R.drawable.ic_repeat,
+                "Repeat",
+                repeatIntent
             )
 
             val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_play_arrow)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
+                .setSubText(currentAlbum)
+                .setLargeIcon(rawArtBitmap)
                 .setContentIntent(launchIntent)
-                .setCustomContentView(compactViews)
-                .setCustomBigContentView(expandedViews)
+                .setDeleteIntent(stopIntent)
+                .setStyle(mediaStyle)
+                .addAction(prevAction)       // Slot 0
+                .addAction(playPauseAction)   // Slot 1
+                .addAction(nextAction)        // Slot 2
+                .addAction(shuffleAction)     // Slot 3
+                .addAction(repeatAction)      // Slot 4
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setOngoing(isPlaying)
@@ -391,36 +447,6 @@ class FreeBeatPlaybackService : Service() {
         }
     }
 
-    private fun bindActionIntents(
-        compactViews: RemoteViews,
-        expandedViews: RemoteViews,
-        playPauseIntent: PendingIntent,
-        nextIntent: PendingIntent,
-        prevIntent: PendingIntent,
-        shuffleIntent: PendingIntent,
-        repeatIntent: PendingIntent,
-        launchIntent: PendingIntent
-    ) {
-        compactViews.setOnClickPendingIntent(R.id.btn_play_pause, playPauseIntent)
-        compactViews.setOnClickPendingIntent(R.id.btn_next, nextIntent)
-        compactViews.setOnClickPendingIntent(R.id.btn_prev, prevIntent)
-        compactViews.setOnClickPendingIntent(R.id.iv_artwork, launchIntent)
-        compactViews.setOnClickPendingIntent(R.id.tv_title, launchIntent)
-        compactViews.setOnClickPendingIntent(R.id.notification_root, launchIntent)
-
-        expandedViews.setOnClickPendingIntent(R.id.btn_play_pause_expanded, playPauseIntent)
-        expandedViews.setOnClickPendingIntent(R.id.btn_next_expanded, nextIntent)
-        expandedViews.setOnClickPendingIntent(R.id.btn_prev_expanded, prevIntent)
-        expandedViews.setOnClickPendingIntent(R.id.btn_shuffle, shuffleIntent)
-        expandedViews.setOnClickPendingIntent(R.id.btn_repeat, repeatIntent)
-        expandedViews.setOnClickPendingIntent(R.id.btn_more, launchIntent)
-        expandedViews.setOnClickPendingIntent(R.id.pill_now_playing, launchIntent)
-        expandedViews.setOnClickPendingIntent(R.id.iv_artwork_expanded, launchIntent)
-        expandedViews.setOnClickPendingIntent(R.id.tv_title_expanded, launchIntent)
-        expandedViews.setOnClickPendingIntent(R.id.tv_artist_expanded, launchIntent)
-        expandedViews.setOnClickPendingIntent(R.id.notification_root_expanded, launchIntent)
-    }
-
     private fun detectOutputDevice(audioManager: AudioManager): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
@@ -443,18 +469,21 @@ class FreeBeatPlaybackService : Service() {
         return "Phone Speaker"
     }
 
-    private fun getRoundedCornerBitmap(bitmap: Bitmap, cornerRadiusDp: Float): Bitmap {
-        val targetSize = 160
-        val scaled = Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
-        val output = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(output)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val rect = RectF(0f, 0f, targetSize.toFloat(), targetSize.toFloat())
-        val radiusPx = (cornerRadiusDp / 62f) * targetSize.toFloat()
-        canvas.drawRoundRect(rect, radiusPx, radiusPx, paint)
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-        canvas.drawBitmap(scaled, 0f, 0f, paint)
-        return output
+    private fun scaleToSafeDimensions(bitmap: Bitmap, maxDim: Int = 384): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= maxDim && height <= maxDim) return bitmap
+        val ratio = width.toFloat() / height.toFloat()
+        val targetWidth: Int
+        val targetHeight: Int
+        if (ratio > 1.0f) {
+            targetWidth = maxDim
+            targetHeight = (maxDim / ratio).toInt().coerceAtLeast(1)
+        } else {
+            targetHeight = maxDim
+            targetWidth = (maxDim * ratio).toInt().coerceAtLeast(1)
+        }
+        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
     private fun loadArtworkBitmap(path: String?, title: String, dominantColor: Int): Bitmap {
@@ -464,7 +493,7 @@ class FreeBeatPlaybackService : Service() {
                 try {
                     contentResolver.openInputStream(Uri.parse(path))?.use { stream ->
                         val bmp = BitmapFactory.decodeStream(stream)
-                        if (bmp != null) return bmp
+                        if (bmp != null) return scaleToSafeDimensions(bmp)
                     }
                 } catch (_: Throwable) {}
             }
@@ -474,7 +503,7 @@ class FreeBeatPlaybackService : Service() {
                 val file = File(path)
                 if (file.exists() && file.length() > 200) {
                     val bmp = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bmp != null) return bmp
+                    if (bmp != null) return scaleToSafeDimensions(bmp)
                 }
             } catch (_: Throwable) {}
 
@@ -485,7 +514,7 @@ class FreeBeatPlaybackService : Service() {
                     val cacheFile = File(cacheDir, "art_$hash.jpg")
                     if (cacheFile.exists() && cacheFile.length() > 200) {
                         val bmp = BitmapFactory.decodeFile(cacheFile.absolutePath)
-                        if (bmp != null) return bmp
+                        if (bmp != null) return scaleToSafeDimensions(bmp)
                     } else {
                         // Download asynchronously and refresh notification
                         Thread {
@@ -508,7 +537,7 @@ class FreeBeatPlaybackService : Service() {
         }
 
         // 4. Procedural High-Res Monet Cover with Vinyl Grooves & Initials
-        return createProceduralCover(title, dominantColor)
+        return scaleToSafeDimensions(createProceduralCover(title, dominantColor))
     }
 
     private fun createProceduralCover(title: String, dominantColor: Int): Bitmap {
