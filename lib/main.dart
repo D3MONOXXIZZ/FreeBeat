@@ -68,7 +68,9 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
 
   @override
   Widget build(BuildContext context) {
-    final activeTrack = ref.watch(playbackProvider).currentTrack;
+    final activeTrackSeedColor = Color(ref.watch(
+      playbackProvider.select((p) => p.currentTrack.dominantColorValue),
+    ));
     final themeMode = ref.watch(themeModeProvider);
     // Explicitly watch systemBrightnessProvider to react to brightness state updates
     ref.watch(systemBrightnessProvider);
@@ -78,12 +80,12 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
         // Explicitly generate both complete light and dark ColorSchemes
         final lightColorScheme = PixelTheme.buildLightColorScheme(
           wallpaperDynamicScheme: lightDynamic,
-          activeTrackSeedColor: activeTrack.dominantColor,
+          activeTrackSeedColor: activeTrackSeedColor,
         );
 
         final darkColorScheme = PixelTheme.buildDarkColorScheme(
           wallpaperDynamicScheme: darkDynamic,
-          activeTrackSeedColor: activeTrack.dominantColor,
+          activeTrackSeedColor: activeTrackSeedColor,
         );
 
         final lightTheme = PixelTheme.buildThemeFromScheme(

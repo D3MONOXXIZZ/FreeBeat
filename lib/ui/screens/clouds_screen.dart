@@ -36,6 +36,7 @@ class CloudsScreen extends ConsumerWidget {
         ref.watch(playbackProvider.select((p) => p.currentTrack.id));
     final isPlaybackActive =
         ref.watch(playbackProvider.select((p) => p.isPlaying));
+    final importProgress = ref.watch(importProgressProvider);
 
     return SafeArea(
       bottom: false,
@@ -218,7 +219,51 @@ class CloudsScreen extends ConsumerWidget {
           ),
         ),
 
-        const SizedBox(height: 20),
+        // Real-Time Import Progress Card on Clouds screen
+        if (importProgress.pendingTracks.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: cs.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Importing ${importProgress.pendingTracks.length} Songs (${importProgress.current}/${importProgress.total})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+                Text(
+                  importProgress.progressPercentage,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: cs.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
 
         // 3. Tracks from Connected Clouds & Device Storage
         if (allTracks.isNotEmpty) ...[

@@ -289,33 +289,30 @@ class NativeCloudAuthService {
 
           String finalPath = file.path ?? '';
 
-          // If file.path is null or in a temporary cache, persist it to app documents
-          if (appMusicDir != null) {
-            try {
-              final destFile = File(p.join(appMusicDir.path, name));
-              if (file.path != null && File(file.path!).existsSync()) {
-                if (!destFile.existsSync() || destFile.lengthSync() == 0) {
-                  await File(file.path!).copy(destFile.path);
+          // For cloud accounts or Content URIs, stream directly without forced local disk copying
+          if (account.providerType != CloudProviderType.androidSaf) {
+            finalPath = file.identifier ?? file.path ?? '';
+          } else {
+            // For device storage: use path if it exists, otherwise identifier / cache
+            if (file.path != null && File(file.path!).existsSync()) {
+              finalPath = file.path!;
+            } else if (file.identifier != null && file.identifier!.isNotEmpty) {
+              finalPath = file.identifier!;
+            } else if (appMusicDir != null && file.bytes != null && file.bytes!.isNotEmpty) {
+              try {
+                final destFile = File(p.join(appMusicDir.path, name));
+                if (!destFile.existsSync()) {
+                  await destFile.writeAsBytes(file.bytes!);
                 }
-                finalPath = destFile.existsSync() ? destFile.path : file.path!;
-              } else if (file.readStream != null) {
-                final sink = destFile.openWrite();
-                await sink.addStream(file.readStream!);
-                await sink.close();
-                finalPath = destFile.existsSync() ? destFile.path : (file.path ?? '');
-              } else if (file.bytes != null && file.bytes!.isNotEmpty) {
-                await destFile.writeAsBytes(file.bytes!);
                 finalPath = destFile.path;
-              } else if (file.identifier != null && file.identifier!.isNotEmpty) {
-                finalPath = file.identifier!;
+              } catch (_) {
+                finalPath = file.path ?? '';
               }
-            } catch (_) {
-              finalPath = file.path ?? file.identifier ?? '';
             }
           }
 
           if (finalPath.isEmpty) {
-            finalPath = file.path ?? file.identifier ?? '';
+            finalPath = file.identifier ?? file.path ?? '';
           }
           if (finalPath.isEmpty) {
             onProgress?.call(fileIndex, totalFiles, null);

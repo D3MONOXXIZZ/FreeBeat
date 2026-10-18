@@ -498,12 +498,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
-    // 58.0 + Scaffold's 16.0 margin = 74.0dp, aligning the 50dp FAB exactly with the 50dp mini player (74.0 - 124.0dp)
-    const bottomFabPadding = 58.0;
+    final hasActiveTrack = ref.watch(
+      playbackProvider.select((p) => p.currentTrack.id.isNotEmpty && p.queue.isNotEmpty),
+    );
+    // Align with mini player when music is active (58.0 + Scaffold's 16.0 margin = 74.0dp, exactly matching the mini player from 74-124dp above screen bottom)
+    // When no track is active, sit comfortably above the navigation pill (8.0 + 16.0 = 24.0dp)
+    final bottomFabPadding = hasActiveTrack ? 58.0 : 8.0;
 
     return Scaffold(
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: bottomFabPadding),
+        padding: EdgeInsets.only(bottom: bottomFabPadding),
         child: SizedBox(
           width: 50,
           height: 50,

@@ -29,6 +29,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
   late final AnimationController _spectrumAnimController;
   PowerampDspState? _cachedDsp;
   List<double>? _cachedPrecomputedDb;
+  List<double>? _cachedGainMultipliers;
+  ColorScheme? _cachedCs;
+  List<Color>? _cachedBarColors;
 
   List<double> _getPrecomputedDb(PowerampDspState dsp) {
     if (_cachedDsp == dsp && _cachedPrecomputedDb != null) {
@@ -37,7 +40,23 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     _cachedDsp = dsp;
     _cachedPrecomputedDb =
         _MaterialYouSpectrumBarsPainter.computeFrequencyResponses(dsp);
+    _cachedGainMultipliers =
+        _MaterialYouSpectrumBarsPainter.computeGainMultipliers(_cachedPrecomputedDb!);
     return _cachedPrecomputedDb!;
+  }
+
+  List<double> _getGainMultipliers(PowerampDspState dsp) {
+    _getPrecomputedDb(dsp);
+    return _cachedGainMultipliers!;
+  }
+
+  List<Color> _getBarColors(ColorScheme cs) {
+    if (_cachedCs == cs && _cachedBarColors != null) {
+      return _cachedBarColors!;
+    }
+    _cachedCs = cs;
+    _cachedBarColors = _MaterialYouSpectrumBarsPainter.computeBarColors(cs);
+    return _cachedBarColors!;
   }
 
   @override
@@ -233,6 +252,8 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                               isAnimated: _animatedSpectrum,
                               animVal: _spectrumAnimController.value,
                               precomputedDb: precomputedDb,
+                              barColors: _getBarColors(cs),
+                              gainMultipliers: _getGainMultipliers(dsp),
                               colorScheme: cs,
                               gridColor:
                                   cs.outlineVariant.withValues(alpha: 0.20),
@@ -956,9 +977,13 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     required this.colorScheme,
     required this.gridColor,
     List<double>? precomputedDb,
+    List<Color>? barColors,
+    List<double>? gainMultipliers,
   })  : precomputedDb = precomputedDb ?? computeFrequencyResponses(dsp),
-        barColors = _computeBarColors(colorScheme),
-        gainMultipliers = _computeGainMultipliers(precomputedDb ?? computeFrequencyResponses(dsp));
+        barColors = barColors ?? computeBarColors(colorScheme),
+        gainMultipliers = gainMultipliers ??
+            computeGainMultipliers(
+                precomputedDb ?? computeFrequencyResponses(dsp));
 
   static const int barCount = 24;
 
@@ -972,7 +997,7 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     }, growable: false);
   }
 
-  static List<Color> _computeBarColors(ColorScheme cs) {
+  static List<Color> computeBarColors(ColorScheme cs) {
     return List<Color>.generate(barCount, (i) {
       final t = i / (barCount - 1);
       if (t < 0.33) {
@@ -985,7 +1010,7 @@ class _MaterialYouSpectrumBarsPainter extends CustomPainter {
     }, growable: false);
   }
 
-  static List<double> _computeGainMultipliers(List<double> dbList) {
+  static List<double> computeGainMultipliers(List<double> dbList) {
     return List<double>.generate(barCount, (i) {
       return math.pow(10.0, dbList[i] / 35.0).toDouble();
     }, growable: false);
