@@ -59,6 +59,16 @@ void main() {
         if (methodCall.method == 'readContentUriHeaderBytes') {
           return Uint8List.fromList([0x66, 0x4C, 0x61, 0x43]); // 'fLaC' header
         }
+        if (methodCall.method == 'extractAudioMetadata') {
+          return {
+            'title': 'Test Song',
+            'artist': 'Test Artist',
+            'album': 'Test Album',
+            'durationMs': 180000,
+            'bitrateKbps': 320,
+            'pictureBytes': Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01]),
+          };
+        }
         return null;
       },
     );
@@ -320,6 +330,36 @@ void main() {
       final bytes = await authService.readContentUriHeaderBytes('content://test');
       expect(bytes, isNotNull);
       expect(bytes!.length, 4);
+    });
+
+    test('extractAudioMetadataNative extracts metadata and picture bytes', () async {
+      final authService = NativeCloudAuthService();
+      final meta = await authService.extractAudioMetadataNative('content://test/song.mp3');
+      expect(meta, isNotNull);
+      expect(meta!['title'], 'Test Song');
+      expect(meta['artist'], 'Test Artist');
+      expect(meta['album'], 'Test Album');
+      expect(meta['durationMs'], 180000);
+      expect(meta['pictureBytes'], isNotNull);
+    });
+
+    test('SelectedFileEntry holds scanned metadata fields', () {
+      const entry = SelectedFileEntry(
+        name: 'starboy.flac',
+        path: '/storage/emulated/0/Music/starboy.flac',
+        identifier: 'content://primary:Music/starboy.flac',
+        size: 45000000,
+        scannedTitle: 'Starboy',
+        scannedArtist: 'The Weeknd',
+        scannedAlbum: 'Starboy',
+        scannedDurationMs: 230480,
+        scannedAlbumArtUri: 'content://media/external/audio/albumart/123',
+      );
+      expect(entry.scannedTitle, 'Starboy');
+      expect(entry.scannedArtist, 'The Weeknd');
+      expect(entry.scannedAlbum, 'Starboy');
+      expect(entry.scannedDurationMs, 230480);
+      expect(entry.scannedAlbumArtUri, 'content://media/external/audio/albumart/123');
     });
   });
 }

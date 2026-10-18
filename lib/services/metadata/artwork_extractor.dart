@@ -22,20 +22,45 @@ class ArtworkExtractor {
     return artDir;
   }
 
+  /// Cleans raw image or frame payload bytes by locating the true image magic (JPEG, PNG).
+  static Uint8List? cleanImageBytes(Uint8List bytes) {
+    if (bytes.length < 16) return null;
+    // Check if already clean image
+    if ((bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) ||
+        (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)) {
+      return bytes;
+    }
+    // Search for magic bytes in first 2048 bytes (skips APIC or FLAC headers)
+    final limit = bytes.length < 2048 ? bytes.length - 4 : 2044;
+    for (int i = 0; i < limit; i++) {
+      if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
+        return bytes.sublist(i);
+      }
+      if (bytes[i] == 0x89 &&
+          bytes[i + 1] == 0x50 &&
+          bytes[i + 2] == 0x4E &&
+          bytes[i + 3] == 0x47) {
+        return bytes.sublist(i);
+      }
+    }
+    return _parseApicPayload(bytes);
+  }
+
   /// Saves in-memory artwork bytes directly to the album art cache.
   static Future<String?> saveArtworkBytes(
     Uint8List rawImageBytes,
     String trackId,
   ) async {
     try {
-      if (rawImageBytes.length < 64) return null;
+      final clean = cleanImageBytes(rawImageBytes);
+      if (clean == null || clean.length < 64) return null;
       final artDir = await _getArtworkDirectory();
       final sanitizedId = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final targetFile = File(p.join(artDir.path, '$sanitizedId.jpg'));
       if (targetFile.existsSync() && targetFile.lengthSync() > 100) {
         return targetFile.path;
       }
-      await targetFile.writeAsBytes(rawImageBytes);
+      await targetFile.writeAsBytes(clean);
       return targetFile.path;
     } catch (_) {
       return null;

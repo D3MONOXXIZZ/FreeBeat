@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -242,17 +243,41 @@ class ArtworkAndLyricsService {
 
     for (final path in potentialLocalPaths) {
       if (path != null && path.isNotEmpty) {
-        final file = File(path);
-        if (file.existsSync()) {
-          final extracted =
-              await ArtworkExtractor.extractEmbeddedArtwork(file, currentTrack.id);
-          if (extracted != null && File(extracted).existsSync()) {
-            final palette =
-                await ArtworkPaletteExtractor.extractPalette(extracted);
-            return currentTrack.copyWith(
-              artworkUrl: extracted,
-              dominantColorValue: palette.dominantColor.toARGB32(),
+        if (path.startsWith('content://')) {
+          try {
+            const channel = MethodChannel('com.freebeat.native_bridge');
+            final meta = await channel.invokeMapMethod<String, dynamic>(
+              'extractAudioMetadata',
+              {'uri': path, 'path': path},
             );
+            final picBytes = meta?['pictureBytes'] as Uint8List?;
+            if (picBytes != null && picBytes.isNotEmpty) {
+              final saved = await ArtworkExtractor.saveArtworkBytes(
+                picBytes,
+                currentTrack.id,
+              );
+              if (saved != null && File(saved).existsSync()) {
+                final palette = await ArtworkPaletteExtractor.extractPalette(saved);
+                return currentTrack.copyWith(
+                  artworkUrl: saved,
+                  dominantColorValue: palette.dominantColor.toARGB32(),
+                );
+              }
+            }
+          } catch (_) {}
+        } else {
+          final file = File(path);
+          if (file.existsSync()) {
+            final extracted =
+                await ArtworkExtractor.extractEmbeddedArtwork(file, currentTrack.id);
+            if (extracted != null && File(extracted).existsSync()) {
+              final palette =
+                  await ArtworkPaletteExtractor.extractPalette(extracted);
+              return currentTrack.copyWith(
+                artworkUrl: extracted,
+                dominantColorValue: palette.dominantColor.toARGB32(),
+              );
+            }
           }
         }
       }

@@ -106,6 +106,15 @@ class FreeBeatPlaybackService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_UPDATE -> {
+                val oldTitle = currentTitle
+                val oldArtist = currentArtist
+                val oldAlbum = currentAlbum
+                val oldArt = currentArtworkPath
+                val oldPlaying = isPlaying
+                val oldShuffle = isShuffle
+                val oldRepeat = repeatMode
+                val oldColor = currentDominantColor
+
                 intent.getStringExtra("title")?.let { if (it.isNotEmpty()) currentTitle = it }
                 intent.getStringExtra("artist")?.let { if (it.isNotEmpty()) currentArtist = it }
                 intent.getStringExtra("album")?.let { if (it.isNotEmpty()) currentAlbum = it }
@@ -130,7 +139,23 @@ class FreeBeatPlaybackService : Service() {
                 } else {
                     releaseWakeLock()
                 }
-                updateNotification()
+
+                val metadataChanged = (currentTitle != oldTitle ||
+                        currentArtist != oldArtist ||
+                        currentAlbum != oldAlbum ||
+                        currentArtworkPath != oldArt ||
+                        isPlaying != oldPlaying ||
+                        isShuffle != oldShuffle ||
+                        repeatMode != oldRepeat ||
+                        currentDominantColor != oldColor)
+
+                // If only position or volume changed, ONLY update MediaSession state.
+                // NEVER call notificationManager.notify() periodically: it wakes SystemUI and locks 120Hz!
+                if (metadataChanged) {
+                    updateNotification()
+                } else {
+                    updatePlaybackStateOnly()
+                }
             }
         }
 
@@ -144,7 +169,7 @@ class FreeBeatPlaybackService : Service() {
             wakeLock?.setReferenceCounted(false)
         }
         if (wakeLock?.isHeld != true) {
-            wakeLock?.acquire(24 * 60 * 60 * 1000L) // Safe hold while playing
+            wakeLock?.acquire(60 * 60 * 1000L) // 1 hour safety hold
         }
     }
 
@@ -154,15 +179,40 @@ class FreeBeatPlaybackService : Service() {
         }
     }
 
+    private fun updatePlaybackStateOnly() {
+        try {
+            val playbackState = PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_SEEK_TO or
+                    PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
+                    PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
+                    PlaybackStateCompat.ACTION_STOP
+                )
+                .setState(
+                    if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                    currentPositionMs,
+                    if (isPlaying) 1.0f else 0.0f
+                )
+                .build()
+
+            mediaSession?.setPlaybackState(playbackState)
+        } catch (_: Throwable) {}
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "FreeBeat Music Playback",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Controls background audio playback and notifications"
-                setShowBadge(true)
+                setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 enableVibration(false)
                 setSound(null, null)
@@ -401,7 +451,7 @@ class FreeBeatPlaybackService : Service() {
                 .addAction(shuffleAction)     // Slot 3
                 .addAction(repeatAction)      // Slot 4
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(isPlaying)
                 .setColor(currentDominantColor)
                 .setColorized(true)
@@ -430,7 +480,7 @@ class FreeBeatPlaybackService : Service() {
                     .setSmallIcon(R.drawable.ic_play_arrow)
                     .setContentTitle(currentTitle)
                     .setContentText(currentArtist)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setOngoing(isPlaying)
                     .build()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

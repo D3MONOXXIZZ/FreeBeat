@@ -1263,7 +1263,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   bool _sleepTimerEndAfterTrack = false;
   bool _isInitializingPlayer = false;
   bool _playerInitFailed = false;
-  int _lastNotifPosMs = -5000;
 
   Future<void> _initAudioPlayer() async {
     if (_audioPlayer != null || _isInitializingPlayer || _playerInitFailed) return;
@@ -1358,16 +1357,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               state.positionMs != posMs) {
             lastEmittedPosMs = posMs;
             state = state.copyWith(positionMs: posMs);
-          }
-          if ((posMs - _lastNotifPosMs).abs() >= 1000) {
-            _lastNotifPosMs = posMs;
-            try {
-              _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
-                    positionMs: posMs,
-                    durationMs: state.currentTrack.durationMs,
-                    isPlaying: state.isPlaying,
-                  );
-            } catch (_) {}
           }
         }
       });

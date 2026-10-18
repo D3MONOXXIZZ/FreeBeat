@@ -13,6 +13,7 @@ import android.media.audiofx.Virtualizer
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -77,39 +78,13 @@ class MainActivity : FlutterActivity() {
     private fun enableAdaptiveDisplayRefreshRate() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
-                val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    display
-                } else {
-                    @Suppress("DEPRECATION")
-                    windowManager.defaultDisplay
-                }
-
-                val supportedModes = currentDisplay?.supportedModes ?: emptyArray()
-                val peakRate = supportedModes.maxOfOrNull { it.refreshRate } ?: 60f
-
-                val params = window.attributes
-                // 1. Never force a fixed display mode ID. Mode 0 allows Android LTPO dynamic mode switching.
+                val params = window?.attributes ?: return
+                // preferredDisplayModeId = 0 allows Android and LTPO displays to dynamically switch modes
                 params.preferredDisplayModeId = 0
-
-                // 2. Clear preferredMinDisplayRefreshRate to 0f.
-                // Setting a minimum rate prevents the hardware/display driver from scaling down when idle.
-                try {
-                    val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
-                    minRateField.setFloat(params, 0f)
-                } catch (_: Throwable) {}
-
-                // 3. Set the ceiling (preferredMaxDisplayRefreshRate) to the screen's peak refresh rate (120Hz/144Hz).
-                // This allows buttery-smooth 120Hz scrolling and touch interaction without being capped by OEM battery limits,
-                // while permitting the adaptive refresh rate governor to ramp down to 60Hz/30Hz/10Hz/1Hz when static.
-                try {
-                    val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
-                    maxRateField.setFloat(params, if (peakRate > 60f) peakRate else 0f)
-                } catch (_: Throwable) {}
-
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // preferredRefreshRate = 0f allows the system adaptive governor to scale between 1Hz and 120Hz
                     params.preferredRefreshRate = 0f
                 }
-
                 window.attributes = params
             } catch (_: Throwable) {
                 // Ignore if device OEM restricts custom display mode
@@ -125,14 +100,6 @@ class MainActivity : FlutterActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     params.preferredRefreshRate = 0f
                 }
-                try {
-                    val minRateField = params.javaClass.getField("preferredMinDisplayRefreshRate")
-                    minRateField.setFloat(params, 0f)
-                } catch (_: Throwable) {}
-                try {
-                    val maxRateField = params.javaClass.getField("preferredMaxDisplayRefreshRate")
-                    maxRateField.setFloat(params, 0f)
-                } catch (_: Throwable) {}
                 window.attributes = params
             } catch (_: Throwable) {}
         }
@@ -450,6 +417,49 @@ class MainActivity : FlutterActivity() {
                         } else {
                             result.success(null)
                         }
+                    }
+                    "extractAudioMetadata" -> {
+                        val uriOrPath = call.argument<String>("uri") ?: call.argument<String>("path")
+                        if (uriOrPath.isNullOrEmpty()) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            val retriever = MediaMetadataRetriever()
+                            try {
+                                if (uriOrPath.startsWith("content://")) {
+                                    val uri = android.net.Uri.parse(uriOrPath)
+                                    retriever.setDataSource(this, uri)
+                                } else {
+                                    retriever.setDataSource(uriOrPath)
+                                }
+                                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                                    ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+                                    ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_AUTHOR)
+                                    ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COMPOSER)
+                                val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                val durationMs = durationStr?.toLongOrNull() ?: 0L
+                                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                                val bitrateKbps = (bitrateStr?.toIntOrNull() ?: 0) / 1000
+                                val pictureBytes = retriever.embeddedPicture // Clean raw JPEG/PNG bytes!
+
+                                val map = mutableMapOf<String, Any?>(
+                                    "title" to title,
+                                    "artist" to artist,
+                                    "album" to album,
+                                    "durationMs" to durationMs,
+                                    "bitrateKbps" to bitrateKbps,
+                                    "pictureBytes" to pictureBytes
+                                )
+                                runOnUiThread { result.success(map) }
+                            } catch (_: Throwable) {
+                                runOnUiThread { result.success(null) }
+                            } finally {
+                                try { retriever.release() } catch (_: Throwable) {}
+                            }
+                        }.start()
                     }
                     "scanDirectory" -> {
                         val pathOrUri = call.argument<String>("uri") ?: call.argument<String>("path")
@@ -1147,7 +1157,11 @@ class MainActivity : FlutterActivity() {
                 android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
                 android.provider.MediaStore.Audio.Media.DATA,
                 android.provider.MediaStore.Audio.Media.SIZE,
-                android.provider.MediaStore.Audio.Media.DURATION
+                android.provider.MediaStore.Audio.Media.DURATION,
+                android.provider.MediaStore.Audio.Media.TITLE,
+                android.provider.MediaStore.Audio.Media.ARTIST,
+                android.provider.MediaStore.Audio.Media.ALBUM,
+                android.provider.MediaStore.Audio.Media.ALBUM_ID
             )
             val normalizedPath = "$trimmed/%"
             val relativeFilter = if (trimmed.contains("/storage/emulated/0/")) {
@@ -1165,12 +1179,22 @@ class MainActivity : FlutterActivity() {
                 val nameCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.DISPLAY_NAME)
                 val dataCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.DATA)
                 val sizeCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.SIZE)
+                val durCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.DURATION)
+                val titleCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.TITLE)
+                val artistCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.ARTIST)
+                val albumCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.ALBUM)
+                val albumIdCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.ALBUM_ID)
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val name = cursor.getString(nameCol) ?: "Audio Track"
                     val path = cursor.getString(dataCol) ?: ""
                     val size = cursor.getLong(sizeCol)
+                    val duration = if (durCol != -1) cursor.getLong(durCol) else 0L
+                    val rawTitle = if (titleCol != -1) cursor.getString(titleCol) else null
+                    val rawArtist = if (artistCol != -1) cursor.getString(artistCol) else null
+                    val rawAlbum = if (albumCol != -1) cursor.getString(albumCol) else null
+                    val albumId = if (albumIdCol != -1) cursor.getLong(albumIdCol) else 0L
 
                     // Skip noisy app folders
                     val lowerPath = path.lowercase()
@@ -1188,14 +1212,20 @@ class MainActivity : FlutterActivity() {
                         android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                         id
                     )
-                    results.add(
-                        mapOf(
-                            "uri" to contentUri.toString(),
-                            "path" to path,
-                            "name" to name,
-                            "size" to size
-                        )
+                    val item = mutableMapOf<String, Any>(
+                        "uri" to contentUri.toString(),
+                        "path" to path,
+                        "name" to name,
+                        "size" to size,
+                        "durationMs" to duration
                     )
+                    if (!rawTitle.isNullOrEmpty() && rawTitle != "<unknown>") item["title"] = rawTitle
+                    if (!rawArtist.isNullOrEmpty() && rawArtist != "<unknown>") item["artist"] = rawArtist
+                    if (!rawAlbum.isNullOrEmpty() && rawAlbum != "<unknown>") item["album"] = rawAlbum
+                    if (albumId > 0) {
+                        item["albumArtUri"] = "content://media/external/audio/albumart/$albumId"
+                    }
+                    results.add(item)
                 }
             }
         } catch (_: Throwable) {

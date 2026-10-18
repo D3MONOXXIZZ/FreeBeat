@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'artwork_extractor.dart';
 
 class ParsedAudioMetadata {
   const ParsedAudioMetadata({
@@ -246,6 +247,7 @@ class RangeTagParser {
     String? title = fallback.title;
     String? artist = fallback.artist;
     String? album = fallback.album;
+    Uint8List? artwork;
 
     int offset = 4;
     bool isLastBlock = false;
@@ -311,6 +313,23 @@ class RangeTagParser {
             }
           }
         } catch (_) {}
+      } else if (blockType == 6 && blockLen >= 32) {
+        // METADATA_BLOCK_PICTURE (FLAC embedded album art)
+        try {
+          int pOffset = offset;
+          pOffset += 4; // picture type
+          final mimeLen = _readUint32BE(bytes, pOffset);
+          pOffset += 4 + mimeLen;
+          final descLen = _readUint32BE(bytes, pOffset);
+          pOffset += 4 + descLen;
+          pOffset += 16; // width, height, bit depth, colors
+          final dataLen = _readUint32BE(bytes, pOffset);
+          pOffset += 4;
+          if (pOffset + dataLen <= offset + blockLen) {
+            final picData = bytes.sublist(pOffset, pOffset + dataLen);
+            artwork = ArtworkExtractor.cleanImageBytes(picData) ?? picData;
+          }
+        } catch (_) {}
       }
 
       offset += blockLen;
@@ -330,6 +349,7 @@ class RangeTagParser {
       durationMs: durationMs,
       bitrateKbps: estimatedBitrate,
       codec: 'FLAC',
+      embeddedArtworkBytes: artwork,
     );
   }
 
@@ -369,7 +389,7 @@ class RangeTagParser {
         } else if (frameId == 'TAL') {
           album = _decodeId3Text(frameBytes) ?? album;
         } else if (frameId == 'PIC' && frameBytes.length > 10) {
-          artwork = frameBytes;
+          artwork = ArtworkExtractor.cleanImageBytes(frameBytes) ?? frameBytes;
         }
         pos += frameSize;
       }
@@ -403,7 +423,7 @@ class RangeTagParser {
         } else if (frameId == 'TALB') {
           album = _decodeId3Text(frameBytes) ?? album;
         } else if (frameId == 'APIC' && frameBytes.length > 16) {
-          artwork = frameBytes;
+          artwork = ArtworkExtractor.cleanImageBytes(frameBytes) ?? frameBytes;
         }
 
         pos += frameSize;
@@ -527,6 +547,14 @@ class RangeTagParser {
         (bytes[pos + 1] << 8) |
         (bytes[pos + 2] << 16) |
         (bytes[pos + 3] << 24);
+  }
+
+  static int _readUint32BE(Uint8List bytes, int pos) {
+    if (pos + 4 > bytes.length) return 0;
+    return (bytes[pos] << 24) |
+        (bytes[pos + 1] << 16) |
+        (bytes[pos + 2] << 8) |
+        bytes[pos + 3];
   }
 
   static int _findSubsequence(Uint8List data, List<int> pattern, {int start = 0, int? end}) {

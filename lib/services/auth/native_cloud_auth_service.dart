@@ -325,6 +325,19 @@ class NativeCloudAuthService {
     }
   }
 
+  /// Extracts native audio metadata and embedded picture bytes using Android's MediaMetadataRetriever.
+  Future<Map<String, dynamic>?> extractAudioMetadataNative(String uriOrPath) async {
+    try {
+      final res = await _channel.invokeMapMethod<String, dynamic>(
+        'extractAudioMetadata',
+        {'uri': uriOrPath, 'path': uriOrPath},
+      );
+      return res;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Universal 1-Tap Mount for Any Installed Cloud App on Android (Google Drive,
   /// Microsoft OneDrive, Dropbox, Nextcloud, Mega, Proton Drive, Box, SD Card).
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
@@ -456,6 +469,11 @@ class NativeCloudAuthService {
             path: path,
             identifier: uri,
             size: size,
+            scannedTitle: m['title'] as String?,
+            scannedArtist: m['artist'] as String?,
+            scannedAlbum: m['album'] as String?,
+            scannedDurationMs: (m['durationMs'] as num?)?.toInt(),
+            scannedAlbumArtUri: m['albumArtUri'] as String?,
           ));
         }
       }
@@ -585,26 +603,44 @@ class NativeCloudAuthService {
               localTagFile = File(effectiveStreamUrl);
             }
 
-            ParsedAudioMetadata parsed;
-            if (localTagFile != null) {
-              parsed = await RangeTagParser.parseLocalFile(localTagFile);
-            } else if (effectiveStreamUrl.startsWith('content://')) {
-              final headerBytes = await readContentUriHeaderBytes(effectiveStreamUrl);
-              if (headerBytes != null && headerBytes.isNotEmpty) {
-                parsed = RangeTagParser.parseHeaderBytes(
-                  headerBytes,
-                  fallbackFilename: name,
-                );
+            // 1. Try native MediaMetadataRetriever (API 10+ handles both SAF content:// URIs and local files directly)
+            Map<String, dynamic>? nativeMeta;
+            if (Platform.isAndroid) {
+              nativeMeta = await extractAudioMetadataNative(effectiveStreamUrl);
+            }
+
+            String? rawTitle = file.scannedTitle ?? nativeMeta?['title'] as String?;
+            String? rawArtist = file.scannedArtist ?? nativeMeta?['artist'] as String?;
+            String? rawAlbum = file.scannedAlbum ?? nativeMeta?['album'] as String?;
+            int? nativeDurationMs = file.scannedDurationMs ?? (nativeMeta?['durationMs'] as num?)?.toInt();
+            int? nativeBitrateKbps = (nativeMeta?['bitrateKbps'] as num?)?.toInt();
+            Uint8List? nativePicBytes = nativeMeta?['pictureBytes'] as Uint8List?;
+
+            // 2. Fall back to RangeTagParser if native tag extraction didn't yield both artist and title
+            ParsedAudioMetadata? parsed;
+            if (rawArtist == null || rawArtist.isEmpty || rawTitle == null || rawTitle.isEmpty) {
+              if (localTagFile != null) {
+                parsed = await RangeTagParser.parseLocalFile(localTagFile);
+              } else if (effectiveStreamUrl.startsWith('content://')) {
+                final headerBytes = await readContentUriHeaderBytes(effectiveStreamUrl);
+                if (headerBytes != null && headerBytes.isNotEmpty) {
+                  parsed = RangeTagParser.parseHeaderBytes(
+                    headerBytes,
+                    fallbackFilename: name,
+                  );
+                } else {
+                  parsed = RangeTagParser.parseFromFilename(name);
+                }
               } else {
                 parsed = RangeTagParser.parseFromFilename(name);
               }
-            } else {
-              parsed = RangeTagParser.parseFromFilename(name);
             }
 
-            final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
-                ? parsed.title!
-                : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+            final cleanTitle = (rawTitle != null && rawTitle.isNotEmpty)
+                ? rawTitle
+                : ((parsed?.title != null && parsed!.title!.isNotEmpty)
+                    ? parsed.title!
+                    : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''));
 
             bool isInvalidArtist(String? s) {
               if (s == null) return true;
@@ -613,6 +649,8 @@ class NativeCloudAuthService {
                   lower == 'cloud artist' ||
                   lower == 'unknown artist' ||
                   lower == 'unknown' ||
+                  lower == 'various artists' ||
+                  lower.contains('cloud') ||
                   lower.startsWith('com.') ||
                   lower.startsWith('org.') ||
                   lower.startsWith('net.') ||
@@ -626,8 +664,8 @@ class NativeCloudAuthService {
                   lower.contains('local_storage');
             }
 
-            String? artist = parsed.artist;
-            String? album = parsed.album;
+            String? artist = rawArtist ?? parsed?.artist;
+            String? album = rawAlbum ?? parsed?.album;
 
             if (isInvalidArtist(artist)) {
               final fnParsed = RangeTagParser.parseFromFilename(name);
@@ -658,20 +696,26 @@ class NativeCloudAuthService {
 
             final effectiveArtist = (!isInvalidArtist(artist))
                 ? artist!
-                : (account.displayName.isNotEmpty ? account.displayName : 'Unknown Artist');
+                : 'Unknown Artist';
 
             final effectiveAlbum = (!isInvalidArtist(album) &&
                     album != 'Cloud Library')
                 ? album!
-                : (account.displayName.isNotEmpty ? account.displayName : 'Local Library');
+                : (name.contains('-') ? 'Single' : 'Library');
 
             final trackId =
                 'cloud_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
 
             // High-Performance Embedded Artwork Extraction:
-            // If RangeTagParser already read the embedded artwork bytes into memory, save directly to disk
             String? embeddedArt;
-            if (parsed.embeddedArtworkBytes != null && parsed.embeddedArtworkBytes!.isNotEmpty) {
+            if (nativePicBytes != null && nativePicBytes.isNotEmpty) {
+              embeddedArt = await ArtworkExtractor.saveArtworkBytes(
+                nativePicBytes,
+                trackId,
+              );
+            } else if (file.scannedAlbumArtUri != null) {
+              embeddedArt = file.scannedAlbumArtUri;
+            } else if (parsed?.embeddedArtworkBytes != null && parsed!.embeddedArtworkBytes!.isNotEmpty) {
               embeddedArt = await ArtworkExtractor.saveArtworkBytes(
                 parsed.embeddedArtworkBytes!,
                 trackId,
@@ -682,6 +726,13 @@ class NativeCloudAuthService {
                 trackId,
               );
             }
+
+            final finalDurationMs = (nativeDurationMs != null && nativeDurationMs > 0)
+                ? nativeDurationMs
+                : (parsed?.durationMs ?? 210000);
+            final finalBitrate = (nativeBitrateKbps != null && nativeBitrateKbps > 0)
+                ? nativeBitrateKbps
+                : (parsed?.bitrateKbps ?? 320);
 
             // Fast fallback dominant color (0xFF1E293B) during import.
             // Avoids blocking CPU on heavy color-quantization across 50+ files during active import.
@@ -695,16 +746,16 @@ class NativeCloudAuthService {
               title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
               artist: effectiveArtist,
               album: effectiveAlbum,
-              durationMs: parsed.durationMs ?? 210000,
+              durationMs: finalDurationMs,
               streamUrl: effectiveStreamUrl,
               artworkUrl: embeddedArt,
-              codec: parsed.codec ??
+              codec: parsed?.codec ??
                   (ext.isNotEmpty
                       ? ext.replaceAll('.', '').toUpperCase()
                       : 'FLAC'),
-              bitDepth: parsed.bitDepth ?? 24,
-              sampleRateHz: parsed.sampleRateHz ?? 96000,
-              bitrateKbps: parsed.bitrateKbps ?? 1411,
+              bitDepth: parsed?.bitDepth ?? 24,
+              sampleRateHz: parsed?.sampleRateHz ?? 96000,
+              bitrateKbps: finalBitrate,
               sizeBytes: file.size > 0 ? file.size : 25000000,
               dominantColorValue: dominantColor,
               isPinnedOffline: localTagFile != null,
@@ -739,10 +790,20 @@ class SelectedFileEntry {
     this.path,
     this.identifier,
     this.size = 0,
+    this.scannedTitle,
+    this.scannedArtist,
+    this.scannedAlbum,
+    this.scannedDurationMs,
+    this.scannedAlbumArtUri,
   });
 
   final String name;
   final String? path;
   final String? identifier;
   final int size;
+  final String? scannedTitle;
+  final String? scannedArtist;
+  final String? scannedAlbum;
+  final int? scannedDurationMs;
+  final String? scannedAlbumArtUri;
 }
