@@ -341,12 +341,9 @@ class FreeBeatPlaybackService : Service() {
                 .setSmallIcon(R.drawable.ic_play_arrow)
                 .setContentTitle(currentTitle)
                 .setContentText(currentArtist)
-                .setSubText(currentAlbum)
-                .setLargeIcon(artBitmap)
                 .setContentIntent(launchIntent)
                 .setCustomContentView(compactViews)
                 .setCustomBigContentView(expandedViews)
-                .setStyle(androidx.core.app.NotificationCompat.DecoratedCustomViewStyle())
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setOngoing(isPlaying)
@@ -407,6 +404,9 @@ class FreeBeatPlaybackService : Service() {
         compactViews.setOnClickPendingIntent(R.id.btn_play_pause, playPauseIntent)
         compactViews.setOnClickPendingIntent(R.id.btn_next, nextIntent)
         compactViews.setOnClickPendingIntent(R.id.btn_prev, prevIntent)
+        compactViews.setOnClickPendingIntent(R.id.iv_artwork, launchIntent)
+        compactViews.setOnClickPendingIntent(R.id.tv_title, launchIntent)
+        compactViews.setOnClickPendingIntent(R.id.notification_root, launchIntent)
 
         expandedViews.setOnClickPendingIntent(R.id.btn_play_pause_expanded, playPauseIntent)
         expandedViews.setOnClickPendingIntent(R.id.btn_next_expanded, nextIntent)
@@ -415,6 +415,10 @@ class FreeBeatPlaybackService : Service() {
         expandedViews.setOnClickPendingIntent(R.id.btn_repeat, repeatIntent)
         expandedViews.setOnClickPendingIntent(R.id.btn_more, launchIntent)
         expandedViews.setOnClickPendingIntent(R.id.pill_now_playing, launchIntent)
+        expandedViews.setOnClickPendingIntent(R.id.iv_artwork_expanded, launchIntent)
+        expandedViews.setOnClickPendingIntent(R.id.tv_title_expanded, launchIntent)
+        expandedViews.setOnClickPendingIntent(R.id.tv_artist_expanded, launchIntent)
+        expandedViews.setOnClickPendingIntent(R.id.notification_root_expanded, launchIntent)
     }
 
     private fun detectOutputDevice(audioManager: AudioManager): String {

@@ -1,247 +1,235 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/notification_container"
+    android:id="@+id/notification_root_expanded"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:gravity="center_horizontal"
-    android:paddingStart="10dp"
-    android:paddingEnd="10dp"
-    android:paddingTop="6dp"
-    android:paddingBottom="8dp"
-    android:background="@android:color/transparent">
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="16dp"
+    android:background="@drawable/notification_card_bg">
 
     <!-- 1. Floating Pill Badge: ▶ Now Playing -->
     <LinearLayout
         android:id="@+id/pill_now_playing"
         android:layout_width="wrap_content"
-        android:layout_height="30dp"
+        android:layout_height="28dp"
+        android:layout_gravity="center_horizontal"
         android:orientation="horizontal"
         android:gravity="center"
         android:paddingStart="12dp"
-        android:paddingEnd="16dp"
-        android:layout_marginBottom="8dp"
+        android:paddingEnd="14dp"
+        android:layout_marginBottom="12dp"
         android:background="@drawable/now_playing_badge_bg">
 
         <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
             android:src="@drawable/ic_play_badge_circle" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:text="Now Playing"
             android:textColor="#FFFFFFFF"
-            android:textSize="12sp"
+            android:textSize="11.5sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 2. Main Frosted Rounded Card Player (28dp corners via XML) -->
+    <!-- 2. Main Track Row: Cover Art, Title & Artist, Earbuds Icon, 3-Dots -->
     <LinearLayout
-        android:id="@+id/notification_root_expanded"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="16dp"
-        android:paddingBottom="16dp"
-        android:background="@drawable/notification_card_bg">
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
-        <!-- Top Row: Cover Art, Title & Artist, Earbuds Icon, 3-Dots -->
+        <!-- Square Album Art with 16dp Rounded Corners -->
+        <ImageView
+            android:id="@+id/iv_artwork_expanded"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:scaleType="centerCrop"
+            android:src="@drawable/launch_background" />
+
+        <!-- Track Title and Artist -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="14dp"
+            android:paddingEnd="10dp">
+
+            <TextView
+                android:id="@+id/tv_title_expanded"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Name of the song"
+                android:textColor="#FFFFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_artist_expanded"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Artist"
+                android:textColor="#CCFFFFFF"
+                android:textSize="13sp"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:layout_marginTop="3dp" />
+        </LinearLayout>
+
+        <!-- Earbuds / Output Device Icon & 3-Dots Menu -->
+        <LinearLayout
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <!-- Square Album Art with 16dp Rounded Corners -->
             <ImageView
-                android:id="@+id/iv_artwork_expanded"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:scaleType="centerCrop"
-                android:src="@drawable/launch_background" />
+                android:id="@+id/iv_output_device"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_earbuds"
+                android:contentDescription="Output Device" />
 
-            <!-- Track Title and Artist -->
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:paddingStart="14dp"
-                android:paddingEnd="8dp">
-
-                <TextView
-                    android:id="@+id/tv_title_expanded"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Name of the song"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="16.5sp"
-                    android:textStyle="bold"
-                    android:singleLine="true"
-                    android:ellipsize="end" />
-
-                <TextView
-                    android:id="@+id/tv_artist_expanded"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Artist"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="13sp"
-                    android:singleLine="true"
-                    android:ellipsize="end"
-                    android:layout_marginTop="2dp" />
-            </LinearLayout>
-
-            <!-- Earbuds / Output Device Icon & 3-Dots Menu -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <ImageView
-                    android:id="@+id/iv_output_device"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:src="@drawable/ic_earbuds"
-                    android:contentDescription="Output Device" />
-
-                <ImageButton
-                    android:id="@+id/btn_more"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
-                    android:layout_marginStart="10dp"
-                    android:background="@drawable/btn_play_bg"
-                    android:src="@drawable/ic_more_horiz_dark"
-                    android:scaleType="centerInside"
-                    android:contentDescription="More Options" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Middle Section: Progress / Seek Bar -->
-        <ProgressBar
-            android:id="@+id/pb_seek_bar"
-            style="@android:style/Widget.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="4dp"
-            android:layout_marginTop="16dp"
-            android:max="1000"
-            android:progress="400"
-            android:progressDrawable="@drawable/seek_progress_drawable" />
-
-        <!-- Timestamps: Current Time (Left) & Total Duration (Right) -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="5dp">
-
-            <TextView
-                android:id="@+id/tv_time_current"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="2:41"
-                android:textColor="#B3FFFFFF"
-                android:textSize="11.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/tv_time_total"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="4:00"
-                android:textColor="#B3FFFFFF"
-                android:textSize="11.5sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <!-- Bottom Controls Row: Shuffle, Previous, Play/Pause, Next, Repeat -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="12dp">
-
-            <!-- Shuffle -->
             <ImageButton
-                android:id="@+id/btn_shuffle"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/ic_shuffle"
-                android:scaleType="centerInside"
-                android:contentDescription="Shuffle" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- Previous -->
-            <ImageButton
-                android:id="@+id/btn_prev_expanded"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/btn_circle_bg"
-                android:src="@drawable/ic_skip_previous"
-                android:scaleType="centerInside"
-                android:contentDescription="Previous" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- Play / Pause (Large Solid Off-White Circle with Dark Icon) -->
-            <ImageButton
-                android:id="@+id/btn_play_pause_expanded"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
+                android:id="@+id/btn_more"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="10dp"
                 android:background="@drawable/btn_play_bg"
-                android:src="@drawable/ic_pause_dark"
+                android:src="@drawable/ic_more_horiz_dark"
                 android:scaleType="centerInside"
-                android:contentDescription="Play/Pause" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- Next -->
-            <ImageButton
-                android:id="@+id/btn_next_expanded"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/btn_circle_bg"
-                android:src="@drawable/ic_skip_next"
-                android:scaleType="centerInside"
-                android:contentDescription="Next" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <!-- Repeat -->
-            <ImageButton
-                android:id="@+id/btn_repeat"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/ic_repeat"
-                android:scaleType="centerInside"
-                android:contentDescription="Repeat" />
+                android:contentDescription="More Options" />
         </LinearLayout>
     </LinearLayout>
+
+    <!-- 3. Progress / Seek Bar -->
+    <ProgressBar
+        android:id="@+id/pb_seek_bar"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="16dp"
+        android:max="1000"
+        android:progress="400"
+        android:progressDrawable="@drawable/seek_progress_drawable" />
+
+    <!-- 4. Timestamps: Current Time (Left) & Total Duration (Right) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp">
+
+        <TextView
+            android:id="@+id/tv_time_current"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2:41"
+            android:textColor="#B3FFFFFF"
+            android:textSize="11.5sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tv_time_total"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="4:00"
+            android:textColor="#B3FFFFFF"
+            android:textSize="11.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 5. Bottom Controls Row: Shuffle, Previous, Play/Pause, Next, Repeat -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="14dp">
+
+        <!-- Shuffle -->
+        <ImageButton
+            android:id="@+id/btn_shuffle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_shuffle"
+            android:scaleType="centerInside"
+            android:contentDescription="Shuffle" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Previous -->
+        <ImageButton
+            android:id="@+id/btn_prev_expanded"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:background="@drawable/btn_circle_bg"
+            android:src="@drawable/ic_skip_previous"
+            android:scaleType="centerInside"
+            android:contentDescription="Previous" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Play / Pause (Large Solid Off-White Circle with Dark Icon) -->
+        <ImageButton
+            android:id="@+id/btn_play_pause_expanded"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="@drawable/btn_play_bg"
+            android:src="@drawable/ic_pause_dark"
+            android:scaleType="centerInside"
+            android:contentDescription="Play/Pause" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Next -->
+        <ImageButton
+            android:id="@+id/btn_next_expanded"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:background="@drawable/btn_circle_bg"
+            android:src="@drawable/ic_skip_next"
+            android:scaleType="centerInside"
+            android:contentDescription="Next" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Repeat -->
+        <ImageButton
+            android:id="@+id/btn_repeat"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_repeat"
+            android:scaleType="centerInside"
+            android:contentDescription="Repeat" />
+    </LinearLayout>
 </LinearLayout>
+
