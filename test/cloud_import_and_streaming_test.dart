@@ -11,6 +11,7 @@ import 'package:freebeat/core/storage/secure_credential_store.dart';
 import 'package:freebeat/providers/implementations/network_and_saf_connectors.dart';
 import 'package:freebeat/services/audio/cloud_audio_cache_service.dart';
 import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
+import 'package:freebeat/services/auth/native_cloud_auth_service.dart';
 import 'package:freebeat/state/app_providers.dart';
 import 'package:freebeat/ui/screens/clouds_screen.dart';
 
@@ -27,6 +28,30 @@ void main() {
         .setMockMethodCallHandler(
       SystemChannels.platform,
       (MethodCall methodCall) async => null,
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('com.freebeat.app/dsp'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'scanDirectory') {
+          return [
+            {
+              'uri': 'content://com.android.externalstorage.documents/document/primary%3AMusic%2Ftrack1.flac',
+              'name': 'track1.flac',
+              'size': 25000000,
+            },
+            {
+              'uri': 'content://com.android.externalstorage.documents/document/primary%3AMusic%2Ftrack2.mp3',
+              'name': 'track2.mp3',
+              'size': 8000000,
+            },
+          ];
+        }
+        if (methodCall.method == 'takePersistableUriPermission') {
+          return true;
+        }
+        return null;
+      },
     );
   });
 
@@ -252,6 +277,28 @@ void main() {
       // Verify connected drive has direct action buttons to import tracks and folders under account details
       expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
       expect(find.text('Import Folder'), findsOneWidget);
+    });
+
+    test('scanDirectoryNative retrieves directory tree entries via MethodChannel', () async {
+      final authService = NativeCloudAuthService();
+      final entries = await authService.scanDirectoryNative('content://primary:Music');
+      expect(entries.length, 2);
+      expect(entries[0]['name'], 'track1.flac');
+      expect(entries[1]['name'], 'track2.mp3');
+      expect(entries[0]['size'], 25000000);
+    });
+
+    test('SelectedFileEntry data model holds file properties cleanly', () {
+      const entry = SelectedFileEntry(
+        name: 'test_song.flac',
+        path: '/storage/emulated/0/Music/test_song.flac',
+        identifier: 'content://primary:Music/test_song.flac',
+        size: 32000000,
+      );
+      expect(entry.name, 'test_song.flac');
+      expect(entry.path, '/storage/emulated/0/Music/test_song.flac');
+      expect(entry.identifier, 'content://primary:Music/test_song.flac');
+      expect(entry.size, 32000000);
     });
   });
 }

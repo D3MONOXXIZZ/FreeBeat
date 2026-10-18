@@ -11,7 +11,6 @@ import '../../core/models/track.dart';
 import '../../providers/implementations/oauth_cloud_connectors.dart';
 import '../../services/metadata/range_tag_parser.dart';
 import '../metadata/artwork_extractor.dart';
-import '../metadata/artwork_palette_extractor.dart';
 
 /// Result object for Native Google Sign-In operations.
 class NativeGoogleAuthResult {
@@ -282,6 +281,20 @@ class NativeCloudAuthService {
     }
   }
 
+  /// Scans directory tree natively using Android SAF / DocumentsContract or MediaStore.
+  Future<List<Map<String, dynamic>>> scanDirectoryNative(String uriOrPath) async {
+    try {
+      final res = await _channel.invokeListMethod<dynamic>(
+        'scanDirectory',
+        {'uri': uriOrPath, 'path': uriOrPath},
+      );
+      if (res != null) {
+        return res.map((m) => Map<String, dynamic>.from(m as Map)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Universal 1-Tap Mount for Any Installed Cloud App on Android (Google Drive,
   /// Microsoft OneDrive, Dropbox, Nextcloud, Mega, Proton Drive, Box, SD Card).
   /// Launches Android's DocumentsProvider where installed cloud sync apps are natively integrated.
@@ -301,7 +314,7 @@ class NativeCloudAuthService {
           allowedExtensions: supportedAudioExtensions,
           allowMultiple: true,
           withData: false,
-          withReadStream: true,
+          withReadStream: false,
         );
       } catch (_) {
         // Fallback to FileType.any if custom throws on OEM Android picker
@@ -309,18 +322,48 @@ class NativeCloudAuthService {
           type: FileType.any,
           allowMultiple: true,
           withData: false,
-          withReadStream: true,
+          withReadStream: false,
         );
       }
 
       if (result == null || result.files.isEmpty) return [];
 
-      final allFiles = result.files;
-      final totalFiles = allFiles.length;
-      final filenames = allFiles.map((f) => f.name).toList();
-      onFilesSelected?.call(filenames);
+      final allFiles = result.files.map((f) => SelectedFileEntry(
+        name: f.name,
+        path: f.path,
+        identifier: f.identifier,
+        size: f.size,
+      )).toList();
 
-      final tracks = <Track>[];
+      return await _processBatchAudioFiles(
+        allFiles: allFiles,
+        account: account,
+        onFilesSelected: onFilesSelected,
+        onProgress: onProgress,
+        onBatchStarted: onBatchStarted,
+        onBatchCompleted: onBatchCompleted,
+        batchSize: batchSize,
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 1-Tap Folder Import: Scans an entire music directory (e.g. from Google Drive or device)
+  Future<List<Track>> pickFolder({
+    required CloudAccount account,
+    void Function(List<String> filenames)? onFilesSelected,
+    void Function(int current, int total, Track? track)? onProgress,
+    void Function(List<String> batchFilenames, int batchStartIndex, int totalFiles)? onBatchStarted,
+    Future<void> Function(List<Track> batchTracks)? onBatchCompleted,
+    int batchSize = 10,
+  }) async {
+    try {
+      final dirPath = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Select ${account.displayName} Music Folder',
+      );
+      if (dirPath == null || dirPath.isEmpty) return [];
+
       final supportedAudioExts = {
         '.mp3',
         '.flac',
@@ -341,26 +384,123 @@ class NativeCloudAuthService {
         '.mka',
       };
 
-      onProgress?.call(0, totalFiles, null);
+      final allFiles = <SelectedFileEntry>[];
 
-      // Process in smooth batches of 10 tracks
-      for (int batchStart = 0; batchStart < totalFiles; batchStart += batchSize) {
-        final batchEnd = math.min(batchStart + batchSize, totalFiles);
-        final batchFiles = allFiles.sublist(batchStart, batchEnd);
-        final batchFilenames = batchFiles.map((f) => f.name).toList();
+      // 1. Try native Directory scan (handles Android SAF tree URIs and Scoped Storage MediaStore)
+      final nativeFiles = await scanDirectoryNative(dirPath);
+      if (nativeFiles.isNotEmpty) {
+        for (final m in nativeFiles) {
+          final uri = m['uri'] as String?;
+          final path = m['path'] as String?;
+          final name = m['name'] as String? ?? 'Audio Track';
+          final size = (m['size'] as num?)?.toInt() ?? 0;
+          allFiles.add(SelectedFileEntry(
+            name: name,
+            path: path,
+            identifier: uri,
+            size: size,
+          ));
+        }
+      }
 
-        onBatchStarted?.call(batchFilenames, batchStart, totalFiles);
+      // 2. If native scan returned empty and local directory exists, scan dart:io Directory
+      if (allFiles.isEmpty) {
+        try {
+          final dir = Directory(dirPath);
+          if (dir.existsSync()) {
+            final entities = dir.listSync(recursive: true, followLinks: false);
+            for (final entity in entities) {
+              if (entity is File) {
+                final ext = p.extension(entity.path).toLowerCase();
+                if (supportedAudioExts.contains(ext)) {
+                  allFiles.add(SelectedFileEntry(
+                    name: p.basename(entity.path),
+                    path: entity.path,
+                    identifier: null,
+                    size: entity.existsSync() ? entity.lengthSync() : 0,
+                  ));
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
 
-        final currentBatchTracks = <Track>[];
-        for (int i = 0; i < batchFiles.length; i++) {
+      if (allFiles.isEmpty) return [];
+
+      return await _processBatchAudioFiles(
+        allFiles: allFiles,
+        account: account,
+        onFilesSelected: onFilesSelected,
+        onProgress: onProgress,
+        onBatchStarted: onBatchStarted,
+        onBatchCompleted: onBatchCompleted,
+        batchSize: batchSize,
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// High-Performance Parallel Batch Audio Processing Engine:
+  /// Concurrently parses batches of audio files without blocking the UI isolate.
+  Future<List<Track>> _processBatchAudioFiles({
+    required List<SelectedFileEntry> allFiles,
+    required CloudAccount account,
+    void Function(List<String> filenames)? onFilesSelected,
+    void Function(int current, int total, Track? track)? onProgress,
+    void Function(List<String> batchFilenames, int batchStartIndex, int totalFiles)? onBatchStarted,
+    Future<void> Function(List<Track> batchTracks)? onBatchCompleted,
+    int batchSize = 10,
+  }) async {
+    final totalFiles = allFiles.length;
+    final filenames = allFiles.map((f) => f.name).toList();
+    onFilesSelected?.call(filenames);
+
+    final tracks = <Track>[];
+    final supportedAudioExts = {
+      '.mp3',
+      '.flac',
+      '.m4a',
+      '.wav',
+      '.aac',
+      '.ogg',
+      '.opus',
+      '.alac',
+      '.aiff',
+      '.aif',
+      '.wma',
+      '.asf',
+      '.ape',
+      '.dsd',
+      '.dsf',
+      '.dff',
+      '.mka',
+    };
+
+    onProgress?.call(0, totalFiles, null);
+
+    // Process in smooth, parallel batches of 10 tracks
+    for (int batchStart = 0; batchStart < totalFiles; batchStart += batchSize) {
+      final batchEnd = math.min(batchStart + batchSize, totalFiles);
+      final batchFiles = allFiles.sublist(batchStart, batchEnd);
+      final batchFilenames = batchFiles.map((f) => f.name).toList();
+
+      onBatchStarted?.call(batchFilenames, batchStart, totalFiles);
+
+      // Concurrently parse all tracks in the batch
+      final batchTracks = await Future.wait(
+        batchFiles.asMap().entries.map((entry) async {
+          final i = entry.key;
+          final file = entry.value;
           final fileIndex = batchStart + i + 1;
-          final file = batchFiles[i];
+
           try {
             final name = file.name;
             final ext = p.extension(name).toLowerCase();
             if (ext.isNotEmpty && !supportedAudioExts.contains(ext)) {
               onProgress?.call(fileIndex, totalFiles, null);
-              continue;
+              return null;
             }
 
             // Direct Cloud Streaming: Persist SAF URI permission so closing the app never revokes access
@@ -378,7 +518,7 @@ class NativeCloudAuthService {
 
             if (effectiveStreamUrl.isEmpty) {
               onProgress?.call(fileIndex, totalFiles, null);
-              continue;
+              return null;
             }
 
             File? localTagFile;
@@ -451,30 +591,34 @@ class NativeCloudAuthService {
 
             final effectiveArtist = (!isInvalidArtist(artist))
                 ? artist!
-                : 'Unknown Artist';
+                : (account.displayName.isNotEmpty ? account.displayName : 'Unknown Artist');
 
             final effectiveAlbum = (!isInvalidArtist(album) &&
                     album != 'Cloud Library')
                 ? album!
-                : 'Local Library';
+                : (account.displayName.isNotEmpty ? account.displayName : 'Local Library');
 
             final trackId =
                 'cloud_${name.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$fileIndex';
 
+            // High-Performance Embedded Artwork Extraction:
+            // If RangeTagParser already read the embedded artwork bytes into memory, save directly to disk
             String? embeddedArt;
-            if (localTagFile != null) {
+            if (parsed.embeddedArtworkBytes != null && parsed.embeddedArtworkBytes!.isNotEmpty) {
+              embeddedArt = await ArtworkExtractor.saveArtworkBytes(
+                parsed.embeddedArtworkBytes!,
+                trackId,
+              );
+            } else if (localTagFile != null) {
               embeddedArt = await ArtworkExtractor.extractEmbeddedArtwork(
                 localTagFile,
                 trackId,
               );
             }
 
-            int dominantColor = 0xFF1E293B;
-            if (embeddedArt != null && embeddedArt.isNotEmpty) {
-              final palette =
-                  await ArtworkPaletteExtractor.extractPalette(embeddedArt);
-              dominantColor = palette.dominantColor.toARGB32();
-            }
+            // Fast fallback dominant color (0xFF1E293B) during import.
+            // Avoids blocking CPU on heavy color-quantization across 50+ files during active import.
+            final dominantColor = 0xFF1E293B;
 
             final newTrack = Track(
               id: trackId,
@@ -496,187 +640,42 @@ class NativeCloudAuthService {
               bitrateKbps: parsed.bitrateKbps ?? 1411,
               sizeBytes: file.size > 0 ? file.size : 25000000,
               dominantColorValue: dominantColor,
-              isPinnedOffline: false,
-              localCachePath: null,
+              isPinnedOffline: localTagFile != null,
+              localCachePath: localTagFile?.path,
             );
-            currentBatchTracks.add(newTrack);
-            tracks.add(newTrack);
+
             onProgress?.call(fileIndex, totalFiles, newTrack);
+            return newTrack;
           } catch (_) {
             onProgress?.call(fileIndex, totalFiles, null);
-            continue;
+            return null;
           }
-        }
-
-        if (currentBatchTracks.isNotEmpty && onBatchCompleted != null) {
-          await onBatchCompleted(currentBatchTracks);
-        }
-      }
-
-      return tracks;
-    } catch (_) {
-      return [];
-    }
-  }
-
-  /// 1-Tap Folder Import: Scans an entire music directory (e.g. from Google Drive or device)
-  Future<List<Track>> pickFolder({
-    required CloudAccount account,
-    void Function(int current, int total, Track? track)? onProgress,
-  }) async {
-    try {
-      final dirPath = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: 'Select ${account.displayName} Music Folder',
+        }),
       );
-      if (dirPath == null || dirPath.isEmpty) return [];
 
-      final dir = Directory(dirPath);
-      if (!dir.existsSync()) return [];
+      final currentBatchTracks = batchTracks.whereType<Track>().toList();
+      tracks.addAll(currentBatchTracks);
 
-      final supportedExts = {
-        '.mp3',
-        '.flac',
-        '.m4a',
-        '.wav',
-        '.aac',
-        '.ogg',
-        '.opus',
-        '.alac',
-        '.aiff',
-        '.aif',
-        '.wma',
-        '.asf',
-        '.ape',
-        '.dsd',
-        '.dsf',
-        '.dff',
-        '.mka',
-      };
-
-      final entities = dir.listSync(recursive: true, followLinks: false);
-      final audioFiles = entities.whereType<File>().where((f) {
-        final ext = p.extension(f.path).toLowerCase();
-        return supportedExts.contains(ext);
-      }).toList();
-
-      if (audioFiles.isEmpty) return [];
-
-      final totalFiles = audioFiles.length;
-      onProgress?.call(0, totalFiles, null);
-
-      final tracks = <Track>[];
-      int folderFileIndex = 0;
-      for (final file in audioFiles) {
-        folderFileIndex++;
-        try {
-          final name = p.basename(file.path);
-          final ext = p.extension(name).toLowerCase();
-          ParsedAudioMetadata parsed;
-          if (file.existsSync()) {
-            parsed = await RangeTagParser.parseLocalFile(file);
-          } else {
-            parsed = RangeTagParser.parseFromFilename(name);
-          }
-
-          final cleanTitle = (parsed.title != null && parsed.title!.isNotEmpty)
-              ? parsed.title!
-              : name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-
-          String? artist = parsed.artist;
-          String? album = parsed.album;
-
-          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
-            final fnParsed = RangeTagParser.parseFromFilename(name);
-            if (fnParsed.artist != null && fnParsed.artist!.isNotEmpty) {
-              artist = fnParsed.artist;
-            }
-          }
-
-          if (artist == null || artist.isEmpty || artist == 'Cloud Artist') {
-            final parentFolder = p.basename(p.dirname(file.path));
-            final grandParentFolder =
-                p.basename(p.dirname(p.dirname(file.path)));
-            if (parentFolder.isNotEmpty &&
-                parentFolder != '.' &&
-                parentFolder != 'Music' &&
-                parentFolder != 'Download') {
-              if (grandParentFolder.isNotEmpty &&
-                  grandParentFolder != '.' &&
-                  grandParentFolder != 'Music' &&
-                  grandParentFolder != 'Download') {
-                artist = grandParentFolder;
-                album ??= parentFolder;
-              } else {
-                artist = parentFolder;
-              }
-            }
-          }
-
-          final effectiveArtist = (artist != null &&
-                  artist.isNotEmpty &&
-                  artist != 'Cloud Artist')
-              ? artist
-              : (account.displayName.isNotEmpty
-                  ? account.displayName
-                  : 'Unknown Artist');
-
-          final effectiveAlbum = (album != null &&
-                  album.isNotEmpty &&
-                  album != 'Cloud Library')
-              ? album
-              : (account.displayName.isNotEmpty
-                  ? account.displayName
-                  : 'Local Library');
-
-          final trackId =
-              'folder_${file.path.hashCode.abs()}_${DateTime.now().microsecondsSinceEpoch}_$folderFileIndex';
-
-          String? embeddedArt;
-          if (file.existsSync()) {
-            embeddedArt =
-                await ArtworkExtractor.extractEmbeddedArtwork(file, trackId);
-          }
-
-          int dominantColor = 0xFF1E293B;
-          if (embeddedArt != null && embeddedArt.isNotEmpty) {
-            final palette =
-                await ArtworkPaletteExtractor.extractPalette(embeddedArt);
-            dominantColor = palette.dominantColor.toARGB32();
-          }
-
-          final newTrack = Track(
-            id: trackId,
-            accountId: account.id,
-            providerType: account.providerType,
-            remotePathOrId: file.path,
-            title: cleanTitle.isNotEmpty ? cleanTitle : 'Unknown Track',
-            artist: effectiveArtist,
-            album: effectiveAlbum,
-            durationMs: parsed.durationMs ?? 210000,
-            streamUrl: file.path,
-            artworkUrl: embeddedArt,
-            codec: parsed.codec ??
-                (ext.isNotEmpty
-                    ? ext.replaceAll('.', '').toUpperCase()
-                    : 'FLAC'),
-            bitDepth: parsed.bitDepth ?? 24,
-            sampleRateHz: parsed.sampleRateHz ?? 96000,
-            bitrateKbps: parsed.bitrateKbps ?? 1411,
-            sizeBytes: file.existsSync() ? file.lengthSync() : 25000000,
-            dominantColorValue: dominantColor,
-            isPinnedOffline: file.existsSync(),
-            localCachePath: file.existsSync() ? file.path : null,
-          );
-          tracks.add(newTrack);
-          onProgress?.call(folderFileIndex, totalFiles, newTrack);
-        } catch (_) {
-          onProgress?.call(folderFileIndex, totalFiles, null);
-          continue;
-        }
+      if (currentBatchTracks.isNotEmpty && onBatchCompleted != null) {
+        await onBatchCompleted(currentBatchTracks);
       }
-      return tracks;
-    } catch (_) {
-      return [];
     }
+
+    return tracks;
   }
+}
+
+/// Generic file descriptor for both picked files and directory-scanned entries.
+class SelectedFileEntry {
+  const SelectedFileEntry({
+    required this.name,
+    this.path,
+    this.identifier,
+    this.size = 0,
+  });
+
+  final String name;
+  final String? path;
+  final String? identifier;
+  final int size;
 }

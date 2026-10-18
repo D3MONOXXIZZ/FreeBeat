@@ -360,6 +360,8 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     } catch (_) {}
   }
 
+  void enrichLibraryArtwork(List<Track> tracks) => _enrichMissingArtwork(tracks);
+
   void _enrichMissingArtwork(List<Track> tracks) {
     if (_ref == null) return;
     unawaited(() async {
@@ -394,7 +396,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       if (playback.queue.isEmpty || playback.currentTrack.id.isEmpty) {
         _ref.read(playbackProvider.notifier).setQueue(state);
       }
-      _enrichMissingArtwork(newTracks);
+      final importProgress = _ref.read(importProgressProvider);
+      if (!importProgress.isImporting) {
+        _enrichMissingArtwork(newTracks);
+      }
     }
   }
 

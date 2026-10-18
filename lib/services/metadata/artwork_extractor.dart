@@ -22,6 +22,26 @@ class ArtworkExtractor {
     return artDir;
   }
 
+  /// Saves in-memory artwork bytes directly to the album art cache.
+  static Future<String?> saveArtworkBytes(
+    Uint8List rawImageBytes,
+    String trackId,
+  ) async {
+    try {
+      if (rawImageBytes.length < 64) return null;
+      final artDir = await _getArtworkDirectory();
+      final sanitizedId = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final targetFile = File(p.join(artDir.path, '$sanitizedId.jpg'));
+      if (targetFile.existsSync() && targetFile.lengthSync() > 100) {
+        return targetFile.path;
+      }
+      await targetFile.writeAsBytes(rawImageBytes);
+      return targetFile.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Extracts embedded album artwork from [audioFile] and writes it to disk.
   /// Returns the absolute path of the extracted image, or null if no embedded art found.
   static Future<String?> extractEmbeddedArtwork(

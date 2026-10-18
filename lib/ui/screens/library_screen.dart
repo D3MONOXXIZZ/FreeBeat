@@ -86,6 +86,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (picked.isNotEmpty) {
       await PixelHaptics.hifiConfirm();
       progressNotifier.complete();
+      ref.read(tracksCatalogProvider.notifier).enrichLibraryArtwork(picked);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

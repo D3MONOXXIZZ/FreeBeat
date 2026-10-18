@@ -372,6 +372,19 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                    "scanDirectory" -> {
+                        val pathOrUri = call.argument<String>("uri") ?: call.argument<String>("path")
+                        if (pathOrUri.isNullOrEmpty()) {
+                            result.success(emptyList<Map<String, Any>>())
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            val items = scanPathOrUri(pathOrUri)
+                            runOnUiThread {
+                                result.success(items)
+                            }
+                        }.start()
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -869,6 +882,161 @@ class MainActivity : FlutterActivity() {
                 inStream.copyTo(out)
             }
         }
+    }
+
+    private fun scanPathOrUri(pathOrUri: String): List<Map<String, Any>> {
+        if (pathOrUri.startsWith("content://")) {
+            return scanDirectoryTree(pathOrUri)
+        }
+        val dir = File(pathOrUri)
+        if (dir.exists() && dir.isDirectory) {
+            val results = mutableListOf<Map<String, Any>>()
+            val supportedExtensions = setOf(
+                "mp3", "flac", "m4a", "wav", "aac", "ogg", "opus", "alac",
+                "aiff", "aif", "wma", "asf", "ape", "dsd", "dsf", "dff", "mka"
+            )
+            try {
+                dir.walkTopDown().filter { it.isFile }.forEach { file ->
+                    val ext = file.extension.lowercase()
+                    if (supportedExtensions.contains(ext)) {
+                        results.add(
+                            mapOf(
+                                "path" to file.absolutePath,
+                                "name" to file.name,
+                                "size" to file.length()
+                            )
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+            if (results.isNotEmpty()) {
+                return results
+            }
+        }
+        return scanMediaStoreForFolder(pathOrUri)
+    }
+
+    private fun scanDirectoryTree(treeUriString: String): List<Map<String, Any>> {
+        val treeUri = android.net.Uri.parse(treeUriString)
+        try {
+            contentResolver.takePersistableUriPermission(
+                treeUri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Throwable) {
+        }
+
+        val results = mutableListOf<Map<String, Any>>()
+        val supportedExtensions = setOf(
+            "mp3", "flac", "m4a", "wav", "aac", "ogg", "opus", "alac",
+            "aiff", "aif", "wma", "asf", "ape", "dsd", "dsf", "dff", "mka"
+        )
+
+        fun scanSubtree(parentDocId: String) {
+            val childrenUri = try {
+                android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+            } catch (_: Throwable) {
+                return
+            }
+
+            val projection = arrayOf(
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+                android.provider.DocumentsContract.Document.COLUMN_SIZE
+            )
+
+            try {
+                contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    val idCol = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameCol = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeCol = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeCol = cursor.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_SIZE)
+
+                    while (cursor.moveToNext()) {
+                        val childId = cursor.getString(idCol) ?: continue
+                        val displayName = cursor.getString(nameCol) ?: "Unknown"
+                        val mimeType = cursor.getString(mimeCol) ?: ""
+                        val size = if (sizeCol != -1 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else 0L
+
+                        if (mimeType == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+                            scanSubtree(childId)
+                        } else {
+                            val ext = displayName.substringAfterLast('.', "").lowercase()
+                            if (supportedExtensions.contains(ext) || mimeType.startsWith("audio/")) {
+                                val fileDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
+                                results.add(
+                                    mapOf(
+                                        "uri" to fileDocUri.toString(),
+                                        "name" to displayName,
+                                        "size" to size
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        }
+
+        try {
+            val rootDocId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+            scanSubtree(rootDocId)
+        } catch (_: Throwable) {
+            try {
+                val docId = android.provider.DocumentsContract.getDocumentId(treeUri)
+                scanSubtree(docId)
+            } catch (_: Throwable) {
+            }
+        }
+
+        return results
+    }
+
+    private fun scanMediaStoreForFolder(folderPath: String): List<Map<String, Any>> {
+        val results = mutableListOf<Map<String, Any>>()
+        try {
+            val uri = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val projection = arrayOf(
+                android.provider.MediaStore.Audio.Media._ID,
+                android.provider.MediaStore.Audio.Media.DISPLAY_NAME,
+                android.provider.MediaStore.Audio.Media.DATA,
+                android.provider.MediaStore.Audio.Media.SIZE
+            )
+            val normalizedPath = folderPath.trimEnd('/') + "/%"
+            val selection = "${android.provider.MediaStore.Audio.Media.DATA} LIKE ?"
+            val selectionArgs = arrayOf(normalizedPath)
+
+            contentResolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
+                val idCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media._ID)
+                val nameCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.DISPLAY_NAME)
+                val dataCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.DATA)
+                val sizeCol = cursor.getColumnIndex(android.provider.MediaStore.Audio.Media.SIZE)
+
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: "Audio Track"
+                    val path = cursor.getString(dataCol) ?: ""
+                    val size = cursor.getLong(sizeCol)
+                    val contentUri = android.content.ContentUris.withAppendedId(
+                        android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                        id
+                    )
+                    results.add(
+                        mapOf(
+                            "uri" to contentUri.toString(),
+                            "path" to path,
+                            "name" to name,
+                            "size" to size
+                        )
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+        }
+        return results
     }
 
     private fun releaseEffects() {

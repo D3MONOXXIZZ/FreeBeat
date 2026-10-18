@@ -469,6 +469,7 @@ class CloudsScreen extends ConsumerWidget {
       if (tracks.isNotEmpty) {
         await PixelHaptics.hifiConfirm();
         progressNotifier.complete();
+        ref.read(tracksCatalogProvider.notifier).enrichLibraryArtwork(tracks);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -506,13 +507,37 @@ class CloudsScreen extends ConsumerWidget {
   ) async {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
+    final progressNotifier = ref.read(importProgressProvider.notifier);
     final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
 
     try {
-      final tracks = await authService.pickFolder(account: account);
+      final tracks = await authService.pickFolder(
+        account: account,
+        batchSize: 10,
+        onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+          progressNotifier.startBatch(
+            batchFilenames: batchFilenames,
+            batchStartIndex: batchStartIndex,
+            totalFiles: totalFiles,
+          );
+        },
+        onProgress: (current, total, track) {
+          progressNotifier.update(
+            current: current,
+            total: total,
+            name: track?.title ?? '',
+            track: track,
+          );
+        },
+        onBatchCompleted: (batchTracks) async {
+          await catalogNotifier.addIndexedTracks(batchTracks);
+        },
+      );
+
       if (tracks.isNotEmpty) {
-        await catalogNotifier.addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
+        progressNotifier.complete();
+        ref.read(tracksCatalogProvider.notifier).enrichLibraryArtwork(tracks);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -528,8 +553,19 @@ class CloudsScreen extends ConsumerWidget {
             ),
           );
         }
+      } else {
+        progressNotifier.clearPending();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No supported audio files found in selected folder.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
+      progressNotifier.clearPending();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1142,12 +1178,34 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       final authService = ref.read(nativeCloudAuthServiceProvider);
       final accountsNotifier = ref.read(cloudAccountsProvider.notifier);
       final catalogNotifier = ref.read(tracksCatalogProvider.notifier);
-      final tracks = await authService.pickFolder(account: account);
+      final progressNotifier = ref.read(importProgressProvider.notifier);
+      final tracks = await authService.pickFolder(
+        account: account,
+        batchSize: 10,
+        onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+          progressNotifier.startBatch(
+            batchFilenames: batchFilenames,
+            batchStartIndex: batchStartIndex,
+            totalFiles: totalFiles,
+          );
+        },
+        onProgress: (current, total, track) {
+          progressNotifier.update(
+            current: current,
+            total: total,
+            name: track?.title ?? '',
+            track: track,
+          );
+        },
+        onBatchCompleted: (batchTracks) async {
+          await catalogNotifier.addIndexedTracks(batchTracks);
+        },
+      );
 
       if (tracks.isNotEmpty) {
         await accountsNotifier.addAccount(account, {});
-        await catalogNotifier.addIndexedTracks(tracks);
         await PixelHaptics.hifiConfirm();
+        progressNotifier.complete();
 
         final messenger = mounted ? ScaffoldMessenger.maybeOf(context) : null;
 
@@ -1164,6 +1222,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           ),
         );
       } else {
+        progressNotifier.clearPending();
         if (mounted) setState(() => _isConnecting = false);
       }
     } catch (e) {
