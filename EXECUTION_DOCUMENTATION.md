@@ -215,35 +215,35 @@ When scanning raw cloud storage (Google Drive, OneDrive, Dropbox, WebDAV, S3, SF
 ## 8. 6-Phase Step-by-Step Execution Plan
 
 ### Phase 1: Project Foundation, Domain Models & Local Storage Layer
-- [ ] **1.1** Create Flutter project in `f:\FreeBeat` (`org: com.freebeat.app`).
-- [ ] **1.2** Configure `pubspec.yaml` dependencies and `AndroidManifest.xml` (`AudioServiceActivity`, foreground service permissions, `com.freebeat.app://oauth2redirect`).
-- [ ] **1.3** Implement core models: `cloud_account.dart`, `track.dart`, `audio_quality_settings.dart`, `poweramp_dsp_state.dart`.
-- [ ] **1.4** Implement `secure_credential_store.dart` (Android Keystore) and `library_database.dart` (SQLite catalog & EQ presets).
+- [x] **1.1** Create Flutter project in `f:\FreeBeat` (`org: com.freebeat.app`).
+- [x] **1.2** Configure `pubspec.yaml` dependencies and `AndroidManifest.xml` (`AudioServiceActivity`, foreground service permissions, `com.freebeat.app://oauth2redirect`).
+- [x] **1.3** Implement core models: `cloud_account.dart`, `track.dart`, `audio_quality_settings.dart`, `poweramp_dsp_state.dart`.
+- [x] **1.4** Implement `secure_credential_store.dart` (Android Keystore) and `library_database.dart` (SQLite catalog & EQ presets).
 
 ### Phase 2: Unified Cloud Connector Engine & Smart Metadata/Lyrics Indexer
-- [ ] **2.1** Define `cloud_provider_connector.dart` interface & `StreamRequestSpec`.
-- [ ] **2.2** Implement OAuth2 connectors (`oauth_cloud_connectors.dart`: Google Drive, OneDrive, Dropbox, Box).
-- [ ] **2.3** Implement Media Server connectors (`media_server_connectors.dart`: Jellyfin, Subsonic/Navidrome with bitrate transcoding + Hi-Fi raw direct play).
-- [ ] **2.4** Implement Open Protocol & Local connectors (`open_protocol_connectors.dart` for WebDAV & S3 SigV4; `network_and_saf_connectors.dart` for SFTP, SMB, Android SAF, and Demo Cloud).
-- [ ] **2.5** Implement `range_tag_parser.dart` (64 KB ID3v2/FLAC header parser) and `artwork_and_lyrics_service.dart` (iTunes artwork + LRCLIB synced lyrics).
+- [x] **2.1** Define `cloud_provider_connector.dart` interface & `StreamRequestSpec`.
+- [x] **2.2** Implement OAuth2 connectors (`oauth_cloud_connectors.dart`: Google Drive, OneDrive, Dropbox, Box).
+- [x] **2.3** Implement Media Server connectors (`media_server_connectors.dart`: Jellyfin, Subsonic/Navidrome with bitrate transcoding + Hi-Fi raw direct play).
+- [x] **2.4** Implement Open Protocol & Local connectors (`open_protocol_connectors.dart` for WebDAV & S3 SigV4; `network_and_saf_connectors.dart` for SFTP, SMB, Android SAF, and Demo Cloud).
+- [x] **2.5** Implement `range_tag_parser.dart` (64 KB ID3v2/FLAC/M4A/WMA/WAV/AIFF header parser) and `artwork_and_lyrics_service.dart` (iTunes artwork + LRCLIB synced lyrics).
 
 ### Phase 3: Hi-Fi Audio Engine, Loopback Stream Proxy & Native Poweramp DSP Bridge
-- [ ] **3.1** Implement native Kotlin `DynamicsProcessing` bridge in `MainActivity.kt` (`com.freebeat.app/dsp` handling 10-band EQ, Preamp, Tone shelves, Stereo X, Limiter, Reverb, and hardware output queries).
-- [ ] **3.2** Implement `cloud_stream_proxy.dart` (`127.0.0.1` loopback HTTP server with `206 Partial Content` range forwarding, quality tier adaptation, and offline cache writer).
-- [ ] **3.3** Implement `poweramp_dsp_service.dart`, `freebeat_audio_handler.dart`, and Riverpod state controllers (`app_providers.dart`).
+- [x] **3.1** Implement native Kotlin `DynamicsProcessing` bridge in `MainActivity.kt` (`com.freebeat.app/dsp` handling 10-band EQ, Preamp, Tone shelves, Stereo X, Limiter, Reverb, and hardware output queries).
+- [x] **3.2** Implement `cloud_stream_proxy.dart` (`127.0.0.1` loopback HTTP server with `206 Partial Content` range forwarding, quality tier adaptation, and offline cache writer).
+- [x] **3.3** Implement `poweramp_dsp_service.dart`, `freebeat_audio_handler.dart`, and Riverpod state controllers (`app_providers.dart`).
 
 ### Phase 4: Google Pixel Material 3 Expressive UI & Core Playback Screens
-- [ ] **4.1** Implement `pixel_theme.dart`, `squiggly_slider.dart`, `expressive_shapes.dart`, and `rotary_knob.dart`.
-- [ ] **4.2** Implement `main_shell.dart` (NavigationBar + Floating Pill MiniPlayer), `home_screen.dart`, and `library_screen.dart`.
-- [ ] **4.3** Implement `now_playing_screen.dart` (Squiggly Seekbar, Synced Lyrics drawer, Hi-Fi Badge) and `signal_path_sheet.dart` (Poweramp-style Signal Path & on-the-fly Bitrate Switcher).
+- [x] **4.1** Implement `pixel_theme.dart`, `squiggly_slider.dart`, `expressive_shapes.dart`, and `rotary_knob.dart`.
+- [x] **4.2** Implement `main_shell.dart` (NavigationBar + Floating Pill MiniPlayer), `home_screen.dart`, and `library_screen.dart`.
+- [x] **4.3** Implement `now_playing_screen.dart` (Squiggly Seekbar, Synced Lyrics drawer, Hi-Fi Badge) and `signal_path_sheet.dart` (Poweramp-style Signal Path & on-the-fly Bitrate Switcher).
 
 ### Phase 5: Poweramp 10-Band EQ Studio & Cloud / Audio Quality Hub
-- [ ] **5.1** Implement `poweramp_dsp_screen.dart` (Interactive Frequency Response Spline Graph, Preamp + 10-Band Graphic/Parametric Faders, Rotary Bass/Treble/Stereo X Knobs, DVC/Limiter/Balance/Tempo/Reverb controls, Preset Manager).
-- [ ] **5.2** Implement `clouds_screen.dart` (Connected Clouds Dashboard, 12-Provider Add Cloud Wizard, Wi-Fi/Cellular/Offline Bitrate & Hi-Fi Settings Panel, Offline Cache Manager).
+- [x] **5.1** Implement `poweramp_dsp_screen.dart` (Interactive Frequency Response Spline Graph, Preamp + 10-Band Graphic/Parametric Faders, Rotary Bass/Treble/Stereo X Knobs, DVC/Limiter/Balance/Tempo/Reverb controls, Preset Manager).
+- [x] **5.2** Implement `clouds_screen.dart` (Connected Clouds Dashboard, 12-Provider Add Cloud Wizard, Wi-Fi/Cellular/Offline Bitrate & Hi-Fi Settings Panel, Offline Cache Manager).
 
 ### Phase 6: Automated Verification, Static Analysis & APK Build
-- [ ] **6.1** Write unit and widget tests (`test/dsp_and_bitrate_test.dart`, `test/range_tag_parser_test.dart`, `test/pixel_ui_widget_test.dart`).
-- [ ] **6.2** Execute `flutter analyze`, `flutter test`, and `flutter build apk --debug`.
+- [x] **6.1** Write unit and widget tests (`test/dsp_and_bitrate_test.dart`, `test/range_tag_parser_test.dart`, `test/pixel_ui_widget_test.dart`, `test/universal_audio_transcoder_test.dart`).
+- [x] **6.2** Execute `flutter analyze`, `flutter test`, and `flutter build apk --release`.
 
 ---
 
