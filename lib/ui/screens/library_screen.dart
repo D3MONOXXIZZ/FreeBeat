@@ -8,6 +8,7 @@ import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
+import 'search_screen.dart';
 import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
@@ -581,6 +582,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 tooltip: 'Search Library',
                 onPressed: () {
                   PixelHaptics.tick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SearchScreen()),
+                  );
                 },
               ),
               IconButton(

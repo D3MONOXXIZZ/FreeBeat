@@ -437,4 +437,52 @@ FreeBeat's background download queue orchestrates offline caching of cloud music
 - **Target ABIs**: Strict enforcement of 64-bit architectures (`arm64-v8a` for physical Android phones and `x86_64` for emulators/Chromebooks) with legacy 32-bit (`armeabi-v7a`, `x86`) completely excluded via `android/app/build.gradle.kts` (`ndk.abiFilters` and `packaging.jniLibs.excludes`).
 - **Streamlined Release Binary**: Release APK generated at root `FreeBeat-release.apk` (82.6 MB, saving ~59.3 MB while retaining full FFmpeg and native audio processing capabilities for all modern devices).
 
+---
+
+## 14. Phase 8: Global Instant Search & Audiophile Filtering Architecture
+
+### 14.1 Persistent LRU Search History Service (`SearchHistoryService`)
+- **SharedPreferences Persistence**: Maintains up to 15 search queries saved under the `freebeat_search_history` key.
+- **LRU (Least Recently Used) Semantics**: Adding a new or existing query automatically moves it to the index 0 position, prevents duplicate entries, and trims trailing entries beyond the 15-item maximum limit.
+- **Input Chips with Dismissal & 1-Tap Clear**: Rendered as Material 3 `InputChip`s with deletion icons (`onDeleted`) for individual queries and a "Clear All" action.
+
+### 14.2 Unified Audiophile Fuzzy Search Engine (`AudiophileSearchEngine`)
+- **Multi-Vector Fuzzy Matching**: Searches across song titles, artist names, album titles, audio codecs (`FLAC`, `WMA`, `M4A`, `WAV`, `MP3`), stream URLs, and bit-depth / sample-rate metrics (`isHiRes`).
+- **Faceted Audiophile Category Filtering (`SearchFilterType`)**:
+  - `All`: Full unified catalog search across tracks, artists, albums, and playlists.
+  - `Hi-Res 24-Bit`: Filters strictly for lossless audio with $\ge 24\text{-bit}$ depth or $> 48\text{kHz}$ sampling rate.
+  - `Offline`: Filters exclusively for tracks cached and pinned offline (`isPinnedOffline`).
+  - Codec Filters: `FLAC`, `WMA`, `M4A / AAC`, `WAV`, `MP3` for audiophiles auditing specific format libraries.
+  - Entity Filters: `Artists`, `Albums`, and `Playlists` scoping search to the selected taxonomy.
+- **Top Match Scoring**: Evaluates exact title matches first, startsWith prefixes second, and general fuzzy matches third to display a hero `_TopResultCard` with dynamic playback status and 1-tap play.
+
+### 14.3 Material 3 Expressive Global Search UI (`SearchScreen`)
+- **Auto-Focused Search Input Header**: Pill-shaped container (`surfaceContainerHigh`, 52dp height) with clear button and smooth keyboard focus.
+- **Horizontal Filter Chip Carousel**: 11 category and codec chips with custom icons, active container color states, and Pixel LRA haptic feedback (`PixelHaptics.tick()`).
+- **Audiophile Explore Grid**: 4 quick-launch cards for zero-query discovery:
+  - *Hi-Res Lossless* (24-bit / 96kHz+)
+  - *Downloaded* (Offline listening)
+  - *FLAC Master* (Studio master audio)
+  - *WMA & M4A* (Universal playback)
+- **Results Aggregation & Rich Media Views**:
+  - Hero `_TopResultCard` featuring high-res album art, codec badge, and pulsing playback controls.
+  - Horizontal `_ArtistAvatarBubble` carousel with direct navigation to `ArtistDetailsScreen`.
+  - Horizontal playlist carousel with `GenerativePlaylistCover` and navigation to `PlaylistDetailsScreen`.
+  - Full song results list wrapped in `SwipeToQueueWrapper` (swipe right to enqueue) and 3-dots options modal (Add to Playlist, Download Offline, View Artist, Audio Track Details).
+  - Empty state with spelling suggestions and 1-tap "Show All Formats" recovery button.
+
+### 14.4 Home & Library Screen Integrations
+- **HomeScreen**:
+  - Top `SliverAppBar` search action navigates directly to `SearchScreen`.
+  - Prominent M3 Expressive search pill situated below the header with search icon, placeholder text, and "Hi-Fi" badge that opens `SearchScreen` on tap.
+- **LibraryScreen**:
+  - Top `SliverAppBar` search button wired directly to `SearchScreen`.
+
+### 14.5 Quality & Architecture Verification
+- **Static Analysis**: `flutter analyze` completed with 0 errors, 0 warnings.
+- **Test Suite**: 143/143 tests passing (100% pass rate) with 15 new unit & widget tests in `test/phase8_global_search_test.dart`.
+- **Target Architectures**: Verified strict 64-bit ABI support (`arm64-v8a` and `x86_64`) with 32-bit completely excluded.
+- **Binary Generation**: Release APK built and verified at `FreeBeat-release.apk` (82.72 MB).
+
+
 

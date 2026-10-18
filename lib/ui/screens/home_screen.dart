@@ -10,6 +10,7 @@ import '../widgets/material_you_download_button.dart';
 import 'artist_details_screen.dart';
 import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
+import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/playlist_import_modal.dart';
 
@@ -50,15 +51,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
   _HomeCategoryFilter _categoryFilter = _HomeCategoryFilter.all;
-  bool _showSearchBar = false;
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 
   void _showTrackOptionsModal(Track track) {
     PixelHaptics.sheetExpand();
@@ -381,16 +374,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           actions: [
-            // Search toggle icon
+            // Search button
             IconButton(
               icon: Icon(
-                _showSearchBar ? Icons.search_off_rounded : Icons.search_rounded,
+                Icons.search_rounded,
                 color: cs.onSurface,
               ),
               tooltip: 'Search Library',
               onPressed: () {
                 PixelHaptics.tick();
-                setState(() => _showSearchBar = !_showSearchBar);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                );
               },
             ),
 
@@ -497,43 +492,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
 
         // ─────────────────────────────────────────────────────────────────────
-        // 2. Search Bar (Animated Expand)
+        // 2. Pixel M3 Expressive Search Bar
         // ─────────────────────────────────────────────────────────────────────
-        if (_showSearchBar)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                onChanged: (q) {
-                  ref.read(searchQueryProvider.notifier).state = q;
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Material(
+              color: cs.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(100),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(100),
+                onTap: () {
+                  PixelHaptics.tick();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SearchScreen()),
+                  );
                 },
-                decoration: InputDecoration(
-                  hintText: 'Search songs, artists, albums, FLAC...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            _searchController.clear();
-                            ref.read(searchQueryProvider.notifier).state = '';
-                            PixelHaptics.tick();
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: cs.surfaceContainerHigh,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(100),
-                    borderSide: BorderSide.none,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.search_rounded,
+                        color: cs.onSurfaceVariant,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Search songs, artists, FLAC, Hi-Res...',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Hi-Fi',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onSecondaryContainer,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
             ),
           ),
+        ),
 
         // ─────────────────────────────────────────────────────────────────────
         // 3. Category Filter Pills Row (All, Top Picks, Artists, Albums, Hi-Fi, Offline)
