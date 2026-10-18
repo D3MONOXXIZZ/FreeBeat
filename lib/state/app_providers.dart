@@ -1370,6 +1370,46 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         } catch (_) {}
       }
 
+      // 0. Hardware / Codec Transcode check (WMA, ASF, AIFF) to 16-bit PCM WAV if needed
+      final pathLower = (cachedPath ?? track.localCachePath ?? track.streamUrl).toLowerCase();
+      final isWmaOrTranscode = pathLower.endsWith('.wma') ||
+          pathLower.endsWith('.asf') ||
+          pathLower.endsWith('.aiff') ||
+          pathLower.endsWith('.aif') ||
+          track.codec.toLowerCase() == 'wma' ||
+          track.codec.toLowerCase() == 'asf' ||
+          track.codec.toLowerCase() == 'aiff';
+
+      if (isWmaOrTranscode) {
+        try {
+          String? sourceToDecode;
+          if (cachedPath != null && File(cachedPath).existsSync()) {
+            sourceToDecode = cachedPath;
+          } else if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
+            sourceToDecode = track.localCachePath;
+          } else if (track.streamUrl.startsWith('content://') || File(track.streamUrl).existsSync()) {
+            sourceToDecode = track.streamUrl;
+          } else if (track.streamUrl.startsWith('http://') || track.streamUrl.startsWith('https://')) {
+            final downloaded = await cacheSvc.cacheTrack(track, markPinnedOffline: false);
+            sourceToDecode = downloaded ?? await cacheSvc.getCachedFilePath(track);
+          }
+
+          if (sourceToDecode != null && sourceToDecode.isNotEmpty) {
+            final dspService = _ref.read(powerampDspServiceProvider);
+            final transcoded = await dspService.transcodeAudioIfNeeded(sourceToDecode);
+            if (transcoded != null && transcoded.isNotEmpty && File(transcoded).existsSync()) {
+              await _audioPlayer!.setFilePath(transcoded);
+              await _audioPlayer!.setVolume(1.0);
+              await _audioPlayer!.play();
+              _syncForegroundNotification(track: track, isPlaying: true);
+              return;
+            }
+          }
+        } catch (e) {
+          debugPrint('Transcode check failed for ${track.title}: $e');
+        }
+      }
+
       // 1. If pinned offline or explicitly cached on disk, play local file directly (0ms latency)
       if (cachedPath != null && File(cachedPath).existsSync()) {
         await _audioPlayer!.setFilePath(cachedPath);

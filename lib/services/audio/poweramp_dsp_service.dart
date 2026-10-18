@@ -135,6 +135,15 @@ class PowerampDspService {
     } catch (_) {}
   }
 
+  Future<String?> transcodeAudioIfNeeded(String path) async {
+    try {
+      final res = await _channel.invokeMethod<String>('transcodeAudioIfNeeded', {'path': path});
+      return res;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void setNotificationActionListener(
       void Function(String action, Map<String, dynamic> extras) listener) {
     _channel.setMethodCallHandler((call) async {

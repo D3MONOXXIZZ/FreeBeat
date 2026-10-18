@@ -10,6 +10,10 @@ import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -18,6 +22,9 @@ import android.os.VibratorManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
@@ -290,6 +297,30 @@ class MainActivity : FlutterActivity() {
                     "requestNotificationPermission" -> {
                         requestNotificationPermissionIfNeeded()
                         result.success(true)
+                    }
+                    "transcodeAudioIfNeeded" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrEmpty()) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val lower = path.lowercase()
+                        val needsTranscode = lower.endsWith(".wma") || lower.endsWith(".asf") || lower.endsWith(".aiff") || lower.endsWith(".aif")
+                        if (!needsTranscode) {
+                            result.success(path)
+                            return@setMethodCallHandler
+                        }
+                        val cacheFile = File(cacheDir, "transcoded_${path.hashCode().toUInt().toString(16)}.wav")
+                        if (cacheFile.exists() && cacheFile.length() > 44) {
+                            result.success(cacheFile.absolutePath)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            val decoded = transcodeWmaToWav(path, cacheFile)
+                            runOnUiThread {
+                                result.success(decoded ?: path)
+                            }
+                        }.start()
                     }
                     else -> result.notImplemented()
                 }
@@ -647,6 +678,146 @@ class MainActivity : FlutterActivity() {
         } else {
             @Suppress("DEPRECATION")
             vibrator.vibrate(10L)
+        }
+    }
+
+    private fun transcodeWmaToWav(sourcePath: String, outputFile: File): String? {
+        var extractor: MediaExtractor? = null
+        var decoder: MediaCodec? = null
+        var fos: FileOutputStream? = null
+        val tempPcmFile = File(outputFile.absolutePath + ".pcm")
+        try {
+            extractor = MediaExtractor()
+            if (sourcePath.startsWith("content://")) {
+                extractor.setDataSource(this, Uri.parse(sourcePath), null)
+            } else {
+                extractor.setDataSource(sourcePath)
+            }
+
+            var audioTrackIndex = -1
+            var format: MediaFormat? = null
+            for (i in 0 until extractor.trackCount) {
+                val trackFormat = extractor.getTrackFormat(i)
+                val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    audioTrackIndex = i
+                    format = trackFormat
+                    break
+                }
+            }
+
+            if (audioTrackIndex < 0 || format == null) return null
+            extractor.selectTrack(audioTrackIndex)
+
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
+            decoder = MediaCodec.createDecoderByType(mime)
+            decoder.configure(format, null, null, 0)
+            decoder.start()
+
+            val sampleRate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+            val channelCount = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+
+            fos = FileOutputStream(tempPcmFile)
+
+            val bufferInfo = MediaCodec.BufferInfo()
+            var sawInputEOS = false
+            var sawOutputEOS = false
+            val timeoutUs = 5000L
+
+            while (!sawOutputEOS) {
+                if (!sawInputEOS) {
+                    val inputIndex = decoder.dequeueInputBuffer(timeoutUs)
+                    if (inputIndex >= 0) {
+                        val inputBuffer = decoder.getInputBuffer(inputIndex)
+                        if (inputBuffer != null) {
+                            val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                            if (sampleSize < 0) {
+                                decoder.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                sawInputEOS = true
+                            } else {
+                                val sampleTime = extractor.sampleTime
+                                decoder.queueInputBuffer(inputIndex, 0, sampleSize, sampleTime, 0)
+                                extractor.advance()
+                            }
+                        }
+                    }
+                }
+
+                val outputIndex = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                if (outputIndex >= 0) {
+                    val outputBuffer = decoder.getOutputBuffer(outputIndex)
+                    if (outputBuffer != null && bufferInfo.size > 0) {
+                        val chunk = ByteArray(bufferInfo.size)
+                        outputBuffer.position(bufferInfo.offset)
+                        outputBuffer.get(chunk)
+                        fos.write(chunk)
+                    }
+                    decoder.releaseOutputBuffer(outputIndex, false)
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        sawOutputEOS = true
+                    }
+                }
+            }
+
+            fos.flush()
+            fos.close()
+            fos = null
+
+            writeWavFile(tempPcmFile, outputFile, sampleRate, channelCount, 16)
+            tempPcmFile.delete()
+
+            if (outputFile.exists() && outputFile.length() > 44) {
+                return outputFile.absolutePath
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("MainActivity", "WMA transcoding: ${e.message}")
+        } finally {
+            try { fos?.close() } catch (_: Throwable) {}
+            try { tempPcmFile.delete() } catch (_: Throwable) {}
+            try { decoder?.stop(); decoder?.release() } catch (_: Throwable) {}
+            try { extractor?.release() } catch (_: Throwable) {}
+        }
+        return null
+    }
+
+    private fun writeWavFile(pcmFile: File, wavFile: File, sampleRate: Int, channels: Int, bitDepth: Int) {
+        val pcmLength = pcmFile.length()
+        val totalDataLen = pcmLength + 36
+        val byteRate = (sampleRate * channels * bitDepth / 8).toLong()
+        val blockAlign = channels * bitDepth / 8
+
+        val header = ByteArray(44)
+        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+        header[4] = (totalDataLen and 0xff).toByte()
+        header[5] = ((totalDataLen shr 8) and 0xff).toByte()
+        header[6] = ((totalDataLen shr 16) and 0xff).toByte()
+        header[7] = ((totalDataLen shr 24) and 0xff).toByte()
+        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0
+        header[20] = 1; header[21] = 0
+        header[22] = channels.toByte(); header[23] = 0
+        header[24] = (sampleRate and 0xff).toByte()
+        header[25] = ((sampleRate shr 8) and 0xff).toByte()
+        header[26] = ((sampleRate shr 16) and 0xff).toByte()
+        header[27] = ((sampleRate shr 24) and 0xff).toByte()
+        header[28] = (byteRate and 0xff).toByte()
+        header[29] = ((byteRate shr 8) and 0xff).toByte()
+        header[30] = ((byteRate shr 16) and 0xff).toByte()
+        header[31] = ((byteRate shr 24) and 0xff).toByte()
+        header[32] = blockAlign.toByte(); header[33] = 0
+        header[34] = bitDepth.toByte(); header[35] = 0
+        header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+        header[40] = (pcmLength and 0xff).toByte()
+        header[41] = ((pcmLength shr 8) and 0xff).toByte()
+        header[42] = ((pcmLength shr 16) and 0xff).toByte()
+        header[43] = ((pcmLength shr 24) and 0xff).toByte()
+
+        FileOutputStream(wavFile).use { out ->
+            out.write(header)
+            FileInputStream(pcmFile).use { inStream ->
+                inStream.copyTo(out)
+            }
         }
     }
 

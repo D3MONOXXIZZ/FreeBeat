@@ -259,6 +259,8 @@ class CloudAudioCacheService extends ChangeNotifier {
   }
 
   String _getExtensionForTrack(Track track) {
+    final rawExt = p.extension(track.streamUrl).toLowerCase().replaceFirst('.', '');
+    if (rawExt.isNotEmpty) return rawExt;
     final c = track.codec.toLowerCase();
     if (c == 'flac') return 'flac';
     if (c == 'mp3') return 'mp3';
@@ -266,6 +268,10 @@ class CloudAudioCacheService extends ChangeNotifier {
     if (c == 'wav') return 'wav';
     if (c == 'ogg') return 'ogg';
     if (c == 'opus') return 'opus';
-    return 'flac';
+    if (c == 'wma' || c == 'asf') return 'wma';
+    if (c == 'aiff' || c == 'aif') return 'aiff';
+    if (c == 'ape') return 'ape';
+    if (c == 'dsd' || c == 'dsf' || c == 'dff') return 'dsf';
+    return 'mp3';
   }
 }

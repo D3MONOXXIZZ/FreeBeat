@@ -110,7 +110,7 @@ class GoogleDriveConnector implements CloudProviderConnector {
     if (token.isEmpty) return [];
     try {
       final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
-        'q': "(mimeType contains 'audio/' or name contains '.mp3' or name contains '.flac' or name contains '.m4a' or name contains '.wav' or name contains '.ogg' or name contains '.opus' or name contains '.aac') and trashed = false",
+        'q': "(mimeType contains 'audio/' or name contains '.mp3' or name contains '.flac' or name contains '.m4a' or name contains '.wav' or name contains '.ogg' or name contains '.opus' or name contains '.aac' or name contains '.wma' or name contains '.asf' or name contains '.alac' or name contains '.aiff' or name contains '.ape' or name contains '.dsf') and trashed = false",
         'fields': 'files(id,name,mimeType,size)',
         'pageSize': '500',
       });
@@ -318,7 +318,7 @@ class DropboxConnector implements CloudProviderConnector {
       for (final raw in entries) {
         final e = raw as Map<String, dynamic>;
         final name = e['name'] as String? ?? '';
-        if (!RegExp(r'\.(flac|mp3|m4a|wav|ogg|opus)$', caseSensitive: false)
+        if (!RegExp(r'\.(flac|mp3|m4a|wav|ogg|opus|aac|alac|aiff|aif|wma|asf|ape|dsd|dsf|dff|mka)$', caseSensitive: false)
             .hasMatch(name)) {
           continue;
         }

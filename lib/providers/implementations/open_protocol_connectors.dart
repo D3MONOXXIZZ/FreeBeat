@@ -53,7 +53,7 @@ class WebDavConnector implements CloudProviderConnector {
       final hrefElem = resp.findElements('href', namespace: '*').firstOrNull;
       if (hrefElem == null) continue;
       final href = Uri.decodeFull(hrefElem.innerText.trim());
-      if (!RegExp(r'\.(flac|mp3|m4a|wav|ogg|opus)$', caseSensitive: false)
+      if (!RegExp(r'\.(flac|mp3|m4a|wav|ogg|opus|aac|alac|aiff|aif|wma|asf|ape|dsd|dsf|dff|mka)$', caseSensitive: false)
           .hasMatch(href)) {
         continue;
       }

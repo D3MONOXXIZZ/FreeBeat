@@ -66,7 +66,7 @@ void main() {
     });
 
     test('NativeCloudAuthService supports comprehensive hi-fi audio extensions for SAF picker', () {
-      expect(NativeCloudAuthService.supportedAudioExtensions, containsAll(['mp3', 'flac', 'm4a', 'wav', 'aac', 'ogg', 'opus', 'alac']));
+      expect(NativeCloudAuthService.supportedAudioExtensions, containsAll(['mp3', 'flac', 'm4a', 'wav', 'aac', 'ogg', 'opus', 'alac', 'wma', 'aiff', 'ape', 'dsf']));
     });
 
     test('GoogleDriveConnector scans audio files with query filtering', () async {

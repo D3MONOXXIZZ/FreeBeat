@@ -70,9 +70,14 @@ class NativeCloudAuthService {
     'opus',
     'alac',
     'aiff',
-    'dsd',
-    'dff',
+    'aif',
     'wma',
+    'asf',
+    'ape',
+    'dsd',
+    'dsf',
+    'dff',
+    'mka',
   ];
 
   /// 1-Tap Google Drive Native Sign-In using the Android Google Account chooser modal.
@@ -295,9 +300,14 @@ class NativeCloudAuthService {
         '.opus',
         '.alac',
         '.aiff',
+        '.aif',
         '.wma',
+        '.asf',
+        '.ape',
         '.dsd',
+        '.dsf',
         '.dff',
+        '.mka',
       };
 
       onProgress?.call(0, totalFiles, null);
@@ -502,9 +512,14 @@ class NativeCloudAuthService {
         '.opus',
         '.alac',
         '.aiff',
+        '.aif',
         '.wma',
+        '.asf',
+        '.ape',
         '.dsd',
+        '.dsf',
         '.dff',
+        '.mka',
       };
 
       final entities = dir.listSync(recursive: true, followLinks: false);

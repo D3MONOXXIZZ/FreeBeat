@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import '../../core/models/audio_quality_settings.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -56,6 +57,54 @@ class CloudStreamProxy {
     }
   }
 
+  String _resolveTrackExtension(Track track) {
+    final rawExt = p.extension(track.streamUrl).toLowerCase();
+    if (rawExt.isNotEmpty && rawExt.startsWith('.')) return rawExt;
+    final c = track.codec.toLowerCase();
+    if (c == 'm4a' || c == 'aac' || c == 'alac') return '.m4a';
+    if (c == 'wma' || c == 'asf') return '.wma';
+    if (c == 'flac') return '.flac';
+    if (c == 'wav') return '.wav';
+    if (c == 'ogg') return '.ogg';
+    if (c == 'opus') return '.opus';
+    if (c == 'aiff' || c == 'aif') return '.aiff';
+    if (c == 'ape') return '.ape';
+    if (c == 'dsd' || c == 'dsf' || c == 'dff') return '.dsf';
+    return '.mp3';
+  }
+
+  String _getMimeTypeForTrack(Track track) {
+    final ext = _resolveTrackExtension(track);
+    switch (ext) {
+      case '.m4a':
+      case '.mp4':
+        return 'audio/mp4';
+      case '.aac':
+        return 'audio/aac';
+      case '.wma':
+      case '.asf':
+        return 'audio/x-ms-wma';
+      case '.flac':
+        return 'audio/flac';
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.wav':
+        return 'audio/wav';
+      case '.ogg':
+      case '.oga':
+        return 'audio/ogg';
+      case '.opus':
+        return 'audio/opus';
+      case '.aiff':
+      case '.aif':
+        return 'audio/x-aiff';
+      case '.ape':
+        return 'audio/x-ape';
+      default:
+        return 'audio/mpeg';
+    }
+  }
+
   /// Returns the loopback proxy URL for [track] at [tier], or direct URL if proxy isn't active.
   String buildPlaybackUrl(Track track, AudioQualityTier tier) {
     if (track.localCachePath != null &&
@@ -69,7 +118,8 @@ class CloudStreamProxy {
       return track.streamUrl;
     }
     if (_port <= 0) return track.streamUrl;
-    return 'http://127.0.0.1:$_port/stream/${Uri.encodeComponent(track.id)}?tier=${tier.id}';
+    final ext = _resolveTrackExtension(track);
+    return 'http://127.0.0.1:$_port/stream/${Uri.encodeComponent(track.id)}/stream$ext?tier=${tier.id}';
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
@@ -128,14 +178,23 @@ class CloudStreamProxy {
       request.response.statusCode = upstreamResp.statusCode;
       request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
 
+      String? upstreamContentType;
       upstreamResp.headers.forEach((key, value) {
         final lower = key.toLowerCase();
-        if (lower == 'content-type' ||
-            lower == 'content-length' ||
-            lower == 'content-range') {
+        if (lower == 'content-length' || lower == 'content-range') {
           request.response.headers.set(key, value);
+        } else if (lower == 'content-type') {
+          upstreamContentType = value;
         }
       });
+
+      // Ensure a valid, precise audio MIME type so ExoPlayer chooses the correct extractor
+      final resolvedMime = (upstreamContentType != null &&
+              upstreamContentType!.startsWith('audio/') &&
+              !upstreamContentType!.contains('octet-stream'))
+          ? upstreamContentType!
+          : _getMimeTypeForTrack(track);
+      request.response.headers.set(HttpHeaders.contentTypeHeader, resolvedMime);
 
       request.response.bufferOutput = false;
       await request.response.addStream(upstreamResp.stream);

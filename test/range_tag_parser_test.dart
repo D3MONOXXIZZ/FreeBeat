@@ -126,6 +126,98 @@ void main() {
       expect(parsed.bitDepth, 24);
       expect(parsed.sampleRateHz, 96000);
     });
+
+    test('Parses filename fallback accurately for WMA, M4A, ALAC, WAV, OGG, OPUS, AIFF, APE, DSD', () {
+      final wma = RangeTagParser.parseFromFilename('01 - Enya - Only Time.wma');
+      expect(wma.title, 'Only Time');
+      expect(wma.artist, 'Enya');
+      expect(wma.codec, 'WMA');
+      expect(wma.sampleRateHz, 44100);
+
+      final m4a = RangeTagParser.parseFromFilename('Daft Punk - Get Lucky.m4a');
+      expect(m4a.title, 'Get Lucky');
+      expect(m4a.artist, 'Daft Punk');
+      expect(m4a.codec, 'M4A');
+
+      final alac = RangeTagParser.parseFromFilename('Pink Floyd - Time.alac');
+      expect(alac.title, 'Time');
+      expect(alac.artist, 'Pink Floyd');
+      expect(alac.codec, 'ALAC');
+      expect(alac.bitDepth, 24);
+
+      final wav = RangeTagParser.parseFromFilename('Hans Zimmer - Time.wav');
+      expect(wav.title, 'Time');
+      expect(wav.artist, 'Hans Zimmer');
+      expect(wav.codec, 'WAV');
+      expect(wav.bitDepth, 24);
+
+      final ogg = RangeTagParser.parseFromFilename('Radiohead - Idioteque.ogg');
+      expect(ogg.codec, 'OGG');
+
+      final opus = RangeTagParser.parseFromFilename('Aphex Twin - Avril 14th.opus');
+      expect(opus.codec, 'OPUS');
+      expect(opus.sampleRateHz, 48000);
+
+      final aiff = RangeTagParser.parseFromFilename('Miles Davis - So What.aiff');
+      expect(aiff.codec, 'AIFF');
+      expect(aiff.bitDepth, 24);
+
+      final ape = RangeTagParser.parseFromFilename('Queen - Bohemian Rhapsody.ape');
+      expect(ape.codec, 'APE');
+
+      final dsd = RangeTagParser.parseFromFilename('Michael Jackson - Thriller.dsf');
+      expect(dsd.codec, 'DSF');
+      expect(dsd.bitDepth, 1);
+      expect(dsd.sampleRateHz, 2822400);
+    });
+
+    test('Parses M4A / MP4 ftyp atom metadata correctly', () {
+      // Create minimal M4A header with ftyp atom and M4A marker
+      final m4aBytes = <int>[
+        0x00, 0x00, 0x00, 0x20, // atom size: 32
+        0x66, 0x74, 0x79, 0x70, // 'ftyp'
+        0x4D, 0x34, 0x41, 0x20, // 'M4A '
+        0x00, 0x00, 0x00, 0x00, // minor_version
+        0x4D, 0x34, 0x41, 0x20, // compatible_brands: 'M4A '
+        0x6D, 0x70, 0x34, 0x32, // 'mp42'
+        0x69, 0x73, 0x6F, 0x6D, // 'isom'
+        0x00, 0x00, 0x00, 0x00,
+      ];
+      final meta = RangeTagParser.parseHeaderBytes(Uint8List.fromList(m4aBytes));
+      expect(meta.codec, 'AAC');
+    });
+
+    test('Parses ASF / WMA header GUID correctly', () {
+      // 16-byte ASF Header Object GUID: 30 26 B2 75 8E 66 CF 11 A6 D9 00 AA 00 62 CE 6C
+      final asfBytes = <int>[
+        0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+        0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
+        0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      ];
+      final meta = RangeTagParser.parseHeaderBytes(Uint8List.fromList(asfBytes));
+      expect(meta.codec, 'WMA');
+    });
+
+    test('Parses WAV RIFF header correctly', () {
+      // Minimal RIFF WAVE fmt chunk
+      final wavBytes = <int>[
+        0x52, 0x49, 0x46, 0x46, // 'RIFF'
+        0x24, 0x00, 0x00, 0x00, // file size - 8
+        0x57, 0x41, 0x56, 0x45, // 'WAVE'
+        0x66, 0x6D, 0x74, 0x20, // 'fmt '
+        0x10, 0x00, 0x00, 0x00, // chunk size: 16
+        0x01, 0x00,             // audio format: 1 (PCM)
+        0x02, 0x00,             // num channels: 2
+        0x44, 0xAC, 0x00, 0x00, // sample rate: 44100
+        0x10, 0xB1, 0x02, 0x00, // byte rate: 176400
+        0x04, 0x00,             // block align: 4
+        0x10, 0x00,             // bits per sample: 16
+      ];
+      final meta = RangeTagParser.parseHeaderBytes(Uint8List.fromList(wavBytes));
+      expect(meta.codec, 'WAV');
+      expect(meta.sampleRateHz, 44100);
+      expect(meta.bitDepth, 16);
+    });
   });
 
   group('S3 SigV4, WebDAV PROPFIND & Synced LRC Lyrics', () {
