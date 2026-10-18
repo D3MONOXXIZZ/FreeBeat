@@ -795,8 +795,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
 
   void _showGoogleDriveConnectSheet({String? initialError}) {
     final cs = Theme.of(context).colorScheme;
-    final emailController =
-        TextEditingController(text: 'freebeat.music@gmail.com');
+    final emailController = TextEditingController();
 
     showModalBottomSheet<void>(
       context: context,
@@ -845,7 +844,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Stream or synchronize your music collection directly from Google Drive cloud storage.',
+                  'Connects via Android\'s native Google Drive integration. You can import audio files and stream directly from your Google Drive using your phone\'s signed-in account.',
                   style: TextStyle(
                       fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
                 ),
@@ -878,8 +877,8 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    labelText: 'Google Account Email',
-                    hintText: 'user@gmail.com',
+                    labelText: 'Account Label / Email (Optional)',
+                    hintText: 'e.g. user@gmail.com or leave blank',
                     prefixIcon:
                         const Icon(Icons.alternate_email_rounded, size: 20),
                     border: OutlineInputBorder(
@@ -894,19 +893,22 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: () async {
-                      final email = emailController.text.trim().isEmpty
-                          ? 'freebeat.music@gmail.com'
-                          : emailController.text.trim();
+                      final input = emailController.text.trim();
+                      final isCustom = input.isNotEmpty;
+                      final label = isCustom ? input : 'Google Drive';
                       final authService =
                           ref.read(nativeCloudAuthServiceProvider);
                       final authResult =
-                          authService.createGoogleDriveAccount(email: email);
+                          authService.createGoogleDriveAccount(
+                        email: isCustom ? input : 'Google Drive',
+                        displayName: 'Google Drive',
+                      );
                       if (authResult.account != null) {
                         await ref
                             .read(cloudAccountsProvider.notifier)
                             .addAccount(
                           authResult.account!,
-                          {'email': email, 'provider': 'googleDrive'},
+                          {'email': label, 'provider': 'googleDrive'},
                         );
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
@@ -918,7 +920,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                  'Google Drive ($email) connected successfully!'),
+                                  '$label connected successfully!'),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -927,7 +929,7 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                     },
                     icon: const Icon(Icons.cloud_done_rounded, size: 20),
                     label: const Text(
-                      'Connect Google Drive Account',
+                      'Connect Google Drive',
                       style:
                           TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                     ),
