@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
+import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/generative_playlist_cover.dart';
@@ -46,6 +47,165 @@ class _PlaylistDetailsScreenState
     final minutes = totalSeconds ~/ 60;
     final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  Widget _buildDownloadRow(
+    BuildContext context,
+    ColorScheme cs,
+    List<Track> playlistTracks,
+  ) {
+    if (playlistTracks.isEmpty) return const SizedBox.shrink();
+
+    final queueMgr = ref.watch(downloadQueueManagerProvider);
+    final pinnedCount = playlistTracks.where((t) => t.isPinnedOffline).length;
+    final allPinned = pinnedCount == playlistTracks.length;
+    final anyInQueue = playlistTracks.any((t) =>
+        queueMgr.queue.any((q) =>
+            q.track.id == t.id &&
+            (q.status == DownloadStatus.downloading ||
+                q.status == DownloadStatus.queued)));
+
+    if (allPinned) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: OutlinedButton.icon(
+          onPressed: () {
+            PixelHaptics.tick();
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: cs.surfaceContainerHigh,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                title: const Text('Remove Downloads',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                content: Text(
+                  'Remove all ${playlistTracks.length} offline tracks in "${widget.playlist.title}" from device storage? The songs will remain in your library.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Keep'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ref
+                          .read(tracksCatalogProvider.notifier)
+                          .unpinTracksOffline(
+                            playlistTracks.map((t) => t.id).toList(),
+                          );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Removed offline tracks.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+            );
+          },
+          icon: Icon(Icons.download_done_rounded, color: cs.primary, size: 18),
+          label: Text(
+            'Downloaded Offline (${playlistTracks.length})',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: cs.primary,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+            side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (anyInQueue) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Downloading ($pinnedCount / ${playlistTracks.length})...',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: cs.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.cancel_rounded, size: 18),
+                onPressed: () {
+                  PixelHaptics.tick();
+                  for (final t in playlistTracks) {
+                    queueMgr.cancel(t.id);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton.icon(
+        onPressed: () {
+          PixelHaptics.hifiConfirm();
+          ref
+              .read(tracksCatalogProvider.notifier)
+              .pinTracksOffline(playlistTracks.map((t) => t.id).toList());
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Downloading ${playlistTracks.length} tracks from "${widget.playlist.title}"...',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+        icon: const Icon(Icons.download_for_offline_outlined, size: 18),
+        label: Text(
+          'Download Playlist (${playlistTracks.length} tracks)',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+    );
   }
 
   void _showRenameDialog(Playlist current) {
@@ -488,6 +648,7 @@ class _PlaylistDetailsScreenState
                       ),
                     ],
                   ),
+                  _buildDownloadRow(context, cs, playlistTracks),
                 ],
               ),
             ),

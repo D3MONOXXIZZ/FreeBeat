@@ -174,6 +174,12 @@ void main() {
     testWidgets(
       'Swipe gestures in PlaylistDetailsScreen: right adds to queue and left deletes',
       (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+        });
+
         final playlist = Playlist(
           id: 'test_pl_1',
           title: 'Rock Classics',
@@ -218,7 +224,7 @@ void main() {
         expect(find.text('Comfortably Numb'), findsOneWidget);
 
         // Swipe left on track 2 to remove from playlist
-        await tester.drag(find.text('Wish You Were Here'), const Offset(-450, 0));
+        await tester.drag(find.text('Wish You Were Here'), const Offset(-600, 0));
         await tester.pumpAndSettle();
 
         // Track 2 should be dismissed/removed from playlist

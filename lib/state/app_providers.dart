@@ -20,6 +20,7 @@ import '../services/audio/cloud_audio_cache_service.dart';
 import '../services/audio/cloud_stream_proxy.dart';
 import '../services/audio/poweramp_dsp_service.dart';
 import '../services/auth/native_cloud_auth_service.dart';
+import '../services/audio/download_queue_manager.dart';
 import '../services/audio/universal_audio_transcoder_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
@@ -79,6 +80,25 @@ final cloudAudioCacheServiceProvider =
   return CloudAudioCacheService(
     credentialStore: ref.watch(credentialStoreProvider),
   );
+});
+
+final downloadQueueManagerProvider =
+    ChangeNotifierProvider<DownloadQueueManager>((ref) {
+  final cacheSvc = ref.watch(cloudAudioCacheServiceProvider);
+  final db = ref.watch(libraryDatabaseProvider);
+  return DownloadQueueManager(
+    cacheService: cacheSvc,
+    database: db,
+    onTrackPinned: (updated) {
+      ref.read(tracksCatalogProvider.notifier).updateTrack(updated);
+    },
+  );
+});
+
+final storageUsageFutureProvider = FutureProvider<StorageUsageInfo>((ref) async {
+  final cacheSvc = ref.watch(cloudAudioCacheServiceProvider);
+  final tracks = ref.watch(tracksCatalogProvider);
+  return cacheSvc.getStorageUsage(tracks);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,13 +384,60 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
     if (_ref != null && target != null) {
       _ref.read(playbackProvider.notifier).updateCurrentTrack(target!);
+      final queueMgr = _ref.read(downloadQueueManagerProvider);
       final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
       if (target!.isPinnedOffline) {
-        unawaited(cacheSvc.cacheTrack(target!, onComplete: (cachedTrack) {
-          updateTrack(cachedTrack);
-        }));
+        queueMgr.enqueue(target!);
       } else {
+        queueMgr.cancel(target!.id);
         await cacheSvc.removeCachedTrack(target!);
+      }
+    }
+  }
+
+  Future<void> pinTracksOffline(List<String> trackIds) async {
+    await PixelHaptics.hifiConfirm();
+    final updated = <Track>[];
+    state = state.map((t) {
+      if (trackIds.contains(t.id)) {
+        final u = t.copyWith(isPinnedOffline: true);
+        updated.add(u);
+        return u;
+      }
+      return t;
+    }).toList();
+
+    if (_db != null && updated.isNotEmpty) {
+      _db.upsertTracks(updated);
+    }
+
+    if (_ref != null && updated.isNotEmpty) {
+      _ref.read(downloadQueueManagerProvider).enqueueAll(updated);
+    }
+  }
+
+  Future<void> unpinTracksOffline(List<String> trackIds) async {
+    await PixelHaptics.tick();
+    final updated = <Track>[];
+    state = state.map((t) {
+      if (trackIds.contains(t.id)) {
+        final u = t.copyWith(isPinnedOffline: false);
+        updated.add(u);
+        return u;
+      }
+      return t;
+    }).toList();
+
+    if (_db != null && updated.isNotEmpty) {
+      _db.upsertTracks(updated);
+    }
+
+    if (_ref != null) {
+      final queueMgr = _ref.read(downloadQueueManagerProvider);
+      final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+      for (final t in updated) {
+        queueMgr.cancel(t.id);
+        unawaited(cacheSvc.removeCachedTrack(t));
       }
     }
   }

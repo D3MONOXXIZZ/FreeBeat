@@ -325,6 +325,13 @@ class MainActivity : FlutterActivity() {
                         requestNotificationPermissionIfNeeded()
                         result.success(true)
                     }
+                    "isWifiConnected" -> {
+                        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                        val activeNetwork = cm?.activeNetwork
+                        val caps = cm?.getNetworkCapabilities(activeNetwork)
+                        val isWifi = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ?: true
+                        result.success(isWifi)
+                    }
                     "transcodeAudioIfNeeded" -> {
                         val path = call.argument<String>("path")
                         if (path.isNullOrEmpty()) {

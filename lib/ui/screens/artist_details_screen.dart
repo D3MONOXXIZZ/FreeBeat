@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
+import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
@@ -189,6 +190,7 @@ class ArtistDetailsScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  _buildArtistDownloadRow(context, ref, cs, artistTracks),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -254,6 +256,15 @@ class ArtistDetailsScreen extends ConsumerWidget {
                         ref
                             .read(playbackProvider.notifier)
                             .playTrack(firstTrack, newQueue: albumTracks);
+                      },
+                      onLongPress: () {
+                        PixelHaptics.tick();
+                        _showAlbumOptionsModal(
+                          context,
+                          ref,
+                          albumName,
+                          albumTracks,
+                        );
                       },
                       child: SizedBox(
                         width: 116,
@@ -441,6 +452,295 @@ class ArtistDetailsScreen extends ConsumerWidget {
 
           const SliverToBoxAdapter(child: SizedBox(height: 60)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildArtistDownloadRow(
+    BuildContext context,
+    WidgetRef ref,
+    ColorScheme cs,
+    List<Track> artistTracks,
+  ) {
+    if (artistTracks.isEmpty) return const SizedBox.shrink();
+
+    final queueMgr = ref.watch(downloadQueueManagerProvider);
+    final pinnedCount = artistTracks.where((t) => t.isPinnedOffline).length;
+    final allPinned = pinnedCount == artistTracks.length;
+    final anyInQueue = artistTracks.any((t) =>
+        queueMgr.queue.any((q) =>
+            q.track.id == t.id &&
+            (q.status == DownloadStatus.downloading ||
+                q.status == DownloadStatus.queued)));
+
+    if (allPinned) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: OutlinedButton.icon(
+          onPressed: () {
+            PixelHaptics.tick();
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: cs.surfaceContainerHigh,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                title: const Text('Remove Downloads',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                content: Text(
+                  'Remove all ${artistTracks.length} offline tracks by "$artistName" from device storage? The songs will remain in your library.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Keep'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ref
+                          .read(tracksCatalogProvider.notifier)
+                          .unpinTracksOffline(
+                            artistTracks.map((t) => t.id).toList(),
+                          );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Removed offline tracks.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+            );
+          },
+          icon: Icon(Icons.download_done_rounded, color: cs.primary, size: 18),
+          label: Text(
+            'Downloaded Offline (${artistTracks.length})',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: cs.primary,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+            side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (anyInQueue) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Downloading ($pinnedCount / ${artistTracks.length})...',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: cs.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.cancel_rounded, size: 18),
+                onPressed: () {
+                  PixelHaptics.tick();
+                  for (final t in artistTracks) {
+                    queueMgr.cancel(t.id);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton.icon(
+        onPressed: () {
+          PixelHaptics.hifiConfirm();
+          ref
+              .read(tracksCatalogProvider.notifier)
+              .pinTracksOffline(artistTracks.map((t) => t.id).toList());
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Downloading ${artistTracks.length} tracks by "$artistName"...',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        },
+        icon: const Icon(Icons.download_for_offline_outlined, size: 18),
+        label: Text(
+          'Download Artist (${artistTracks.length} songs)',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAlbumOptionsModal(
+    BuildContext context,
+    WidgetRef ref,
+    String albumName,
+    List<Track> albumTracks,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final allPinned = albumTracks.every((t) => t.isPinnedOffline);
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: cs.surfaceContainerHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                albumName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                '${albumTracks.length} songs by $artistName',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.play_arrow_rounded),
+                title: const Text('Play Album',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  PixelHaptics.playPauseToggle();
+                  ref
+                      .read(playbackProvider.notifier)
+                      .playTrack(albumTracks.first, newQueue: albumTracks);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.shuffle_rounded),
+                title: const Text('Shuffle Album',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  PixelHaptics.tick();
+                  final shuffled = List<Track>.from(albumTracks)..shuffle();
+                  ref
+                      .read(playbackProvider.notifier)
+                      .playTrack(shuffled.first, newQueue: shuffled);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  allPinned
+                      ? Icons.download_done_rounded
+                      : Icons.download_for_offline_outlined,
+                  color: allPinned ? cs.primary : null,
+                ),
+                title: Text(
+                  allPinned
+                      ? 'Remove Album Downloads'
+                      : 'Download Album Offline',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: allPinned ? cs.primary : null,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (allPinned) {
+                    PixelHaptics.tick();
+                    ref
+                        .read(tracksCatalogProvider.notifier)
+                        .unpinTracksOffline(
+                          albumTracks.map((t) => t.id).toList(),
+                        );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Removed downloads for "$albumName".'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } else {
+                    PixelHaptics.hifiConfirm();
+                    ref
+                        .read(tracksCatalogProvider.notifier)
+                        .pinTracksOffline(
+                          albumTracks.map((t) => t.id).toList(),
+                        );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Downloading "$albumName" (${albumTracks.length} tracks)...',
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

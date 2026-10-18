@@ -392,3 +392,47 @@ FreeBeat implements a dedicated **`PixelHapticsService`** over our native Kotlin
 - **M3 Expressive Spatial & Effects Springs**: Uses damped harmonic spring physics (`SpringDescription(mass: 1.0, stiffness: 380, damping: 28)`) for all layout morphs, card expansions, MiniPlayer-to-NowPlaying sheet transitions, and navigation pill indicator slides.
 - **Continuous ColorScheme Lerping**: When switching tracks, `TweenAnimationBuilder<Color>` / `ColorScheme.lerp` smoothly transitions background surfaces, the Squiggly Seekbar, and the Poweramp EQ spline curve over `650ms` (`Curves.easeOutCubic`).
 - **Interactive Micro-Scale Physics**: All cards, chips, rotary knobs, and transport buttons feature press-scale spring feedback (`0.95x` scale down on pointer-down, spring bounce back on release).
+
+---
+
+## 13. Phase 7: Advanced Offline Sync & Download Manager Architecture
+
+### 13.1 Background Download Queue Manager (`DownloadQueueManager`)
+FreeBeat's background download queue orchestrates offline caching of cloud music files across all connected services (Google Drive, Nextcloud/WebDAV, SMB, SFTP, OneDrive, Dropbox, and Local Storage):
+- **Concurrency Control**: Enforces an optimal worker pool limit of 2 concurrent downloads (`_maxConcurrent = 2`), preventing network congestion, thread starvation, and audio playback stutter.
+- **Wi-Fi-Only Download Policy**: Queries active network capabilities via native Android Kotlin bridge (`isWifiConnected`) inspecting `NetworkCapabilities.TRANSPORT_WIFI`. When enabled, downloads pause if cellular data is active and resume automatically on unmetered Wi-Fi.
+- **Queue Controls**: Full support for `enqueue(track)`, `enqueueAll(tracks)`, `pauseQueue()`, `resumeQueue()`, `cancel(trackId)`, `cancelAll()`, `retry(trackId)`, and `clearCompleted()`.
+- **Disposal & Lifecycle Safeguards**: All async callbacks enforce `_disposed` checks before calling `notifyListeners()`, guaranteeing zero runtime crashes during rapid navigation or state transitions.
+
+### 13.2 Smart Storage & Cache Quota Management with LRU Auto-Purge (`CloudAudioCacheService`)
+- **Storage Breakdown Profiling (`StorageUsageInfo`)**:
+  - **Pinned Offline Downloads**: High-res audio explicitly requested by the user for permanent offline listening.
+  - **Stream Cache**: Audio chunks cached during live playback.
+  - **Transcoded Audio**: Temporary PCM/WAV buffers generated for non-native formats (WMA, ALAC, Opus).
+  - **Device Free Space**: Real-time available system disk storage.
+- **Strict Pinned Offline Protection**:
+  - `isPinnedOffline` tracks in SQLite and local disk storage (`cached_music/`) are strictly protected. Both `clearStreamCache()` and `autoPurgeCacheIfNeeded()` filter by `catalogTracks.where((t) => t.isPinnedOffline)` to ensure user-pinned music is never purged under any circumstances.
+- **Configurable Quota Limits & LRU Auto-Purge**:
+  - User-configurable cache limits: `1 GB`, `2 GB`, `5 GB`, `10 GB`, or `Unlimited`.
+  - When the unpinned stream cache exceeds the quota, `autoPurgeCacheIfNeeded()` executes an LRU (Least Recently Used) cleanup, deleting the oldest unpinned audio files by modification timestamp.
+
+### 13.3 1-Tap Album & Playlist Offline Sync
+- **Playlist Details Screen**:
+  - Prominent M3 button below Play/Shuffle: 1-tap "Download Playlist (N tracks)" enqueues all tracks to `DownloadQueueManager`.
+  - If partially downloaded: displays live "Downloading (X / N)..." badge with progress and quick cancel.
+  - If fully downloaded: displays "Downloaded Offline (N)" badge with option to remove offline storage.
+- **Artist Details Screen & Album Carousels**:
+  - 1-tap "Download Artist (N songs)" button to sync the artist's discography.
+  - Long-press on any album card in the horizontal carousel opens the M3 Album Options sheet with "Download Album Offline" / "Remove Album Downloads".
+
+### 13.4 Dedicated Storage & Downloads UI (`CloudSyncSettingsScreen`)
+- **Visual Segmented Storage Bar**: Proportional color-coded breakdown of Pinned Offline, Stream Cache, Transcoded WAVs, and Free Device Space.
+- **Interactive Policy & Quotas Card**: Quick-toggle for "Download on Wi-Fi Only" and dropdown for Maximum Stream Cache Quota.
+- **Cache Maintenance**: 1-tap "Clear Stream Cache" button showing instant reclaimed storage without affecting pinned music.
+- **Live Active Download Queue**: Displays active progress indicators, percentage downloaded, pause/resume queue toggle, retry failed buttons, and item cancellation.
+
+### 13.5 Quality Verification & Universal Fat Release APK
+- **Static Analysis**: `flutter analyze` completed with 0 errors, 0 warnings across all files.
+- **Test Suite**: 126/126 unit and widget tests passing (100% pass rate).
+- **Universal Release Binary**: Universal fat release APK generated at root `FreeBeat-release.apk` (141.9 MB) bundling all native C++ FFmpeg and audio libraries across all four CPU architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`).
+

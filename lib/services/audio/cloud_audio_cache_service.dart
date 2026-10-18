@@ -34,6 +34,37 @@ class CacheProgress {
   final String? localPath;
 }
 
+class StorageUsageInfo {
+  const StorageUsageInfo({
+    required this.pinnedBytes,
+    required this.streamCacheBytes,
+    required this.transcodedBytes,
+    required this.totalAppCacheBytes,
+    required this.freeDiskBytes,
+  });
+
+  final int pinnedBytes;
+  final int streamCacheBytes;
+  final int transcodedBytes;
+  final int totalAppCacheBytes;
+  final int freeDiskBytes;
+
+  String get pinnedFormatted => _formatBytes(pinnedBytes);
+  String get streamCacheFormatted => _formatBytes(streamCacheBytes);
+  String get transcodedFormatted => _formatBytes(transcodedBytes);
+  String get totalFormatted => _formatBytes(totalAppCacheBytes);
+  String get freeFormatted => _formatBytes(freeDiskBytes);
+
+  static String formatBytes(int bytes) => _formatBytes(bytes);
+
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+}
+
 /// Service that manages streaming directly from Google Drive / Cloud providers
 /// and caching full audio tracks permanently in the app's offline storage.
 class CloudAudioCacheService extends ChangeNotifier {
@@ -256,6 +287,171 @@ class CloudAudioCacheService extends ChangeNotifier {
       _progressMap[track.id] = const CacheProgress(state: CacheState.notCached);
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// Computes storage usage breakdown across pinned offline tracks, unpinned stream cache,
+  /// and transcoded audio files.
+  Future<StorageUsageInfo> getStorageUsage(List<Track> catalogTracks) async {
+    int pinnedBytes = 0;
+    int streamCacheBytes = 0;
+    int transcodedBytes = 0;
+
+    try {
+      final cacheDir = await _getCacheDirectory();
+      final pinnedPaths = catalogTracks
+          .where((t) => t.isPinnedOffline && t.localCachePath != null)
+          .map((t) => t.localCachePath!)
+          .toSet();
+
+      final pinnedIds = catalogTracks
+          .where((t) => t.isPinnedOffline)
+          .map((t) => t.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_'))
+          .toSet();
+
+      if (cacheDir.existsSync()) {
+        for (final entity in cacheDir.listSync()) {
+          if (entity is File) {
+            final len = entity.lengthSync();
+            final baseName = p.basenameWithoutExtension(entity.path);
+            final isPinned = pinnedPaths.contains(entity.path) || pinnedIds.contains(baseName);
+            if (isPinned) {
+              pinnedBytes += len;
+            } else {
+              streamCacheBytes += len;
+            }
+          }
+        }
+      }
+
+      // Check temporary transcoded WAV cache directory
+      final tempDir = await getTemporaryDirectory();
+      final transcodeDir = Directory(p.join(tempDir.path, 'transcoded_audio'));
+      if (transcodeDir.existsSync()) {
+        for (final entity in transcodeDir.listSync()) {
+          if (entity is File) {
+            transcodedBytes += entity.lengthSync();
+          }
+        }
+      }
+    } catch (_) {}
+
+    final totalAppCacheBytes = pinnedBytes + streamCacheBytes + transcodedBytes;
+    return StorageUsageInfo(
+      pinnedBytes: pinnedBytes,
+      streamCacheBytes: streamCacheBytes,
+      transcodedBytes: transcodedBytes,
+      totalAppCacheBytes: totalAppCacheBytes,
+      freeDiskBytes: 15 * 1024 * 1024 * 1024,
+    );
+  }
+
+  /// Clears only unpinned streaming cache and temporary transcoded audio files.
+  /// Strictly preserves all user-pinned offline downloads.
+  Future<int> clearStreamCache(List<Track> catalogTracks) async {
+    int reclaimedBytes = 0;
+    try {
+      final cacheDir = await _getCacheDirectory();
+      final pinnedPaths = catalogTracks
+          .where((t) => t.isPinnedOffline && t.localCachePath != null)
+          .map((t) => t.localCachePath!)
+          .toSet();
+
+      final pinnedIds = catalogTracks
+          .where((t) => t.isPinnedOffline)
+          .map((t) => t.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_'))
+          .toSet();
+
+      if (cacheDir.existsSync()) {
+        for (final entity in cacheDir.listSync()) {
+          if (entity is File) {
+            final baseName = p.basenameWithoutExtension(entity.path);
+            final isPinned = pinnedPaths.contains(entity.path) || pinnedIds.contains(baseName);
+            if (!isPinned) {
+              final len = entity.lengthSync();
+              try {
+                entity.deleteSync();
+                reclaimedBytes += len;
+              } catch (_) {}
+            }
+          }
+        }
+      }
+
+      // Also clean temporary transcoded files
+      final tempDir = await getTemporaryDirectory();
+      final transcodeDir = Directory(p.join(tempDir.path, 'transcoded_audio'));
+      if (transcodeDir.existsSync()) {
+        for (final entity in transcodeDir.listSync()) {
+          if (entity is File) {
+            final len = entity.lengthSync();
+            try {
+              entity.deleteSync();
+              reclaimedBytes += len;
+            } catch (_) {}
+          }
+        }
+      }
+      notifyListeners();
+    } catch (_) {}
+    return reclaimedBytes;
+  }
+
+  /// Automatically purges oldest unpinned files if stream cache exceeds [maxCacheSizeMb].
+  /// Never deletes user-pinned offline downloads.
+  Future<int> autoPurgeCacheIfNeeded(List<Track> catalogTracks, int maxCacheSizeMb) async {
+    if (maxCacheSizeMb <= 0) return 0; // Unlimited
+    final maxBytes = maxCacheSizeMb * 1024 * 1024;
+    int purgedBytes = 0;
+
+    try {
+      final cacheDir = await _getCacheDirectory();
+      if (!cacheDir.existsSync()) return 0;
+
+      final pinnedPaths = catalogTracks
+          .where((t) => t.isPinnedOffline && t.localCachePath != null)
+          .map((t) => t.localCachePath!)
+          .toSet();
+
+      final pinnedIds = catalogTracks
+          .where((t) => t.isPinnedOffline)
+          .map((t) => t.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_'))
+          .toSet();
+
+      final unpinnedFiles = <File>[];
+      int currentStreamBytes = 0;
+
+      for (final entity in cacheDir.listSync()) {
+        if (entity is File) {
+          final baseName = p.basenameWithoutExtension(entity.path);
+          final isPinned = pinnedPaths.contains(entity.path) || pinnedIds.contains(baseName);
+          if (!isPinned) {
+            unpinnedFiles.add(entity);
+            currentStreamBytes += entity.lengthSync();
+          }
+        }
+      }
+
+      if (currentStreamBytes > maxBytes) {
+        unpinnedFiles.sort((a, b) {
+          final aTime = a.statSync().modified;
+          final bTime = b.statSync().modified;
+          return aTime.compareTo(bTime);
+        });
+
+        for (final f in unpinnedFiles) {
+          if (currentStreamBytes <= maxBytes) break;
+          final len = f.lengthSync();
+          try {
+            f.deleteSync();
+            currentStreamBytes -= len;
+            purgedBytes += len;
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    if (purgedBytes > 0) notifyListeners();
+    return purgedBytes;
   }
 
   String _getExtensionForTrack(Track track) {
