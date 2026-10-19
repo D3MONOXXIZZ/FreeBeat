@@ -707,6 +707,44 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                   ),
                 ),
                 InkWell(
+                  onTap: () {
+                    PixelHaptics.tick();
+                    notifier.toggleParametricMode(!dsp.isParametricMode);
+                  },
+                  borderRadius: BorderRadius.circular(100),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
+                    decoration: BoxDecoration(
+                      color: dsp.isParametricMode ? cs.primaryContainer : cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(
+                        color: dsp.isParametricMode ? cs.primary : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          dsp.isParametricMode ? Icons.linear_scale_rounded : Icons.graphic_eq_rounded,
+                          size: 13,
+                          color: dsp.isParametricMode ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          dsp.isParametricMode ? 'Parametric' : 'Graphic',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: dsp.isParametricMode ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                InkWell(
                   onTap: () => _showManualAllBandsSheet(context, dsp, notifier),
                   borderRadius: BorderRadius.circular(100),
                   child: Container(
@@ -792,6 +830,15 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                         dsp.bands[i].gainDb,
                         (val) => notifier.setBandGain(i, val),
                       ),
+                      onTapFrequency: () {
+                        if (dsp.isParametricMode) {
+                          _showBandParametricDialog(context, i, dsp.bands[i], notifier);
+                        } else {
+                          PixelHaptics.tick();
+                          notifier.toggleParametricMode(true);
+                          _showBandParametricDialog(context, i, dsp.bands[i], notifier);
+                        }
+                      },
                       onDoubleTapReset: () {
                         PixelHaptics.centerDetentSnap();
                         notifier.setBandGain(i, 0.0);
@@ -834,20 +881,34 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Rotary Tone & Spatial Stage',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Rotary Tone & Spatial Stage',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          dsp.toneEnabled
+                              ? '${dsp.toneFrequencyHz.toInt()} Hz Cutoff • Active'
+                              : 'Bypassed',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: dsp.toneEnabled ? cs.primary : cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '${dsp.toneFrequencyHz.toInt()} Hz Cutoff',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
+                  Transform.scale(
+                    scale: 0.85,
+                    child: Switch(
+                      value: dsp.toneEnabled,
+                      onChanged: notifier.toggleTone,
                     ),
                   ),
                 ],
@@ -1024,6 +1085,58 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 divisions: 12,
                 onChanged: notifier.setDvcHeadroomDb,
               ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.speed_rounded,
+                          color: dsp.limiterEnabled ? cs.primary : cs.onSurfaceVariant,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Hardware Peak Auto-Limiter',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                dsp.limiterEnabled
+                                    ? 'Zero-clipping brickwall guard (DSP dynamic headroom)'
+                                    : 'Disabled (True audio fidelity / uncompressed)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Transform.scale(
+                    scale: 0.85,
+                    child: Switch(
+                      value: dsp.limiterEnabled,
+                      onChanged: notifier.toggleLimiter,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -1047,13 +1160,38 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Text(
-                      'L/R Balance (${dsp.balance == 0 ? "Center" : dsp.balance.toStringAsFixed(2)})',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'L/R Balance (${dsp.balance == 0 ? "Center" : dsp.balance.toStringAsFixed(2)})',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (dsp.balance.abs() > 0.04) ...[
+                          const SizedBox(width: 6),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () {
+                              PixelHaptics.centerDetentSnap();
+                              notifier.setBalance(0.0);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Text(
+                                'Reset',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1087,12 +1225,36 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 onChanged: notifier.setBalance,
               ),
               const SizedBox(height: 10),
-              Text(
-                'Playback Tempo / Speed (${dsp.tempo.toStringAsFixed(2)}x)',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Playback Tempo / Speed (${dsp.tempo.toStringAsFixed(2)}x)',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if ((dsp.tempo - 1.0).abs() > 0.02)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        PixelHaptics.centerDetentSnap();
+                        notifier.setTempo(1.0);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Text(
+                          'Reset',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               Slider(
                 value: dsp.tempo,
@@ -1100,6 +1262,45 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 max: 2.0,
                 divisions: 30,
                 onChanged: notifier.setTempo,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Pitch Transposition (${dsp.pitchSemitones > 0 ? "+" : ""}${dsp.pitchSemitones.toStringAsFixed(1)} st)',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (dsp.pitchSemitones.abs() > 0.05)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        PixelHaptics.centerDetentSnap();
+                        notifier.setPitchSemitones(0.0);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Text(
+                          'Reset',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Slider(
+                value: dsp.pitchSemitones,
+                min: -12.0,
+                max: 12.0,
+                divisions: 24,
+                onChanged: notifier.setPitchSemitones,
               ),
               const SizedBox(height: 10),
               Text(
@@ -1204,9 +1405,12 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Smart EQ & Audiophile Presets Hub',
-                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                          const Expanded(
+                            child: Text(
+                              'Smart EQ & Audiophile Presets Hub',
+                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           IconButton(
                             icon: const Icon(Icons.close_rounded),
@@ -1529,6 +1733,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
   ) {
     PixelHaptics.sheetExpand();
     final cs = Theme.of(context).colorScheme;
+    final initialGain = currentGainDb;
     final controller = TextEditingController(
       text: currentGainDb.toStringAsFixed(1),
     );
@@ -1552,110 +1757,123 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 ),
               ],
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Enter exact gain in decibels (-15.0 dB to +15.0 dB)',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: cs.primary,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Enter exact gain in decibels (-15.0 dB to +15.0 dB)',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
-                  decoration: InputDecoration(
-                    suffixText: 'dB',
-                    suffixStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.primary),
-                    filled: true,
-                    fillColor: cs.surfaceContainerHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: cs.primary,
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: cs.primary, width: 2),
+                    decoration: InputDecoration(
+                      suffixText: 'dB',
+                      suffixStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.primary),
+                      filled: true,
+                      fillColor: cs.surfaceContainerHigh,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: cs.primary, width: 2),
+                      ),
+                    ),
+                    onChanged: (text) {
+                      final parsed = double.tryParse(text.replaceAll('+', '').trim());
+                      if (parsed != null) {
+                        localVal = parsed.clamp(-15.0, 15.0);
+                        onApplied(localVal);
+                      }
+                    },
+                    onSubmitted: (_) {
+                      final parsed = double.tryParse(controller.text.replaceAll('+', '').trim());
+                      if (parsed != null) {
+                        onApplied(parsed.clamp(-15.0, 15.0));
+                      }
+                      PixelHaptics.tick();
+                      Navigator.of(dlgCtx).pop();
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  // Micro Steppers Row (-1.0, -0.1, 0.0, +0.1, +1.0)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _StepButton(
+                          label: '-1 dB',
+                          onTap: () {
+                            localVal = (localVal - 1.0).clamp(-15.0, 15.0);
+                            controller.text = localVal.toStringAsFixed(1);
+                            onApplied(localVal);
+                            setDlgState(() {});
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _StepButton(
+                          label: '-0.1',
+                          onTap: () {
+                            localVal = (localVal - 0.1).clamp(-15.0, 15.0);
+                            controller.text = localVal.toStringAsFixed(1);
+                            onApplied(localVal);
+                            setDlgState(() {});
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _StepButton(
+                          label: '0.0',
+                          isReset: true,
+                          onTap: () {
+                            localVal = 0.0;
+                            controller.text = '0.0';
+                            onApplied(localVal);
+                            setDlgState(() {});
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _StepButton(
+                          label: '+0.1',
+                          onTap: () {
+                            localVal = (localVal + 0.1).clamp(-15.0, 15.0);
+                            controller.text = localVal.toStringAsFixed(1);
+                            onApplied(localVal);
+                            setDlgState(() {});
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _StepButton(
+                          label: '+1 dB',
+                          onTap: () {
+                            localVal = (localVal + 1.0).clamp(-15.0, 15.0);
+                            controller.text = localVal.toStringAsFixed(1);
+                            onApplied(localVal);
+                            setDlgState(() {});
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  onChanged: (text) {
-                    final parsed = double.tryParse(text.replaceAll('+', '').trim());
-                    if (parsed != null) {
-                      localVal = parsed.clamp(-15.0, 15.0);
-                      onApplied(localVal);
-                    }
-                  },
-                ),
-                const SizedBox(height: 14),
-                // Micro Steppers Row (-1.0, -0.1, 0.0, +0.1, +1.0)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _StepButton(
-                        label: '-1 dB',
-                        onTap: () {
-                          localVal = (localVal - 1.0).clamp(-15.0, 15.0);
-                          controller.text = localVal.toStringAsFixed(1);
-                          onApplied(localVal);
-                          setDlgState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      _StepButton(
-                        label: '-0.1',
-                        onTap: () {
-                          localVal = (localVal - 0.1).clamp(-15.0, 15.0);
-                          controller.text = localVal.toStringAsFixed(1);
-                          onApplied(localVal);
-                          setDlgState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      _StepButton(
-                        label: '0.0',
-                        isReset: true,
-                        onTap: () {
-                          localVal = 0.0;
-                          controller.text = '0.0';
-                          onApplied(localVal);
-                          setDlgState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      _StepButton(
-                        label: '+0.1',
-                        onTap: () {
-                          localVal = (localVal + 0.1).clamp(-15.0, 15.0);
-                          controller.text = localVal.toStringAsFixed(1);
-                          onApplied(localVal);
-                          setDlgState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      _StepButton(
-                        label: '+1 dB',
-                        onTap: () {
-                          localVal = (localVal + 1.0).clamp(-15.0, 15.0);
-                          controller.text = localVal.toStringAsFixed(1);
-                          onApplied(localVal);
-                          setDlgState(() {});
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(dlgCtx).pop(),
+                onPressed: () {
+                  onApplied(initialGain);
+                  Navigator.of(dlgCtx).pop();
+                },
                 child: const Text('Cancel'),
               ),
               FilledButton(
@@ -1676,6 +1894,130 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     );
   }
 
+  void _showBandParametricDialog(
+    BuildContext context,
+    int bandIndex,
+    EqBandConfig band,
+    PowerampDspNotifier notifier,
+  ) {
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+    double currentFreq = band.frequencyHz;
+    double currentQ = band.qFactor;
+    final defaultFreq = kPoweramp10BandFrequencies[bandIndex];
+
+    showDialog<void>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Row(
+              children: [
+                Icon(Icons.tune_rounded, color: cs.primary, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Band ${bandIndex + 1} Parametric Tuning',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Customize center frequency and resonance (Q-factor) for precise filter bandwidth.',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Frequency: ${currentFreq.toStringAsFixed(0)} Hz',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          PixelHaptics.centerDetentSnap();
+                          setDlgState(() => currentFreq = defaultFreq);
+                          notifier.setBandParametric(bandIndex, frequencyHz: defaultFreq);
+                        },
+                        child: const Text('ISO Octave'),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: currentFreq.clamp(20.0, 20000.0),
+                    min: 20.0,
+                    max: 20000.0,
+                    divisions: 100,
+                    onChanged: (val) {
+                      setDlgState(() => currentFreq = val);
+                      notifier.setBandParametric(bandIndex, frequencyHz: val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Q-Factor: ${currentQ.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          PixelHaptics.centerDetentSnap();
+                          setDlgState(() => currentQ = 1.41);
+                          notifier.setBandParametric(bandIndex, qFactor: 1.41);
+                        },
+                        child: const Text('Default 1.41'),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: currentQ.clamp(0.3, 10.0),
+                    min: 0.3,
+                    max: 10.0,
+                    divisions: 97,
+                    onChanged: (val) {
+                      setDlgState(() => currentQ = val);
+                      notifier.setBandParametric(bandIndex, qFactor: val);
+                    },
+                  ),
+                  Center(
+                    child: Text(
+                      currentQ < 1.0
+                          ? 'Wide Filter (Smoother Transitions)'
+                          : currentQ > 3.0
+                              ? 'Narrow Notch (Surgical Cut/Boost)'
+                              : 'Standard Biquad Resonance',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dlgCtx).pop(),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildBandNumberInputRow(
     BuildContext context, {
     required String title,
@@ -1688,78 +2030,94 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     final cs = Theme.of(context).colorScheme;
     final formattedDb = '${currentGainDb >= 0 ? "+" : ""}${currentGainDb.toStringAsFixed(1)}';
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface,
+    return GestureDetector(
+      onDoubleTap: () {
+        PixelHaptics.centerDetentSnap();
+        onReset();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                    ),
                   ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cs.onSurfaceVariant,
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.remove_rounded, size: 18),
-            onPressed: () {
-              PixelHaptics.tick();
-              onChanged((currentGainDb - 0.5).clamp(-15.0, 15.0));
-            },
-          ),
-          InkWell(
-            onTap: () {
-              _showSingleBandNumericDialog(context, title, currentGainDb, onChanged);
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: currentGainDb.abs() > 0.05 ? accentColor : Colors.transparent,
-                  width: 1.5,
-                ),
-              ),
-              child: Text(
-                '$formattedDb dB',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  color: currentGainDb.abs() > 0.05 ? accentColor : cs.onSurface,
-                ),
+                ],
               ),
             ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            onPressed: () {
-              PixelHaptics.tick();
-              onChanged((currentGainDb + 0.5).clamp(-15.0, 15.0));
-            },
-          ),
-        ],
+            if (currentGainDb.abs() > 0.05)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                tooltip: 'Reset to 0.0 dB',
+                onPressed: () {
+                  PixelHaptics.centerDetentSnap();
+                  onReset();
+                },
+              ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.remove_rounded, size: 18),
+              onPressed: () {
+                PixelHaptics.tick();
+                onChanged((currentGainDb - 0.5).clamp(-15.0, 15.0));
+              },
+            ),
+            InkWell(
+              onTap: () {
+                _showSingleBandNumericDialog(context, title, currentGainDb, onChanged);
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: currentGainDb.abs() > 0.05 ? accentColor : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                child: Text(
+                  '$formattedDb dB',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: currentGainDb.abs() > 0.05 ? accentColor : cs.onSurface,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              onPressed: () {
+                PixelHaptics.tick();
+                onChanged((currentGainDb + 0.5).clamp(-15.0, 15.0));
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1967,27 +2325,32 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              DropdownButton<String>(
-                                value: allPresets.any((p) => p.id == currentPresetId)
-                                    ? currentPresetId
-                                    : allPresets.first.id,
-                                underline: const SizedBox.shrink(),
-                                icon: const Icon(Icons.arrow_drop_down_rounded),
-                                items: allPresets.map((p) {
-                                  return DropdownMenuItem<String>(
-                                    value: p.id,
-                                    child: Text(
-                                      p.name,
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    notifier.setDeviceProfile(r['key'] as String, val);
-                                    setTileState(() {});
-                                  }
-                                },
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 135),
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  value: allPresets.any((p) => p.id == currentPresetId)
+                                      ? currentPresetId
+                                      : allPresets.first.id,
+                                  underline: const SizedBox.shrink(),
+                                  icon: const Icon(Icons.arrow_drop_down_rounded),
+                                  items: allPresets.map((p) {
+                                    return DropdownMenuItem<String>(
+                                      value: p.id,
+                                      child: Text(
+                                        p.shortName,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      notifier.setDeviceProfile(r['key'] as String, val);
+                                      setTileState(() {});
+                                    }
+                                  },
+                                ),
                               ),
                             ],
                           ),
@@ -2141,6 +2504,7 @@ class _VerticalEqFaderColumn extends StatelessWidget {
     required this.onChanged,
     required this.onDoubleTapReset,
     this.onTapNumber,
+    this.onTapFrequency,
     this.isPreamp = false,
     this.qFactor,
   });
@@ -2151,6 +2515,7 @@ class _VerticalEqFaderColumn extends StatelessWidget {
   final ValueChanged<double> onChanged;
   final VoidCallback onDoubleTapReset;
   final VoidCallback? onTapNumber;
+  final VoidCallback? onTapFrequency;
   final bool isPreamp;
   final double? qFactor;
 
@@ -2209,22 +2574,43 @@ class _VerticalEqFaderColumn extends StatelessWidget {
                 ),
               ),
             ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: isPreamp ? 11 : 11.5,
-                fontWeight: FontWeight.w800,
-                color: isPreamp ? accentColor : cs.onSurface,
-              ),
-            ),
-            if (qFactor != null)
-              Text(
-                'Q ${qFactor!.toStringAsFixed(1)}',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: cs.onSurfaceVariant,
+            InkWell(
+              onTap: onTapFrequency,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: isPreamp ? 11 : 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: isPreamp ? accentColor : cs.onSurface,
+                      ),
+                    ),
+                    if (qFactor != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Q ${qFactor!.toStringAsFixed(1)}',
+                          style: TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),

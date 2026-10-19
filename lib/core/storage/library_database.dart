@@ -18,7 +18,7 @@ class LibraryDatabase {
     'BLUETOOTH': 'harman_target',
     'USB_DAC': 'flat',
     'WIRED_HEADPHONES': 'hifi_warm_tube',
-    'BUILTIN_SPEAKER': 'vocal_clarity',
+    'BUILTIN_SPEAKER': 'vocal',
   };
 
   bool _initAttempted = false;
@@ -334,7 +334,13 @@ class LibraryDatabase {
     }
     final map = <String, String>{};
     for (final r in rows) {
-      map[r['routeKey'] as String] = r['presetId'] as String;
+      String pid = r['presetId'] as String;
+      if (pid == 'vocal_clarity') pid = 'vocal';
+      if (pid == 'poweramp_bass_treble') pid = 'smart_eq_bass_treble';
+      if (pid == 'concert_hall') pid = 'concert';
+      if (pid == 'rock_metal') pid = 'rock';
+      if (pid == 'bass') pid = 'bass_boost';
+      map[r['routeKey'] as String] = pid;
     }
     return map;
   }

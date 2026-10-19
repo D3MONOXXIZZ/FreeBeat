@@ -44,6 +44,8 @@ class PowerampDspService {
         'bandGainsDb': state.bands.map((b) => b.gainDb).toList(),
         'bandFreqsHz': state.bands.map((b) => b.frequencyHz).toList(),
         'bandQs': state.bands.map((b) => b.qFactor).toList(),
+        'tempo': state.tempo,
+        'pitchSemitones': state.pitchSemitones,
       });
     } catch (_) {
       // Runs cleanly in widget tests or desktop preview without platform channel

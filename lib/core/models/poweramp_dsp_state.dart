@@ -321,7 +321,7 @@ class PowerampDspState {
       'BLUETOOTH': 'harman_target',
       'USB_DAC': 'flat',
       'WIRED_HEADPHONES': 'hifi_warm_tube',
-      'BUILTIN_SPEAKER': 'vocal_clarity',
+      'BUILTIN_SPEAKER': 'vocal',
     },
   });
 
@@ -484,49 +484,65 @@ class PowerampDspState {
     );
   }
 
-  String toJsonString() {
-    return jsonEncode({
-      'eqEnabled': eqEnabled,
-      'toneEnabled': toneEnabled,
-      'limiterEnabled': limiterEnabled,
-      'dvcEnabled': dvcEnabled,
-      'isParametricMode': isParametricMode,
-      'preampDb': preampDb,
-      'bands': bands.map((b) => b.toMap()).toList(),
-      'bassGain': bassGain,
-      'bassFreqHz': bassFreqHz,
-      'trebleGain': trebleGain,
-      'trebleFreqHz': trebleFreqHz,
-      'stereoExpansion': stereoExpansion,
-      'balance': balance,
-      'monoMix': monoMix,
-      'tempo': tempo,
-      'pitchSemitones': pitchSemitones,
-      'reverbPreset': reverbPreset.name,
-      'reverbMix': reverbMix,
-      'activePresetId': activePresetId,
-      'visualizerMode': visualizerMode.name,
-      'bs2bCrossfeedMode': bs2bCrossfeedMode.name,
-      'dvcHeadroomDb': dvcHeadroomDb,
-      'bitPerfectDirectMode': bitPerfectDirectMode,
-      'deviceProfiles': deviceProfiles,
-    });
-  }
+  Map<String, dynamic> toMap() => {
+        'eqEnabled': eqEnabled,
+        'toneEnabled': toneEnabled,
+        'limiterEnabled': limiterEnabled,
+        'dvcEnabled': dvcEnabled,
+        'isParametricMode': isParametricMode,
+        'preampDb': preampDb,
+        'bands': bands.map((b) => b.toMap()).toList(),
+        'bassGain': bassGain,
+        'bassFreqHz': bassFreqHz,
+        'trebleGain': trebleGain,
+        'trebleFreqHz': trebleFreqHz,
+        'stereoExpansion': stereoExpansion,
+        'balance': balance,
+        'monoMix': monoMix,
+        'tempo': tempo,
+        'pitchSemitones': pitchSemitones,
+        'reverbPreset': reverbPreset.name,
+        'reverbMix': reverbMix,
+        'activePresetId': activePresetId,
+        'visualizerMode': visualizerMode.name,
+        'bs2bCrossfeedMode': bs2bCrossfeedMode.name,
+        'dvcHeadroomDb': dvcHeadroomDb,
+        'bitPerfectDirectMode': bitPerfectDirectMode,
+        'deviceProfiles': deviceProfiles,
+      };
 
-  factory PowerampDspState.fromJsonString(String jsonStr) {
-    final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+  String toJsonString() => jsonEncode(toMap());
+
+  factory PowerampDspState.fromMap(Map<String, dynamic> map) {
     final rawBands = (map['bands'] as List<dynamic>? ?? [])
         .map((e) => EqBandConfig.fromMap(e as Map<String, dynamic>))
         .toList();
     final rawProfiles = (map['deviceProfiles'] as Map<String, dynamic>?)?.map(
-          (k, v) => MapEntry(k, v.toString()),
+          (k, v) {
+            String val = v.toString();
+            if (val == 'vocal_clarity') val = 'vocal';
+            if (val == 'poweramp_bass_treble') val = 'smart_eq_bass_treble';
+            if (val == 'concert_hall') val = 'concert';
+            if (val == 'rock_metal') val = 'rock';
+            if (val == 'bass') val = 'bass_boost';
+            if (val == 'audiophile_warmth') val = 'warm';
+            return MapEntry(k, val);
+          },
         ) ??
         const {
           'BLUETOOTH': 'harman_target',
           'USB_DAC': 'flat',
           'WIRED_HEADPHONES': 'hifi_warm_tube',
-          'BUILTIN_SPEAKER': 'vocal_clarity',
+          'BUILTIN_SPEAKER': 'vocal',
         };
+
+    String activePreset = map['activePresetId'] as String? ?? 'custom';
+    if (activePreset == 'vocal_clarity') activePreset = 'vocal';
+    if (activePreset == 'poweramp_bass_treble') activePreset = 'smart_eq_bass_treble';
+    if (activePreset == 'concert_hall') activePreset = 'concert';
+    if (activePreset == 'rock_metal') activePreset = 'rock';
+    if (activePreset == 'bass') activePreset = 'bass_boost';
+    if (activePreset == 'audiophile_warmth') activePreset = 'warm';
 
     return PowerampDspState(
       eqEnabled: map['eqEnabled'] as bool? ?? true,
@@ -547,8 +563,12 @@ class PowerampDspState {
       monoMix: map['monoMix'] as bool? ?? false,
       tempo: (map['tempo'] as num?)?.toDouble() ?? 1.0,
       pitchSemitones: (map['pitchSemitones'] as num?)?.toDouble() ?? 0.0,
+      reverbPreset: ReverbPresetType.values.firstWhere(
+        (r) => r.name == map['reverbPreset'],
+        orElse: () => ReverbPresetType.none,
+      ),
       reverbMix: (map['reverbMix'] as num?)?.toDouble() ?? 0.0,
-      activePresetId: map['activePresetId'] as String? ?? 'custom',
+      activePresetId: activePreset,
       visualizerMode: VisualizerMode.values.firstWhere(
         (v) => v.name == map['visualizerMode'],
         orElse: () => VisualizerMode.spectrumBars,
@@ -561,6 +581,11 @@ class PowerampDspState {
       bitPerfectDirectMode: map['bitPerfectDirectMode'] as bool? ?? false,
       deviceProfiles: rawProfiles,
     );
+  }
+
+  factory PowerampDspState.fromJsonString(String jsonStr) {
+    return PowerampDspState.fromMap(
+        jsonDecode(jsonStr) as Map<String, dynamic>);
   }
 }
 

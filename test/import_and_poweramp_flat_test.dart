@@ -211,4 +211,104 @@ void main() {
       );
     });
   });
+
+  group('Smart EQ Comprehensive Audit & Engine Tests', () {
+    test('PowerampDspState handles Parametric tuning, Tone, Limiter, and Pitch semitones', () {
+      var dsp = PowerampDspState.initial();
+      expect(dsp.isParametricMode, isFalse);
+      expect(dsp.limiterEnabled, isTrue);
+      expect(dsp.toneEnabled, isTrue);
+      expect(dsp.pitchSemitones, 0.0);
+
+      // Verify parametric band frequency & Q tuning
+      final tunedBands = List<EqBandConfig>.from(dsp.bands);
+      tunedBands[0] = tunedBands[0].copyWith(frequencyHz: 35.0, qFactor: 2.5);
+      dsp = dsp.copyWith(
+        isParametricMode: true,
+        limiterEnabled: false,
+        toneEnabled: false,
+        pitchSemitones: 3.0,
+        bands: tunedBands,
+      );
+
+      expect(dsp.isParametricMode, isTrue);
+      expect(dsp.limiterEnabled, isFalse);
+      expect(dsp.toneEnabled, isFalse);
+      expect(dsp.pitchSemitones, 3.0);
+      expect(dsp.bands[0].frequencyHz, 35.0);
+      expect(dsp.bands[0].qFactor, 2.5);
+
+      // Verify toMap and fromMap serialization round-trip
+      final map = dsp.toMap();
+      final restored = PowerampDspState.fromMap(map);
+      expect(restored.isParametricMode, isTrue);
+      expect(restored.limiterEnabled, isFalse);
+      expect(restored.toneEnabled, isFalse);
+      expect(restored.pitchSemitones, 3.0);
+      expect(restored.bands[0].frequencyHz, 35.0);
+      expect(restored.bands[0].qFactor, 2.5);
+    });
+
+    test('PowerampDspState normalizes legacy preset IDs and speaker default profiles', () {
+      final legacyMap = {
+        'activePresetId': 'poweramp_bass_treble',
+        'deviceProfiles': {
+          'BUILTIN_SPEAKER': 'vocal_clarity',
+          'BLUETOOTH': 'audiophile_warmth',
+        },
+      };
+
+      final normalized = PowerampDspState.fromMap(legacyMap);
+      // Legacy 'poweramp_bass_treble' -> 'smart_eq_bass_treble'
+      expect(normalized.activePresetId, 'smart_eq_bass_treble');
+      // Legacy 'vocal_clarity' -> 'vocal'
+      expect(normalized.deviceProfiles['BUILTIN_SPEAKER'], 'vocal');
+      // Legacy 'audiophile_warmth' -> 'warm'
+      expect(normalized.deviceProfiles['BLUETOOTH'], 'warm');
+    });
+
+    testWidgets('PowerampDspScreen renders Graphic / Parametric toggle, Limiter, and Pitch controls', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            cloudStreamProxyProvider.overrideWithValue(_FakeCloudStreamProxy()),
+          ],
+          child: const MaterialApp(
+            home: PowerampDspScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Parametric vs Graphic mode switcher initially in Graphic mode
+      final graphicFinder = find.text('Graphic');
+      expect(graphicFinder, findsWidgets);
+
+      // Tap to toggle to Parametric mode
+      await tester.tap(graphicFinder.first);
+      await tester.pumpAndSettle();
+      expect(find.text('Parametric'), findsWidgets);
+
+      // Switch to SubTab 1 ("Tone Knobs & Stereo X")
+      await tester.tap(find.text('Tone Knobs & Stereo X'));
+      await tester.pumpAndSettle();
+
+      // Rotary Tone & Spatial Stage
+      expect(find.text('Rotary Tone & Spatial Stage'), findsOneWidget);
+
+      // Hardware Auto-Limiter
+      expect(find.text('Hardware Peak Auto-Limiter'), findsOneWidget);
+
+      // Pitch Transposition
+      expect(find.textContaining('Pitch Transposition'), findsOneWidget);
+    });
+  });
 }
+

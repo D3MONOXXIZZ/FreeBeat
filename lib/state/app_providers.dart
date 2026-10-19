@@ -719,7 +719,7 @@ final audioRouteInfoProvider = Provider<AudioOutputRouteInfo>((ref) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
-  PowerampDspNotifier(this._dspService, [this._db])
+  PowerampDspNotifier(this._dspService, [this._db, this._ref])
       : super(PowerampDspState.initial()) {
     _dspService.applyDspState(state);
     _loadPersistedState();
@@ -727,6 +727,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
 
   final PowerampDspService _dspService;
   final LibraryDatabase? _db;
+  final Ref? _ref;
   final List<DspPreset> _customPresets = [];
 
   List<DspPreset> get allPresets => [...kBuiltInDspPresets, ..._customPresets];
@@ -888,12 +889,17 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   }
 
   void setTempo(double tempo) {
-    state = state.copyWith(tempo: tempo);
+    final clamped = tempo.clamp(0.5, 2.0);
+    state = state.copyWith(tempo: clamped);
+    _ref?.read(playbackProvider.notifier).setPlaybackSpeed(clamped);
     _syncToHardware();
   }
 
   void setPitchSemitones(double semitones) {
-    state = state.copyWith(pitchSemitones: semitones);
+    final clamped = semitones.clamp(-12.0, 12.0);
+    state = state.copyWith(pitchSemitones: clamped);
+    final ratio = pow(2.0, clamped / 12.0).toDouble();
+    _ref?.read(playbackProvider.notifier).setPitch(ratio);
     _syncToHardware();
   }
 
@@ -1117,6 +1123,7 @@ final powerampDspProvider =
   final notifier = PowerampDspNotifier(
     ref.watch(powerampDspServiceProvider),
     ref.watch(libraryDatabaseProvider),
+    ref,
   );
   ref.listen<AudioOutputRouteInfo>(audioRouteInfoProvider, (prev, next) {
     if (prev?.deviceName != next.deviceName ||
