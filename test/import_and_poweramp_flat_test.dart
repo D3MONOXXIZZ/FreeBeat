@@ -88,8 +88,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Check preset button shows Flat / Bit-Perfect Reference
-      expect(find.text('Flat / Bit-Perfect Reference'), findsOneWidget);
+      // Check preset button shows Audiophile Flat
+      expect(find.text('Audiophile Flat'), findsWidgets);
       // Check CustomPaint visualizer is rendered
       expect(find.byType(CustomPaint), findsWidgets);
     });

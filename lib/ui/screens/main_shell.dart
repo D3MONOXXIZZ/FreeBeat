@@ -448,7 +448,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                       NavPillDestination(
                         icon: Icons.equalizer_rounded,
                         selectedIcon: Icons.graphic_eq_rounded,
-                        label: 'Poweramp EQ',
+                        label: 'Smart EQ',
                       ),
                       NavPillDestination(
                         icon: Icons.cloud_outlined,

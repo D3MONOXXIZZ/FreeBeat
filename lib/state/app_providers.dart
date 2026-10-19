@@ -944,18 +944,61 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   }
 
   void loadPresetById(String id) {
-    final match = allPresets.firstWhere(
-      (p) => p.id == id,
-      orElse: () => allPresets.firstWhere(
-        (p) => p.id.contains(id) || id.contains(p.id),
-        orElse: () => kBuiltInDspPresets.first,
-      ),
-    );
+    // 1. Direct exact ID match
+    DspPreset? match = allPresets.where((p) => p.id == id).firstOrNull;
+
+    // 2. Comprehensive legacy & friendly alias map
+    if (match == null) {
+      const aliasMap = {
+        'bass_boost': 'bass_boost',
+        'bass': 'bass_boost',
+        'sub_bass': 'bass_extreme',
+        'poweramp_bass_treble': 'smart_eq_bass_treble',
+        'smart_eq': 'smart_eq_bass_treble',
+        'smart_eq_bass_treble': 'smart_eq_bass_treble',
+        'vocal_clarity': 'vocal',
+        'vocal_air': 'vocal',
+        'vocal': 'vocal',
+        'concert_hall': 'concert',
+        'concert': 'concert',
+        'rock_metal': 'rock',
+        'rock': 'rock',
+        'audiophile_flat': 'flat',
+        'flat': 'flat',
+        'harman': 'harman_target',
+        'tube': 'hifi_warm_tube',
+        'club': 'electronic_edm',
+        'edm': 'electronic_edm',
+      };
+      final mappedId = aliasMap[id];
+      if (mappedId != null) {
+        match = allPresets.where((p) => p.id == mappedId).firstOrNull;
+      }
+    }
+
+    // 3. Normalized fuzzy matching
+    if (match == null) {
+      final normalizedId = id.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      match = allPresets.where((p) {
+        final pNorm = p.id.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final pNameNorm = p.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        return pNorm == normalizedId ||
+            pNorm.contains(normalizedId) ||
+            normalizedId.contains(pNorm) ||
+            pNameNorm.contains(normalizedId);
+      }).firstOrNull;
+    }
+
+    match ??= kBuiltInDspPresets.first;
     applyPreset(match);
   }
 
   void resetFlat() {
-    applyPreset(kBuiltInDspPresets.first);
+    final flatPreset = allPresets.firstWhere(
+      (p) => p.id == 'flat',
+      orElse: () => kBuiltInDspPresets.first,
+    );
+    applyPreset(flatPreset);
   }
 
   Future<DspPreset> saveCustomPreset(String name, {List<double>? customQs}) async {
@@ -1090,6 +1133,12 @@ final powerampDspProvider =
   });
   return notifier;
 });
+
+/// Smart EQ Aliases
+typedef SmartEqNotifier = PowerampDspNotifier;
+final smartEqProvider = powerampDspProvider;
+final smartEqServiceProvider = powerampDspServiceProvider;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Playback Engine State & Controller (just_audio + Loopback Proxy)

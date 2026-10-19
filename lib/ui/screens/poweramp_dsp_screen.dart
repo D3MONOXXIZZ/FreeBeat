@@ -9,7 +9,7 @@ import '../../state/app_providers.dart';
 import '../widgets/rotary_knob.dart';
 import '../widgets/signal_path_sheet.dart';
 
-/// Poweramp-Grade 10-Band Equalizer, Preamp, Rotary Tone & Spatial DSP Studio.
+/// Smart EQ 10-Band Equalizer, Preamp, Exact Numeric Tuning, Rotary Tone & Spatial DSP Studio.
 /// Strictly implements Screen 8 ("# Equalizer & Audio Settings") in Figma inspiration:
 /// 1. Top Device Status Card: `Pixel Buds Pro` / Route Pill + Animated Spectrum switch + Master EQ switch
 /// 2. Multi-Colored Rainbow Frequency Spectrum Bars Visualizer (28 animated dancing bars)
@@ -107,7 +107,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
           SliverAppBar(
             pinned: true,
             title: Text(
-              'Poweramp DSP Studio',
+              'Smart EQ Studio',
               style: textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -120,11 +120,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       _showPresetPickerSheet(context, dsp, notifier),
                   icon: const Icon(Icons.bookmarks_rounded, size: 16),
                   label: Text(
-                    kBuiltInDspPresets
+                    notifier.allPresets
                             .where((p) => p.id == dsp.activePresetId)
-                            .map((p) => p.name)
+                            .map((p) => p.shortName)
                             .firstOrNull ??
-                        'Custom Preset',
+                        'Custom Curve',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -578,7 +578,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
           // ───────────────────────────────────────────────────────────────────
-          // 4. Quick Presets Stadium Bar (Figma Screen 8)
+          // 4. Quick Presets Stadium Bar (All Curated Presets & Custom EQ)
           // ───────────────────────────────────────────────────────────────────
           SliverToBoxAdapter(
             child: SingleChildScrollView(
@@ -587,43 +587,33 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
               physics: const BouncingScrollPhysics(),
               child: Row(
                 children: [
+                  for (final preset in kBuiltInDspPresets) ...[
+                    _PresetChip(
+                      label: preset.shortName,
+                      isSelected: dsp.activePresetId == preset.id,
+                      onTap: () {
+                        notifier.loadPresetById(preset.id);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  for (final custom in notifier.customPresets) ...[
+                    _PresetChip(
+                      label: custom.name,
+                      isSelected: dsp.activePresetId == custom.id,
+                      isCustom: true,
+                      onTap: () {
+                        notifier.loadPresetById(custom.id);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   _PresetChip(
-                    label: 'Bass Boost',
-                    isSelected: dsp.activePresetId == 'bass_boost',
+                    label: 'Presets Hub',
+                    icon: Icons.hub_rounded,
+                    isSelected: false,
                     onTap: () {
-                      notifier.loadPresetById('bass_boost');
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _PresetChip(
-                    label: 'Vocal Air',
-                    isSelected: dsp.activePresetId == 'vocal',
-                    onTap: () {
-                      notifier.loadPresetById('vocal');
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _PresetChip(
-                    label: 'Concert Hall',
-                    isSelected: dsp.activePresetId == 'concert',
-                    onTap: () {
-                      notifier.loadPresetById('concert');
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _PresetChip(
-                    label: 'Audiophile Flat',
-                    isSelected: dsp.activePresetId == 'flat',
-                    onTap: () {
-                      notifier.resetFlat();
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _PresetChip(
-                    label: 'Rock & Metal',
-                    isSelected: dsp.activePresetId == 'rock',
-                    onTap: () {
-                      notifier.loadPresetById('rock');
+                      _showPresetPickerSheet(context, dsp, notifier);
                     },
                   ),
                 ],
@@ -687,7 +677,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     PowerampDspNotifier notifier,
   ) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(28),
@@ -695,51 +685,125 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
           color: cs.outlineVariant.withValues(alpha: 0.35),
         ),
       ),
-      child: SizedBox(
-        height: 290,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Preamp Column
-              _VerticalEqFaderColumn(
-                label: 'PREAMP',
-                gainDb: dsp.preampDb,
-                accentColor: cs.primary,
-                isPreamp: true,
-                onChanged: notifier.setPreampDb,
-                onDoubleTapReset: () {
-                  PixelHaptics.centerDetentSnap();
-                  notifier.setPreampDb(0.0);
-                },
-              ),
-              VerticalDivider(
-                width: 24,
-                thickness: 1,
-                color: cs.outlineVariant.withValues(alpha: 0.25),
-              ),
-              // 10 ISO Octave Bands
-              for (int i = 0; i < dsp.bands.length; i++) ...[
-                _VerticalEqFaderColumn(
-                  label: dsp.bands[i].label,
-                  gainDb: dsp.bands[i].gainDb,
-                  accentColor: dsp.bands[i].gainDb >= 0
-                      ? cs.secondary
-                      : cs.onSurfaceVariant,
-                  qFactor: dsp.isParametricMode ? dsp.bands[i].qFactor : null,
-                  onChanged: (val) => notifier.setBandGain(i, val),
-                  onDoubleTapReset: () {
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // EQ Header: Exact Numbers & Reset
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 0, 10),
+            child: Row(
+              children: [
+                Icon(Icons.tune_rounded, size: 16, color: cs.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '10-Band EQ',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  onTap: () => _showManualAllBandsSheet(context, dsp, notifier),
+                  borderRadius: BorderRadius.circular(100),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit_note_rounded, size: 14, color: cs.onSecondaryContainer),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Exact dB',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Reset EQ to Flat (0 dB)',
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  onPressed: () {
                     PixelHaptics.centerDetentSnap();
-                    notifier.setBandGain(i, 0.0);
+                    notifier.resetFlat();
                   },
                 ),
-                if (i < dsp.bands.length - 1) const SizedBox(width: 4),
               ],
-            ],
+            ),
           ),
-        ),
+          SizedBox(
+            height: 275,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Preamp Column
+                  _VerticalEqFaderColumn(
+                    label: 'PREAMP',
+                    gainDb: dsp.preampDb,
+                    accentColor: cs.primary,
+                    isPreamp: true,
+                    onChanged: notifier.setPreampDb,
+                    onTapNumber: () => _showSingleBandNumericDialog(
+                      context,
+                      'Preamp',
+                      dsp.preampDb,
+                      notifier.setPreampDb,
+                    ),
+                    onDoubleTapReset: () {
+                      PixelHaptics.centerDetentSnap();
+                      notifier.setPreampDb(0.0);
+                    },
+                  ),
+                  VerticalDivider(
+                    width: 24,
+                    thickness: 1,
+                    color: cs.outlineVariant.withValues(alpha: 0.25),
+                  ),
+                  // 10 ISO Octave Bands
+                  for (int i = 0; i < dsp.bands.length; i++) ...[
+                    _VerticalEqFaderColumn(
+                      label: dsp.bands[i].label,
+                      gainDb: dsp.bands[i].gainDb,
+                      accentColor: dsp.bands[i].gainDb >= 0
+                          ? cs.secondary
+                          : cs.onSurfaceVariant,
+                      qFactor: dsp.isParametricMode ? dsp.bands[i].qFactor : null,
+                      onChanged: (val) => notifier.setBandGain(i, val),
+                      onTapNumber: () => _showSingleBandNumericDialog(
+                        context,
+                        dsp.bands[i].label,
+                        dsp.bands[i].gainDb,
+                        (val) => notifier.setBandGain(i, val),
+                      ),
+                      onDoubleTapReset: () {
+                        PixelHaptics.centerDetentSnap();
+                        notifier.setBandGain(i, 0.0);
+                      },
+                    ),
+                    if (i < dsp.bands.length - 1) const SizedBox(width: 4),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1119,107 +1183,174 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
-        final customPresets = notifier.customPresets;
-        final builtInPresets = kBuiltInDspPresets;
+        return Consumer(
+          builder: (sheetCtx, ref, _) {
+            final activeDsp = ref.watch(powerampDspProvider);
+            final activeNotifier = ref.read(powerampDspProvider.notifier);
+            final customPresets = activeNotifier.customPresets;
+            final builtInPresets = kBuiltInDspPresets;
 
-        return DraggableScrollableSheet(
-          initialChildSize: 0.70,
-          maxChildSize: 0.92,
-          minChildSize: 0.40,
-          expand: false,
-          builder: (_, scrollController) {
-            return SafeArea(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            return DraggableScrollableSheet(
+              initialChildSize: 0.72,
+              maxChildSize: 0.94,
+              minChildSize: 0.40,
+              expand: false,
+              builder: (_, scrollController) {
+                return SafeArea(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     children: [
-                      const Text(
-                        'Audiophile DSP Presets Hub',
-                        style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Smart EQ & Audiophile Presets Hub',
+                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => Navigator.of(ctx).pop(),
+                      const SizedBox(height: 12),
+                      // Action buttons: Save EQ, Import, Auto Profiles
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            FilledButton.tonalIcon(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                _showSavePresetDialog(context, activeNotifier);
+                              },
+                              icon: const Icon(Icons.add_rounded, size: 16),
+                              label: const Text('Save Current EQ'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                _showImportPresetDialog(context, activeNotifier);
+                              },
+                              icon: const Icon(Icons.file_download_outlined, size: 16),
+                              label: const Text('Import JSON'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                _showDeviceProfilesModal(context, activeDsp, activeNotifier);
+                              },
+                              icon: const Icon(Icons.phonelink_setup_rounded, size: 16),
+                              label: const Text('Auto Route Profiles'),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Action buttons: Save EQ, Import, Auto Profiles
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            _showSavePresetDialog(context, notifier);
-                          },
-                          icon: const Icon(Icons.add_rounded, size: 16),
-                          label: const Text('Save Current EQ'),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            _showImportPresetDialog(context, notifier);
-                          },
-                          icon: const Icon(Icons.file_download_outlined, size: 16),
-                          label: const Text('Import JSON'),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            _showDeviceProfilesModal(context, dsp, notifier);
-                          },
-                          icon: const Icon(Icons.phonelink_setup_rounded, size: 16),
-                          label: const Text('Auto Route Profiles'),
-                        ),
-                      ],
-                    ),
-                  ),
 
-                  if (customPresets.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Text(
-                      'USER CUSTOM PRESETS (${customPresets.length})',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: cs.primary,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    for (final preset in customPresets)
-                      Card(
-                        elevation: 0,
-                        color: cs.surfaceContainerHigh,
-                        margin: const EdgeInsets.only(bottom: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: preset.id == dsp.activePresetId
-                                ? cs.primary
-                                : Colors.transparent,
-                            width: 1.5,
+                      if (customPresets.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          'USER CUSTOM PRESETS (${customPresets.length})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: cs.primary,
+                            letterSpacing: 0.8,
                           ),
                         ),
-                        child: ListTile(
-                          onTap: () {
-                            PixelHaptics.tick();
-                            notifier.loadPresetById(preset.id);
-                            Navigator.of(ctx).pop();
-                          },
+                        const SizedBox(height: 8),
+                        for (final preset in customPresets)
+                          Card(
+                            elevation: 0,
+                            color: cs.surfaceContainerHigh,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: preset.id == activeDsp.activePresetId
+                                    ? cs.primary
+                                    : Colors.transparent,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: ListTile(
+                              onTap: () {
+                                PixelHaptics.tick();
+                                activeNotifier.loadPresetById(preset.id);
+                                Navigator.of(ctx).pop();
+                              },
+                              leading: Icon(
+                                preset.id == activeDsp.activePresetId
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.radio_button_off_rounded,
+                                color: preset.id == activeDsp.activePresetId
+                                    ? cs.primary
+                                    : cs.onSurfaceVariant,
+                              ),
+                              title: Text(
+                                preset.name,
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                preset.description,
+                                style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.share_outlined, size: 18),
+                                    tooltip: 'Export Preset JSON',
+                                    onPressed: () {
+                                      final jsonStr = activeNotifier.exportPresetJson(preset.id);
+                                      Clipboard.setData(ClipboardData(text: jsonStr));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Preset "${preset.name}" copied to clipboard!'),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                                    tooltip: 'Delete Preset',
+                                    onPressed: () {
+                                      activeNotifier.deleteCustomPreset(preset.id);
+                                      Navigator.of(ctx).pop();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+
+                      const SizedBox(height: 20),
+                      Text(
+                        'CURATED SMART EQ & AUDIOPHILE CURVES',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: cs.secondary,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final preset in builtInPresets)
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                           leading: Icon(
-                            preset.id == dsp.activePresetId
+                            preset.id == activeDsp.activePresetId
                                 ? Icons.radio_button_checked_rounded
                                 : Icons.radio_button_off_rounded,
-                            color: preset.id == dsp.activePresetId
+                            color: preset.id == activeDsp.activePresetId
                                 ? cs.primary
                                 : cs.onSurfaceVariant,
                           ),
@@ -1229,87 +1360,435 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                           ),
                           subtitle: Text(
                             preset.description,
-                            style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.share_outlined, size: 18),
-                                tooltip: 'Export Preset JSON',
-                                onPressed: () {
-                                  final jsonStr = notifier.exportPresetJson(preset.id);
-                                  Clipboard.setData(ClipboardData(text: jsonStr));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Preset "${preset.name}" copied to clipboard!'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                                tooltip: 'Delete Preset',
-                                onPressed: () {
-                                  notifier.deleteCustomPreset(preset.id);
-                                  Navigator.of(ctx).pop();
-                                },
-                              ),
-                            ],
-                          ),
+                          onTap: () {
+                            PixelHaptics.tick();
+                            activeNotifier.loadPresetById(preset.id);
+                            Navigator.of(ctx).pop();
+                          },
                         ),
-                      ),
-                  ],
-
-                  const SizedBox(height: 20),
-                  Text(
-                    'CURATED AUDIOPHILE CURVES',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: cs.secondary,
-                      letterSpacing: 0.8,
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  for (final preset in builtInPresets)
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      leading: Icon(
-                        preset.id == dsp.activePresetId
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: preset.id == dsp.activePresetId
-                            ? cs.primary
-                            : cs.onSurfaceVariant,
-                      ),
-                      title: Text(
-                        preset.name,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text(
-                        preset.description,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      onTap: () {
-                        PixelHaptics.tick();
-                        notifier.loadPresetById(preset.id);
-                        Navigator.of(ctx).pop();
-                      },
-                    ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
       },
     );
+  }
+
+  void _showManualAllBandsSheet(
+    BuildContext context,
+    PowerampDspState dsp,
+    PowerampDspNotifier notifier,
+  ) {
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) {
+        return Consumer(
+          builder: (sheetCtx, ref, _) {
+            final activeDsp = ref.watch(powerampDspProvider);
+            final activeNotifier = ref.read(powerampDspProvider.notifier);
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.85,
+              maxChildSize: 0.95,
+              minChildSize: 0.50,
+              expand: false,
+              builder: (_, scrollController) {
+                return SafeArea(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.tune_rounded, color: cs.primary, size: 22),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Exact Numeric EQ Tuning',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Set precise decimal decibel gains (-15.0 dB to +15.0 dB) for each frequency band.',
+                        style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 14),
+                      // Quick actions
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            FilledButton.tonalIcon(
+                              onPressed: () {
+                                PixelHaptics.centerDetentSnap();
+                                activeNotifier.resetFlat();
+                              },
+                              icon: const Icon(Icons.refresh_rounded, size: 16),
+                              label: const Text('Reset All (0 dB)'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                PixelHaptics.tick();
+                                for (int i = 0; i < activeDsp.bands.length; i++) {
+                                  activeNotifier.setBandGain(
+                                    i,
+                                    (activeDsp.bands[i].gainDb + 1.0).clamp(-15.0, 15.0),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+                              label: const Text('+1 dB All'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                PixelHaptics.tick();
+                                for (int i = 0; i < activeDsp.bands.length; i++) {
+                                  activeNotifier.setBandGain(
+                                    i,
+                                    (activeDsp.bands[i].gainDb - 1.0).clamp(-15.0, 15.0),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.arrow_downward_rounded, size: 16),
+                              label: const Text('-1 dB All'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Preamp Card
+                      _buildBandNumberInputRow(
+                        context,
+                        title: 'PREAMP',
+                        subtitle: 'Master Input Gain',
+                        currentGainDb: activeDsp.preampDb,
+                        accentColor: cs.primary,
+                        onChanged: (val) => activeNotifier.setPreampDb(val),
+                        onReset: () => activeNotifier.setPreampDb(0.0),
+                      ),
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+                      // 10 Bands
+                      for (int i = 0; i < activeDsp.bands.length; i++) ...[
+                        _buildBandNumberInputRow(
+                          context,
+                          title: activeDsp.bands[i].label,
+                          subtitle: _getBandDescription(i, activeDsp.bands[i].frequencyHz),
+                          currentGainDb: activeDsp.bands[i].gainDb,
+                          accentColor: activeDsp.bands[i].gainDb >= 0 ? cs.secondary : cs.onSurfaceVariant,
+                          onChanged: (val) => activeNotifier.setBandGain(i, val),
+                          onReset: () => activeNotifier.setBandGain(i, 0.0),
+                        ),
+                        if (i < activeDsp.bands.length - 1)
+                          const Divider(height: 8, indent: 12, endIndent: 12),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSingleBandNumericDialog(
+    BuildContext context,
+    String bandLabel,
+    double currentGainDb,
+    ValueChanged<double> onApplied,
+  ) {
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+    final controller = TextEditingController(
+      text: currentGainDb.toStringAsFixed(1),
+    );
+    double localVal = currentGainDb;
+
+    showDialog<void>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Row(
+              children: [
+                Icon(Icons.tune_rounded, color: cs.primary, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tune $bandLabel',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Enter exact gain in decibels (-15.0 dB to +15.0 dB)',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: cs.primary,
+                  ),
+                  decoration: InputDecoration(
+                    suffixText: 'dB',
+                    suffixStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.primary),
+                    filled: true,
+                    fillColor: cs.surfaceContainerHigh,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: cs.primary, width: 2),
+                    ),
+                  ),
+                  onChanged: (text) {
+                    final parsed = double.tryParse(text.replaceAll('+', '').trim());
+                    if (parsed != null) {
+                      localVal = parsed.clamp(-15.0, 15.0);
+                      onApplied(localVal);
+                    }
+                  },
+                ),
+                const SizedBox(height: 14),
+                // Micro Steppers Row (-1.0, -0.1, 0.0, +0.1, +1.0)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _StepButton(
+                        label: '-1 dB',
+                        onTap: () {
+                          localVal = (localVal - 1.0).clamp(-15.0, 15.0);
+                          controller.text = localVal.toStringAsFixed(1);
+                          onApplied(localVal);
+                          setDlgState(() {});
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _StepButton(
+                        label: '-0.1',
+                        onTap: () {
+                          localVal = (localVal - 0.1).clamp(-15.0, 15.0);
+                          controller.text = localVal.toStringAsFixed(1);
+                          onApplied(localVal);
+                          setDlgState(() {});
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _StepButton(
+                        label: '0.0',
+                        isReset: true,
+                        onTap: () {
+                          localVal = 0.0;
+                          controller.text = '0.0';
+                          onApplied(localVal);
+                          setDlgState(() {});
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _StepButton(
+                        label: '+0.1',
+                        onTap: () {
+                          localVal = (localVal + 0.1).clamp(-15.0, 15.0);
+                          controller.text = localVal.toStringAsFixed(1);
+                          onApplied(localVal);
+                          setDlgState(() {});
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _StepButton(
+                        label: '+1 dB',
+                        onTap: () {
+                          localVal = (localVal + 1.0).clamp(-15.0, 15.0);
+                          controller.text = localVal.toStringAsFixed(1);
+                          onApplied(localVal);
+                          setDlgState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dlgCtx).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(controller.text.replaceAll('+', '').trim());
+                  if (parsed != null) {
+                    onApplied(parsed.clamp(-15.0, 15.0));
+                  }
+                  PixelHaptics.tick();
+                  Navigator.of(dlgCtx).pop();
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBandNumberInputRow(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required double currentGainDb,
+    required Color accentColor,
+    required ValueChanged<double> onChanged,
+    required VoidCallback onReset,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final formattedDb = '${currentGainDb >= 0 ? "+" : ""}${currentGainDb.toStringAsFixed(1)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.remove_rounded, size: 18),
+            onPressed: () {
+              PixelHaptics.tick();
+              onChanged((currentGainDb - 0.5).clamp(-15.0, 15.0));
+            },
+          ),
+          InkWell(
+            onTap: () {
+              _showSingleBandNumericDialog(context, title, currentGainDb, onChanged);
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: currentGainDb.abs() > 0.05 ? accentColor : Colors.transparent,
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                '$formattedDb dB',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: currentGainDb.abs() > 0.05 ? accentColor : cs.onSurface,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            onPressed: () {
+              PixelHaptics.tick();
+              onChanged((currentGainDb + 0.5).clamp(-15.0, 15.0));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getBandDescription(int index, double freqHz) {
+    switch (index) {
+      case 0:
+        return 'Sub-Bass (Rumble)';
+      case 1:
+        return 'Deep Bass';
+      case 2:
+        return 'Bass Punch & Kick';
+      case 3:
+        return 'Warmth / Low-Mid';
+      case 4:
+        return 'Body / Midrange';
+      case 5:
+        return 'Vocal Clarity (1 kHz)';
+      case 6:
+        return 'Vocal Presence';
+      case 7:
+        return 'Attack / Upper-Mid';
+      case 8:
+        return 'Brightness / Treble';
+      case 9:
+        return 'Air / Sparkle (16 kHz)';
+      default:
+        return '${freqHz.toInt()} Hz Band';
+    }
   }
 
   void _showSavePresetDialog(BuildContext context, PowerampDspNotifier notifier) {
@@ -1531,11 +2010,15 @@ class _PresetChip extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.icon,
+    this.isCustom = false,
   });
 
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final IconData? icon;
+  final bool isCustom;
 
   @override
   Widget build(BuildContext context) {
@@ -1549,22 +2032,35 @@ class _PresetChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(100),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? cs.primaryContainer : cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(
             color: isSelected ? cs.primary : Colors.transparent,
-            width: 1,
+            width: 1.5,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1644,6 +2140,7 @@ class _VerticalEqFaderColumn extends StatelessWidget {
     required this.accentColor,
     required this.onChanged,
     required this.onDoubleTapReset,
+    this.onTapNumber,
     this.isPreamp = false,
     this.qFactor,
   });
@@ -1653,6 +2150,7 @@ class _VerticalEqFaderColumn extends StatelessWidget {
   final Color accentColor;
   final ValueChanged<double> onChanged;
   final VoidCallback onDoubleTapReset;
+  final VoidCallback? onTapNumber;
   final bool isPreamp;
   final double? qFactor;
 
@@ -1668,12 +2166,29 @@ class _VerticalEqFaderColumn extends StatelessWidget {
         width: isPreamp ? 64 : 52,
         child: Column(
           children: [
-            Text(
-              formattedDb,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                color: gainDb.abs() > 0.1 ? accentColor : cs.onSurfaceVariant,
+            InkWell(
+              onTap: onTapNumber,
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: gainDb.abs() > 0.05
+                        ? accentColor.withValues(alpha: 0.5)
+                        : Colors.transparent,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  formattedDb,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: gainDb.abs() > 0.1 ? accentColor : cs.onSurfaceVariant,
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -2066,4 +2581,47 @@ class _ConcentricVinylPulsePainter extends CustomPainter {
         oldDelegate.precomputedDb != precomputedDb;
   }
 }
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.label,
+    required this.onTap,
+    this.isReset = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool isReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () {
+        PixelHaptics.tick();
+        onTap();
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isReset ? cs.primaryContainer : cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: isReset ? cs.onPrimaryContainer : cs.onSurface,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Smart EQ Screen Alias
+typedef SmartEqScreen = PowerampDspScreen;
+
 

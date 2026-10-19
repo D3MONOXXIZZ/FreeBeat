@@ -85,7 +85,7 @@ com.freebeat.app://oauth2redirect
 
 ---
 
-## 4. Audio Quality, Hi-Fi & Poweramp DSP Rules
+## 4. Audio Quality, Hi-Fi & Smart EQ DSP Rules
 
 ### Rule D1 — Bitrate Tier Enforcement
 - Playback and download resolution MUST always honor `AudioQualityConfig`:
@@ -98,6 +98,7 @@ com.freebeat.app://oauth2redirect
 - The native Kotlin DSP bridge (`MainActivity.kt`) MUST attach `DynamicsProcessing` to the active ExoPlayer `audioSessionId` as soon as a valid session ID (`> 0`) is emitted.
 - **Preamp + 10-Band EQ + Rotary Tone Coexistence**:
   - Band center frequencies are fixed at ISO octaves by default (`31, 62, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz`), overridable in Parametric mode.
+  - Exact numeric tuning allows decimal dB accuracy (-15.0 to +15.0 dB) for all bands.
   - When `DVC (Direct Volume Control)` is active, negative headroom attenuation is applied automatically if peak band boost exceeds `0.0 dBFS`.
   - When `Limiter` is enabled, the hardware output limiter MUST engage at `-0.2 dB` threshold with a `1 ms` attack to guarantee zero digital clipping even at `+15 dB` Preamp/Bass settings.
 
@@ -112,7 +113,7 @@ com.freebeat.app://oauth2redirect
 - **NEVER** hardcode static hex background or accent colors for screens, cards, or navigation bars.
 - Always derive colors from `Theme.of(context).colorScheme` (`surface`, `surfaceContainerLow`, `surfaceContainerHigh`, `primary`, `secondaryContainer`, `tertiaryContainer`), which automatically adapts to:
   1. The user's **Google Pixel Wallpaper Monet Palette** (`DynamicColorBuilder`).
-  2. The **Active Track's Album Art Palette** on the Now Playing screen, MiniPlayer, and Poweramp DSP Studio.
+  2. The **Active Track's Album Art Palette** on the Now Playing screen, MiniPlayer, and Smart EQ DSP Studio.
 
 ### Rule U2 — Signature Pixel Components
 - **Squiggly Seekbar (`SquigglySlider`)**: Must be used on the Now Playing screen. Wave amplitude must animate smoothly between playing (`4.5 dp`) and paused/scrubbing (`0.0 dp`).

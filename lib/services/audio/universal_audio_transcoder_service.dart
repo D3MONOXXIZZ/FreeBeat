@@ -13,7 +13,7 @@ import '../../core/models/track.dart';
 ///
 /// Converts WMA, ASF, and any unsupported audio containers into standard
 /// 16-bit PCM WAV files stored in a persistent local cache for zero-latency,
-/// bit-perfect playback through just_audio and the Poweramp DSP engine.
+/// bit-perfect playback through just_audio and the Smart EQ DSP engine.
 class UniversalAudioTranscoderService {
   static const MethodChannel _channel = MethodChannel('com.freebeat.freebeat/dsp');
 

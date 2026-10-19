@@ -2,9 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../services/haptics/pixel_haptics.dart';
 
-/// Tactile Poweramp-style Rotary Knob for Bass, Treble, and Stereo X (Width).
+/// Tactile Smart EQ Rotary Knob for Bass, Treble, and Stereo X (Width).
 /// Features glowing Material You arc progress, tick marks, pointer drag rotation,
 /// double-tap reset, and custom Google Pixel LRA micro-tick & rail-thud haptics.
+typedef SmartEqRotaryKnob = PowerampRotaryKnob;
+
 class PowerampRotaryKnob extends StatefulWidget {
   const PowerampRotaryKnob({
     super.key,

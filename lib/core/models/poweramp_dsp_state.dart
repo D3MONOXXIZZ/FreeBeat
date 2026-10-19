@@ -131,6 +131,23 @@ class DspPreset {
   List<double> get effectiveQFactors =>
       qFactors ?? List<double>.filled(10, 1.41);
 
+  String get shortName {
+    if (id == 'flat') return 'Audiophile Flat';
+    if (id == 'bass_boost') return 'Bass Boost';
+    if (id == 'smart_eq_bass_treble' || id == 'poweramp_bass_treble') return 'Smart EQ';
+    if (id == 'vocal' || id == 'vocal_clarity') return 'Vocal Air';
+    if (id == 'concert' || id == 'concert_hall') return 'Concert Hall';
+    if (id == 'rock' || id == 'rock_metal') return 'Rock & Metal';
+    if (id == 'harman_target') return 'Harman Target';
+    if (id == 'hifi_warm_tube') return 'Warm Tube';
+    if (id == 'bass_extreme') return 'Sub-Bass Extreme';
+    if (id == 'electronic_edm') return 'Club EDM';
+    if (id == 'late_night') return 'Late Night';
+    if (name.contains('/')) return name.split('/').first.trim();
+    if (name.contains('(')) return name.split('(').first.trim();
+    return name;
+  }
+
   String get description =>
       '$category Preset • Preamp: ${preampDb >= 0 ? "+" : ""}${preampDb.toStringAsFixed(1)} dB';
 
@@ -171,24 +188,61 @@ class DspPreset {
   }
 }
 
-/// Built-in audiophile & Poweramp-style presets.
+/// Built-in audiophile & Smart EQ presets.
 const List<DspPreset> kBuiltInDspPresets = [
   DspPreset(
     id: 'flat',
-    name: 'Flat / Bit-Perfect Reference',
+    name: 'Audiophile Flat / Bit-Perfect Reference',
     category: 'Audiophile',
     preampDb: 0.0,
     bandGainsDb: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   ),
   DspPreset(
-    id: 'poweramp_bass_treble',
-    name: 'Poweramp Bass & Treble',
+    id: 'bass_boost',
+    name: 'Bass Boost (Punchy Low-End)',
+    category: 'Bass',
+    preampDb: -3.5,
+    bandGainsDb: [7.0, 6.0, 4.0, 1.5, 0.0, 0.0, 0.0, 1.0, 2.0, 2.5],
+    bassTone: 0.55,
+    trebleTone: 0.15,
+    stereoExpansion: 0.10,
+  ),
+  DspPreset(
+    id: 'smart_eq_bass_treble',
+    name: 'Smart EQ Bass & Treble',
     category: 'Signature',
     preampDb: -2.5,
     bandGainsDb: [6.5, 5.5, 3.0, 0.5, -1.0, -0.5, 1.5, 3.5, 5.0, 6.0],
     bassTone: 0.35,
     trebleTone: 0.28,
     stereoExpansion: 0.22,
+  ),
+  DspPreset(
+    id: 'vocal',
+    name: 'Vocal Air & Presence',
+    category: 'Vocal',
+    preampDb: -1.5,
+    bandGainsDb: [-2.0, -1.0, 0.5, 2.5, 4.2, 4.8, 3.5, 2.0, 1.0, 0.5],
+    trebleTone: 0.25,
+  ),
+  DspPreset(
+    id: 'concert',
+    name: 'Concert Hall / Spatial Reverb',
+    category: 'Spatial',
+    preampDb: -2.0,
+    bandGainsDb: [2.0, 1.0, -0.5, -1.0, 0.0, 1.5, 3.0, 4.5, 5.0, 4.5],
+    stereoExpansion: 0.45,
+    trebleTone: 0.20,
+  ),
+  DspPreset(
+    id: 'rock',
+    name: 'Rock & Metal Studio',
+    category: 'Genre',
+    preampDb: -2.5,
+    bandGainsDb: [5.0, 4.0, 2.5, -1.0, -1.5, 1.0, 3.5, 4.8, 5.0, 4.5],
+    bassTone: 0.30,
+    trebleTone: 0.35,
+    stereoExpansion: 0.25,
   ),
   DspPreset(
     id: 'harman_target',
@@ -226,24 +280,6 @@ const List<DspPreset> kBuiltInDspPresets = [
     bassTone: 0.45,
     trebleTone: 0.35,
     stereoExpansion: 0.40,
-  ),
-  DspPreset(
-    id: 'rock_metal',
-    name: 'Rock & Live Studio',
-    category: 'Genre',
-    preampDb: -2.0,
-    bandGainsDb: [4.5, 3.8, 2.5, -1.0, -1.5, 1.0, 3.2, 4.5, 4.8, 4.5],
-    bassTone: 0.25,
-    trebleTone: 0.30,
-    stereoExpansion: 0.25,
-  ),
-  DspPreset(
-    id: 'vocal_clarity',
-    name: 'Vocal Presence & Acoustic',
-    category: 'Genre',
-    preampDb: -1.0,
-    bandGainsDb: [-2.0, -1.0, 0.5, 2.5, 4.2, 4.8, 3.5, 2.0, 1.0, 0.5],
-    trebleTone: 0.18,
   ),
   DspPreset(
     id: 'late_night',
@@ -527,3 +563,9 @@ class PowerampDspState {
     );
   }
 }
+
+/// Smart EQ Type Aliases & Frequency Constants
+const List<double> kSmartEq10BandFrequencies = kPoweramp10BandFrequencies;
+typedef SmartEqState = PowerampDspState;
+typedef SmartEqBandConfig = EqBandConfig;
+

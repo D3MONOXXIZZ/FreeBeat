@@ -1,6 +1,6 @@
 # FreeBeat — Master Execution Documentation & Technical Blueprint
 
-> **Project**: FreeBeat — Pixel-Native Android Cloud Music Streaming App with Hi-Fi Lossless & Poweramp DSP  
+> **Project**: FreeBeat — Pixel-Native Android Cloud Music Streaming App with Hi-Fi Lossless & Smart EQ DSP  
 > **Framework**: Flutter (Dart 3.x) + Native Android Kotlin (`AudioService` & `DynamicsProcessing` Hardware DSP)  
 > **Architecture**: 100% Client-Side Serverless • Multi-Cloud Unified Catalog • Material 3 Expressive (Google Pixel UI)
 
@@ -12,7 +12,7 @@
 2. [High-Level System Architecture](#2-high-level-system-architecture)
 3. [Cloud Provider & Media Server Specifications (12 Adapters)](#3-cloud-provider--media-server-specifications-12-adapters)
 4. [Configurable Audio Bitrate & Hi-Fi Lossless Pipeline](#4-configurable-audio-bitrate--hi-fi-lossless-pipeline)
-5. [Poweramp-Grade 10-Band EQ & Native Android DSP Suite](#5-poweramp-grade-10-band-eq--native-android-dsp-suite)
+5. [Smart EQ 10-Band EQ & Native Android DSP Suite](#5-smart-eq-10-band-eq--native-android-dsp-suite)
 6. [Smart Metadata Indexing & Time-Synced Lyrics Engine](#6-smart-metadata-indexing--time-synced-lyrics-engine)
 7. [Google Pixel Material 3 Expressive UI Specification](#7-google-pixel-material-3-expressive-ui-specification)
 8. [6-Phase Step-by-Step Execution Plan](#8-6-phase-step-by-step-execution-plan)
@@ -29,7 +29,7 @@
 1. **Universal Cloud & Media Server Support**: Connects to consumer OAuth clouds (**Google Drive, OneDrive, Dropbox, Box**), self-hosted media servers (**Jellyfin, Subsonic / Navidrome / OpenSubsonic**), open protocols (**WebDAV / Nextcloud, S3 / Cloudflare R2 / Backblaze B2 / MinIO**), local network NAS (**SFTP, SMB**), and **Android Native Storage Access Framework (SAF)**.
 2. **100% Client-Side Serverless Privacy**: Zero intermediary backend servers. All OAuth2 PKCE tokens, API keys, and credentials remain encrypted on-device inside the **Android Hardware Keystore** (`flutter_secure_storage`).
 3. **Configurable Bitrate & Hi-Fi Lossless Support**: Independent quality tiers for **Wi-Fi**, **Cellular**, and **Offline Downloads** ranging from **Data Saver (96 kbps Opus)** up to **Hi-Fi Lossless Bit-Perfect Direct Play (up to 24-bit / 192 kHz FLAC, ALAC, WAV)** with an interactive **Audio Signal Path Inspector**.
-4. **Poweramp-Style 10-Band EQ & DSP Engine**: Powered by Android's native `DynamicsProcessing` hardware audio effect API, featuring a **Preamp (`-15 dB` to `+15 dB`)**, **10-Band ISO Graphic & Parametric Equalizer (`31Hz`–`16kHz`)**, **Tactile Rotary Bass/Treble/Stereo X Knobs**, **DVC (Direct Volume Control)**, **Hardware Auto-Limiter**, **L/R Balance & Mono Mix**, **Tempo/Pitch Shifter**, **Crossfade (`0–12s`)**, and **Room Reverb**.
+4. **Smart EQ 10-Band EQ & DSP Engine**: Powered by Android's native `DynamicsProcessing` hardware audio effect API, featuring a **Preamp (`-15 dB` to `+15 dB`)**, **10-Band ISO Graphic & Parametric Equalizer (`31Hz`–`16kHz`)**, **Exact Numeric Band Tuning**, **Tactile Rotary Bass/Treble/Stereo X Knobs**, **DVC (Direct Volume Control)**, **Hardware Auto-Limiter**, **L/R Balance & Mono Mix**, **Tempo/Pitch Shifter**, **Crossfade (`0–12s`)**, and **Room Reverb**.
 5. **Authentic Google Pixel Material 3 Expressive UI**: Wallpaper Monet dynamic color extraction (`dynamic_color`), reactive album-art tonal palettes, Android 13–15 **Squiggly Seekbar**, scalloped/cookie expressive shapes, and morphing pill navigation.
 
 ---
@@ -43,14 +43,14 @@ flowchart TD
         Lib["Unified Library (Tracks, Albums, Artists, Clouds)"]
         Mini["Morphing Pill MiniPlayer"]
         NowPlaying["Full Now Playing (Squiggly Seekbar, Hi-Fi Badge, Synced Lyrics)"]
-        PowerampEQ["Poweramp DSP Studio (Preamp, 10-Band EQ, Rotary Bass/Treble, Stereo X)"]
+        SmartEQ["Smart EQ DSP Studio (Preamp, 10-Band EQ, Exact dB, Rotary Bass/Treble, Stereo X)"]
         QualitySheet["Bitrate & Hi-Fi Audio Settings (Wi-Fi / Cellular / Offline)"]
         Accounts["Cloud Mounts & Sync Manager"]
     end
 
     subgraph State["State & Domain Layer (Riverpod)"]
         AudioCtrl["PlaybackController, Crossfade & QueueManager"]
-        DspCtrl["PowerampDspController (10-Band, Preamp, Tone, Limiter, Presets)"]
+        DspCtrl["SmartEqController (10-Band, Preamp, Numeric Tuning, Tone, Limiter, Presets)"]
         BitrateCtrl["AudioQualityController (96k -> 320k -> 24-bit/192kHz Hi-Fi)"]
         SyncEngine["CloudSyncEngine & Range Tag Parser"]
         LyricsSvc["LyricsService (.lrc Sidecar + LRCLIB)"]
@@ -124,16 +124,16 @@ Users configure three independent contexts (**Wi-Fi Streaming**, **Mobile Data S
 | `extreme320` | **Extreme** | `320 kbps` | `MP3` / `AAC` | Lossy |
 | `hifiLossless` | **Hi-Fi Master / Lossless** | **Uncompressed / Original (Up to 9,216 kbps)** | `FLAC` / `ALAC` / `WAV` (16/24/32-bit, 44.1–192 kHz) | **Bit-Perfect Lossless** |
 
-### 4.2 Signal Path Inspector (Poweramp-Style Audio Info Sheet)
+### 4.2 Signal Path Inspector (Smart EQ Audio Info Sheet)
 Tapping the quality pill on the Now Playing screen opens the **Live Audio Signal Path Sheet**, inspecting four real-time stages:
 1. **Source Stage**: Cloud Provider name, protocol (`HTTPS Range` / `Subsonic API` / `S3 SigV4` / `Offline Cache`), and active network tier.
 2. **Stream / Decoder Stage**: Audio container & codec (`FLAC`, `WAV`, `ALAC`, `MP3`, `OPUS`), bit-depth (`16-bit` / `24-bit`), sample rate (`44.1 kHz` / `96 kHz` / `192 kHz`), and live bitrate (`kbps`).
-3. **Poweramp DSP Stage**: Processing precision (`64-bit Float Internal Math / 32-bit Float Hardware DynamicsProcessing`), active Preamp gain (`dB`), active 10-band EQ preset, Tone status, Stereo X width (`%`), DVC status, and Hardware Limiter state.
+3. **Smart EQ DSP Stage**: Processing precision (`64-bit Float Internal Math / 32-bit Float Hardware DynamicsProcessing`), active Preamp gain (`dB`), active 10-band EQ preset, Tone status, Stereo X width (`%`), DVC status, and Hardware Limiter state.
 4. **Android Output Device Stage**: Active audio route (`Wired USB-C DAC` / `Bluetooth LDAC/aptX` / `Pixel Built-in Speaker`), native output sample rate (`AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE`), and frame buffer size.
 
 ---
 
-## 5. Poweramp-Grade 10-Band EQ & Native Android DSP Suite
+## 5. Smart EQ 10-Band EQ & Native Android DSP Suite
 
 ### 5.1 Native Kotlin `DynamicsProcessing` Architecture (`MainActivity.kt`)
 Android 9+ (API 28+) includes `android.media.audiofx.DynamicsProcessing`, a studio-grade hardware-accelerated multi-stage audio processor that attaches directly to ExoPlayer's `audioSessionId`.
@@ -146,14 +146,16 @@ flowchart LR
     PreEQ --> Tone["Post-EQ Shelf Stage\n(Rotary Bass 40-150Hz &\nRotary Treble 6k-16kHz)"]
     Tone --> Spatial["Spatial & Reverb Stage\n(Stereo X Width, L/R Balance,\nMono Mix, Hall/Studio Reverb)"]
     Spatial --> MBC["Multi-Band Compressor (MBC)\n& Output Hardware Limiter\n(-0.1 dBFS Ceiling)"]
+    Spatial --> MBC
     MBC --> Out["Android AudioTrack\nHi-Res Output"]
 ```
 
-### 5.2 Complete Poweramp Feature Matrix in FreeBeat
-- **Preamp Fader**: `-15.0 dB` to `+15.0 dB` vertical slider on the far left of the EQ bank with an automatic clipping warning indicator.
+### 5.2 Complete Smart EQ Feature Matrix in FreeBeat
+- **Preamp Fader & Exact Numeric Tuning**: `-15.0 dB` to `+15.0 dB` vertical slider on the far left of the EQ bank with decimal numeric entry support and an automatic clipping warning indicator.
 - **10-Band ISO Graphic Equalizer**:
   - Center frequencies: `31 Hz`, `62 Hz`, `125 Hz`, `250 Hz`, `500 Hz`, `1 kHz`, `2 kHz`, `4 kHz`, `8 kHz`, `16 kHz`.
   - Range: `-15.0 dB` to `+15.0 dB` per band with `0.1 dB` precision.
+  - **Manual All-Bands Numeric Tuning**: Tap the "Exact dB" button to open the precision editor for entering exact values with +/-0.5 dB steppers. Tap any band label to tune that single band.
 - **Parametric EQ Mode**: Long-pressing or tapping a band's frequency header opens a fine-tune popup allowing customization of **Center Frequency (`20 Hz`–`20,000 Hz`)** and **Q-Factor (`0.3` to `10.0`)**.
 - **Interactive Frequency Response Curve**: Custom-painted cubic Bezier / biquad transfer function graph showing the exact combined dB curve of the Preamp + 10 EQ bands + Bass/Treble tone shelves.
 - **Rotary Tone & Spatial Controls**:
@@ -169,7 +171,7 @@ flowchart LR
   - **Tempo & Pitch**: Independent playback speed (`0.50x`–`2.00x`) and pitch transposition (`-12` to `+12` semitones).
   - **Reverb**: Room presets (*None*, *Small Room*, *Medium Room*, *Large Hall*, *Plate*, *Studio*) with wet/dry mix control.
 - **Built-in & Custom User Presets**:
-  - Ships with 10 audiophile presets: *Flat*, *Poweramp Bass & Treble*, *Harman Target AE/OE*, *Hi-Fi Reference*, *Bass Extreme*, *Rock*, *Electronic / EDM*, *Vocal / Podcast*, *Classical*, *Late Night Loudness*.
+  - Ships with 11 audiophile presets: *Audiophile Flat*, *Bass Boost (Punchy Low-End)*, *Smart EQ Bass & Treble*, *Vocal Air & Presence*, *Concert Hall / Spatial Reverb*, *Rock & Metal Studio*, *Harman Target Curve 2026*, *Hi-Fi Warm Tube Class-A*, *Sub-Bass Extreme + Limiter*, *Electronic / Festival Club*, *Late Night Loudness Contour*.
   - Users can save custom presets and import/export **AutoEQ / JSON preset profiles**.
 
 ---
@@ -227,18 +229,18 @@ When scanning raw cloud storage (Google Drive, OneDrive, Dropbox, WebDAV, S3, SF
 - [x] **2.4** Implement Open Protocol & Local connectors (`open_protocol_connectors.dart` for WebDAV & S3 SigV4; `network_and_saf_connectors.dart` for SFTP, SMB, Android SAF, and Demo Cloud).
 - [x] **2.5** Implement `range_tag_parser.dart` (64 KB ID3v2/FLAC/M4A/WMA/WAV/AIFF header parser) and `artwork_and_lyrics_service.dart` (iTunes artwork + LRCLIB synced lyrics).
 
-### Phase 3: Hi-Fi Audio Engine, Loopback Stream Proxy & Native Poweramp DSP Bridge
-- [x] **3.1** Implement native Kotlin `DynamicsProcessing` bridge in `MainActivity.kt` (`com.freebeat.app/dsp` handling 10-band EQ, Preamp, Tone shelves, Stereo X, Limiter, Reverb, and hardware output queries).
+### Phase 3: Hi-Fi Audio Engine, Loopback Stream Proxy & Native Smart EQ DSP Bridge
+- [x] **3.1** Implement native Kotlin `DynamicsProcessing` bridge in `MainActivity.kt` (`com.freebeat.app/dsp` handling 10-band EQ, Preamp, Exact Numeric Band Tuning, Tone shelves, Stereo X, Limiter, Reverb, and hardware output queries).
 - [x] **3.2** Implement `cloud_stream_proxy.dart` (`127.0.0.1` loopback HTTP server with `206 Partial Content` range forwarding, quality tier adaptation, and offline cache writer).
 - [x] **3.3** Implement `poweramp_dsp_service.dart`, `freebeat_audio_handler.dart`, and Riverpod state controllers (`app_providers.dart`).
 
 ### Phase 4: Google Pixel Material 3 Expressive UI & Core Playback Screens
 - [x] **4.1** Implement `pixel_theme.dart`, `squiggly_slider.dart`, `expressive_shapes.dart`, and `rotary_knob.dart`.
 - [x] **4.2** Implement `main_shell.dart` (NavigationBar + Floating Pill MiniPlayer), `home_screen.dart`, and `library_screen.dart`.
-- [x] **4.3** Implement `now_playing_screen.dart` (Squiggly Seekbar, Synced Lyrics drawer, Hi-Fi Badge) and `signal_path_sheet.dart` (Poweramp-style Signal Path & on-the-fly Bitrate Switcher).
+- [x] **4.3** Implement `now_playing_screen.dart` (Squiggly Seekbar, Synced Lyrics drawer, Hi-Fi Badge) and `signal_path_sheet.dart` (Smart EQ Signal Path & on-the-fly Bitrate Switcher).
 
-### Phase 5: Poweramp 10-Band EQ Studio & Cloud / Audio Quality Hub
-- [x] **5.1** Implement `poweramp_dsp_screen.dart` (Interactive Frequency Response Spline Graph, Preamp + 10-Band Graphic/Parametric Faders, Rotary Bass/Treble/Stereo X Knobs, DVC/Limiter/Balance/Tempo/Reverb controls, Preset Manager).
+### Phase 5: Smart EQ 10-Band EQ Studio & Cloud / Audio Quality Hub
+- [x] **5.1** Implement `poweramp_dsp_screen.dart` (Interactive Frequency Response Spline Graph, Preamp + 10-Band Graphic/Parametric Faders, Exact Numeric Band Tuning, Rotary Bass/Treble/Stereo X Knobs, DVC/Limiter/Balance/Tempo/Reverb controls, Preset Manager).
 - [x] **5.2** Implement `clouds_screen.dart` (Connected Clouds Dashboard, 12-Provider Add Cloud Wizard, Wi-Fi/Cellular/Offline Bitrate & Hi-Fi Settings Panel, Offline Cache Manager).
 
 ### Phase 6: Automated Verification, Static Analysis & APK Build
@@ -390,7 +392,7 @@ FreeBeat implements a dedicated **`PixelHapticsService`** over our native Kotlin
 
 ### 12.2 120Hz Material 3 Expressive Spring & Physics Animations
 - **M3 Expressive Spatial & Effects Springs**: Uses damped harmonic spring physics (`SpringDescription(mass: 1.0, stiffness: 380, damping: 28)`) for all layout morphs, card expansions, MiniPlayer-to-NowPlaying sheet transitions, and navigation pill indicator slides.
-- **Continuous ColorScheme Lerping**: When switching tracks, `TweenAnimationBuilder<Color>` / `ColorScheme.lerp` smoothly transitions background surfaces, the Squiggly Seekbar, and the Poweramp EQ spline curve over `650ms` (`Curves.easeOutCubic`).
+- **Continuous ColorScheme Lerping**: When switching tracks, `TweenAnimationBuilder<Color>` / `ColorScheme.lerp` smoothly transitions background surfaces, the Squiggly Seekbar, and the Smart EQ spline curve over `650ms` (`Curves.easeOutCubic`).
 - **Interactive Micro-Scale Physics**: All cards, chips, rotary knobs, and transport buttons feature press-scale spring feedback (`0.95x` scale down on pointer-down, spring bounce back on release).
 
 ---

@@ -188,7 +188,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Screen Title
-      expect(find.text('Poweramp DSP Studio'), findsOneWidget);
+      expect(find.text('Smart EQ Studio'), findsOneWidget);
 
       // Verify Multi-Mode Visualizer Chips: Bars, Waveform, Vinyl Pulse
       expect(find.text('Bars'), findsOneWidget);

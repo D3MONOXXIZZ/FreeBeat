@@ -232,7 +232,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                           ),
                           IconButton(
                             icon: const Icon(Icons.tune_rounded, size: 24),
-                            tooltip: 'Poweramp EQ',
+                            tooltip: 'Smart EQ',
                             onPressed: () {
                               PixelHaptics.sheetExpand();
                               Navigator.of(context).pop();

@@ -58,10 +58,10 @@ void main() {
       expect(find.text('Your Library'), findsOneWidget);
       expect(find.text('Your Library is Empty'), findsOneWidget);
 
-      // 4. Navigate to Poweramp 10-Band EQ Studio tab
-      await tester.tap(find.text('Poweramp EQ'));
+      // 4. Navigate to Smart EQ 10-Band Studio tab
+      await tester.tap(find.text('Smart EQ'));
       await tester.pumpAndSettle();
-      expect(find.text('Poweramp DSP Studio'), findsOneWidget);
+      expect(find.text('Smart EQ Studio'), findsOneWidget);
       expect(find.text('PREAMP'), findsOneWidget);
       expect(find.text('16k'), findsOneWidget);
 

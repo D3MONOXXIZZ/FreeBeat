@@ -64,7 +64,7 @@ class AboutSettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Pixel-native, client-side cloud music streaming app with Poweramp 10-Band DSP and Material 3 Expressive styling.',
+                    'Pixel-native, client-side cloud music streaming app with Smart EQ 10-Band DSP and Material 3 Expressive styling.',
                     textAlign: TextAlign.center,
                     style: textTheme.bodyMedium?.copyWith(
                       color: cs.onSurfaceVariant,

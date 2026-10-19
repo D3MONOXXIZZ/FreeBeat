@@ -33,7 +33,7 @@ void main() {
                     NavPillDestination(
                       icon: Icons.equalizer_rounded,
                       selectedIcon: Icons.graphic_eq_rounded,
-                      label: 'Poweramp EQ',
+                      label: 'Smart EQ',
                     ),
                     NavPillDestination(
                       icon: Icons.cloud_outlined,
@@ -52,7 +52,7 @@ void main() {
     // Verify all 4 labels are present
     expect(find.text('Your Mix'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('Poweramp EQ'), findsOneWidget);
+    expect(find.text('Smart EQ'), findsOneWidget);
     expect(find.text('Clouds'), findsOneWidget);
 
     // Initially "Your Mix" is selected

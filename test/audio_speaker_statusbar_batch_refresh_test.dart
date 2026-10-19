@@ -120,7 +120,7 @@ void main() {
       await tester.pump();
 
       // Should render without errors and without ticking animation loops in background
-      expect(find.text('Poweramp DSP Studio'), findsOneWidget);
+      expect(find.text('Smart EQ Studio'), findsOneWidget);
 
       // 2. Active PowerampDspScreen
       await tester.pumpWidget(
@@ -131,7 +131,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('Poweramp DSP Studio'), findsOneWidget);
+      expect(find.text('Smart EQ Studio'), findsOneWidget);
     });
 
     testWidgets('MainShell loads and passes isActive to Poweramp tab correctly',
@@ -158,8 +158,8 @@ void main() {
       // Tab 0 is selected, so PowerampDspScreen should have isActive: false
       expect(dspWidget.isActive, isFalse);
 
-      // Tap on the Poweramp navigation pill tab (index 2)
-      await tester.tap(find.text('Poweramp EQ'));
+      // Tap on the Smart EQ navigation pill tab (index 2)
+      await tester.tap(find.text('Smart EQ'));
       await tester.pumpAndSettle();
 
       // Now Poweramp tab should be active

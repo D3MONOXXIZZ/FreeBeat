@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/audio_quality_settings.dart';
 import '../../state/app_providers.dart';
 
-/// Poweramp-style Live Audio Signal Path Inspector & On-the-Fly Bitrate Switcher Sheet.
+/// Smart EQ Live Audio Signal Path Inspector & On-the-Fly Bitrate Switcher Sheet.
 /// Shows the real-time 4-stage audio pipeline:
-/// 1. Cloud Source -> 2. Stream Decoder/Bitrate -> 3. 64-bit Poweramp DSP -> 4. Android / Bluetooth Output
+/// 1. Cloud Source -> 2. Stream Decoder/Bitrate -> 3. 64-bit Smart EQ DSP -> 4. Android / Bluetooth Output
 class SignalPathSheet extends ConsumerWidget {
   const SignalPathSheet({super.key});
 
@@ -120,7 +120,7 @@ class SignalPathSheet extends ConsumerWidget {
             _SignalConnectorLine(color: cs.primary),
             _SignalNodeCard(
               stepNumber: '3',
-              title: 'Poweramp 64-Bit DSP Engine',
+              title: 'Smart EQ 64-Bit DSP Engine',
               subtitle: dsp.bitPerfectDirectMode
                   ? 'Bit-Perfect Direct Hardware Mode\nAll DSP filters, tone shelves, and limiters bypassed for pure bit-for-bit PCM audio output to DAC.'
                   : '${route.dspEngineMode}\nPreamp: ${dsp.preampDb >= 0 ? "+" : ""}${dsp.preampDb.toStringAsFixed(1)} dB • 10-Band EQ: ${dsp.eqEnabled ? "ON" : "BYPASS"} • Crossfeed: ${dsp.bs2bCrossfeedMode.label} • Headroom: ${dsp.dvcHeadroomDb.toStringAsFixed(1)} dB',

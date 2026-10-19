@@ -351,7 +351,7 @@ class TrackDetailsScreen extends ConsumerWidget {
                         : 'Direct Hardware Line / Speaker',
                   ),
                   _DetailRow(
-                    label: 'Poweramp DSP EQ',
+                    label: 'Smart EQ DSP',
                     value: '10-Band Graphic & Tone Active',
                   ),
                 ],

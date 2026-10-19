@@ -3,21 +3,21 @@ import '../../core/models/audio_quality_settings.dart';
 import '../../core/models/poweramp_dsp_state.dart';
 
 /// Communicates with the native Kotlin `DynamicsProcessing` + `Virtualizer` + `BassBoost`
-/// hardware bridge (`com.freebeat.app/dsp`) in `MainActivity.kt`.
+/// hardware bridge (`com.freebeat.app/dsp`) in `MainActivity.kt` for Smart EQ & DSP.
 class PowerampDspService {
   static const MethodChannel _channel = MethodChannel('com.freebeat.app/dsp');
 
   Future<String> attachAudioSession(int audioSessionId) async {
-    if (audioSessionId <= 0) return 'DynamicsProcessing 64-bit Hardware';
+    if (audioSessionId <= 0) return 'Smart EQ DynamicsProcessing 64-bit Hardware';
     try {
       final res = await _channel.invokeMethod<Map<dynamic, dynamic>>(
         'attachSession',
         {'audioSessionId': audioSessionId},
       );
       return res?['engineMode'] as String? ??
-          'DynamicsProcessing 64-bit Hardware';
+          'Smart EQ DynamicsProcessing 64-bit Hardware';
     } catch (_) {
-      return 'DynamicsProcessing 64-bit Hardware';
+      return 'Smart EQ DynamicsProcessing 64-bit Hardware';
     }
   }
 
@@ -157,3 +157,7 @@ class PowerampDspService {
     });
   }
 }
+
+/// Smart EQ Service Alias
+typedef SmartEqService = PowerampDspService;
+
