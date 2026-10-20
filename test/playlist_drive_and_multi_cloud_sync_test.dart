@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:dart_des/dart_des.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -139,6 +140,56 @@ void main() {
       expect(candidate.format, equals('mp3'));
       expect(candidate.artworkUrl, equals('https://i.scdn.co/image/art123.jpg'));
       expect(candidate.album, equals('Direct Album'));
+    });
+
+    test('JioSaavn full-length studio engine resolves 320kbps full song with DES decryption', () async {
+      final key = utf8.encode('38346591');
+      final des = DES(key: key, mode: DESMode.ECB, paddingType: DESPaddingType.PKCS5);
+      final rawUrl = utf8.encode('https://aac.saavncdn.com/123/mock_song_96.mp4');
+      final encBytes = des.encrypt(rawUrl);
+      final encB64 = base64Encode(encBytes);
+
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('jiosaavn.com/api.php') && url.contains('search.getResults')) {
+          return http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'id': 'saavn_track_456',
+                  'song': 'Blinding Lights',
+                  'primary_artists': 'The Weeknd',
+                  'album': 'After Hours',
+                  'duration': '200',
+                  'image': 'https://c.saavncdn.com/123/art_150x150.jpg',
+                  'encrypted_media_url': encB64,
+                }
+              ]
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final resolver = MissingTrackAudioResolver(httpClient: mockClient);
+      final candidate = await resolver.resolveTrackAudio(
+        title: 'Blinding Lights',
+        artist: 'The Weeknd',
+        expectedDurationMs: 200000,
+      );
+
+      expect(candidate, isNotNull);
+      expect(candidate!.sourceId, equals('saavn_saavn_track_456'));
+      expect(candidate.sourceTitle, equals('Blinding Lights'));
+      expect(candidate.channelOrArtist, equals('The Weeknd'));
+      expect(candidate.album, equals('After Hours'));
+      expect(candidate.streamUrl, equals('https://aac.saavncdn.com/123/mock_song_320.mp4'));
+      expect(candidate.format, equals('m4a'));
+      expect(candidate.bitrateKbps, equals(320));
+      expect(candidate.durationMs, equals(200000));
+      expect(candidate.isFullLength, isTrue);
+      expect(candidate.artworkUrl, contains('500x500'));
     });
   });
 
