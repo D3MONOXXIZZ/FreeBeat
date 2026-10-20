@@ -5,6 +5,7 @@ import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/core/models/track.dart';
 import 'package:freebeat/state/app_providers.dart';
 import 'package:freebeat/ui/screens/home_screen.dart';
+import 'package:freebeat/ui/widgets/expressive_shapes.dart';
 import 'package:freebeat/ui/widgets/material_you_album_cover.dart';
 
 void main() {
@@ -272,6 +273,49 @@ void main() {
       // Both tracks visible again
       expect(find.text('Recently Added'), findsOneWidget);
       expect(find.text('Hotel California'), findsWidgets);
+
+      // Verify horizontal fling/drag across New Albums executes smoothly without errors
+      final albumFinder = find.byKey(const ValueKey('home_album_A Night at the Opera'));
+      expect(albumFinder, findsOneWidget);
+
+      await tester.drag(albumFinder, const Offset(-150, 0));
+      await tester.pumpAndSettle();
+
+      // Verify RepaintBoundary exists for isolated rasterization
+      expect(find.byType(RepaintBoundary), findsWidgets);
+    });
+
+    testWidgets('SpringPressScale debounces swipe drags and avoids shrink jitters', (tester) async {
+      bool tapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SpringPressScale(
+                onTap: () => tapped = true,
+                child: const SizedBox(width: 100, height: 100, child: Text('Album')),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Start drag (down then move)
+      final gesture = await tester.startGesture(tester.getCenter(find.text('Album')));
+      // Before 75ms debounce, AnimatedScale should still be 1.0 (no premature shrinking)
+      await tester.pump(const Duration(milliseconds: 30));
+      final animatedScale = tester.widget<AnimatedScale>(find.byType(AnimatedScale));
+      expect(animatedScale.scale, 1.0);
+
+      // Cancel gesture as would happen in a scroll fling
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+      expect(tapped, isFalse);
+
+      // A genuine quick tap registers onTap
+      await tester.tap(find.text('Album'));
+      await tester.pumpAndSettle();
+      expect(tapped, isTrue);
     });
   });
 }

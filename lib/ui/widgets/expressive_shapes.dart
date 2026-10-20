@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../services/haptics/pixel_haptics.dart';
@@ -23,21 +24,69 @@ class SpringPressScale extends StatefulWidget {
 
 class _SpringPressScaleState extends State<SpringPressScale> {
   bool _pressed = false;
+  Timer? _pressTimer;
+
+  @override
+  void dispose() {
+    _pressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _pressTimer?.cancel();
+    // 75ms debounce ensures that horizontal or vertical swipe flings across lists
+    // do not trigger micro-jitters by prematurely shrinking and restoring the card.
+    _pressTimer = Timer(const Duration(milliseconds: 75), () {
+      if (mounted) {
+        setState(() => _pressed = true);
+      }
+    });
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    final wasPending = _pressTimer?.isActive ?? false;
+    _pressTimer?.cancel();
+    if (_pressed && mounted) {
+      setState(() => _pressed = false);
+    } else if (wasPending && mounted) {
+      // For quick deliberate taps, show a brief spring-press response
+      setState(() => _pressed = true);
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          setState(() => _pressed = false);
+        }
+      });
+    }
+    widget.onTap?.call();
+  }
+
+  void _onTapCancel() {
+    _pressTimer?.cancel();
+    if (_pressed && mounted) {
+      setState(() => _pressed = false);
+    }
+  }
+
+  void _onLongPress() {
+    _pressTimer?.cancel();
+    if (_pressed && mounted) {
+      setState(() => _pressed = false);
+    }
+    widget.onLongPress?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.onTap == null && widget.onLongPress == null) {
+      return widget.child;
+    }
+
     return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap?.call();
-      },
-      onLongPress: () {
-        setState(() => _pressed = false);
-        widget.onLongPress?.call();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onLongPress: _onLongPress,
+      onTapCancel: _onTapCancel,
       child: AnimatedScale(
         scale: _pressed ? widget.scaleDown : 1.0,
         duration: const Duration(milliseconds: 160),

@@ -41,144 +41,155 @@ class MaterialYouAlbumCover extends StatelessWidget {
         ? Color(track.dominantColorValue)
         : cs.primary;
 
-    return SpringPressScale(
-      onTap: onPlayTap,
-      child: Container(
-        width: size.isFinite ? size : null,
-        height: size.isFinite ? size : null,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(borderRadius),
-          color: cs.surfaceContainerHigh,
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.3),
-            width: 1.0,
-          ),
-          boxShadow: size > 52
-              ? [
-                  // M3 Surface Tint / Tonal Elevation glow for hero artwork
-                  BoxShadow(
-                    color: trackColor.withValues(alpha: 0.18),
-                    blurRadius: 18,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [
-                  // Lightweight elevation for fast 120Hz scrolling list thumbnails
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+    final coverContent = Container(
+      width: size.isFinite ? size : null,
+      height: size.isFinite ? size : null,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(borderRadius),
+        color: cs.surfaceContainerHigh,
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.3),
+          width: 1.0,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 1. Artwork / Procedural Material You Cover
-              _buildCoverImage(context, trackColor, cs),
+        boxShadow: size > 160
+            ? [
+                // Ambient M3 Surface Tint / Tonal glow for large hero artwork
+                BoxShadow(
+                  color: trackColor.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : size > 52
+                ? [
+                    // Crisp, hardware-accelerated elevation for 120Hz carousels
+                    BoxShadow(
+                      color: trackColor.withValues(alpha: 0.14),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : [
+                    // Lightweight elevation for fast 120Hz scrolling list thumbnails
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Artwork / Procedural Material You Cover (isolated raster layer)
+            RepaintBoundary(
+              child: _buildCoverImage(context, trackColor, cs),
+            ),
 
-              // 2. Subtle Bottom Gradient Scrim for Contrast
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.45),
+            // 2. Subtle Bottom Gradient Scrim for Contrast
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.45),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+
+            // 3. Top-Left: Quality / Codec Badge (FLAC, Hi-Res, 320k)
+            if (showQualityBadge)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (track.isHiRes)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 3),
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 10,
+                            color: cs.primaryContainer,
+                          ),
+                        ),
+                      Text(
+                        track.isHiRes
+                            ? 'HI-RES'
+                            : track.isLossless
+                                ? track.codec.toUpperCase()
+                                : '${track.bitrateKbps}K',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                          color: Colors.white,
+                        ),
+                      ),
                     ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
                   ),
                 ),
               ),
 
-              // 3. Top-Left: Quality / Codec Badge (FLAC, Hi-Res, 320k)
-              if (showQualityBadge)
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(100),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        width: 0.5,
-                      ),
+            // 4. Top-Right: Cloud Provider / Source Badge
+            if (showSourceBadge)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      width: 0.5,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (track.isHiRes)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 3),
-                            child: Icon(
-                              Icons.auto_awesome_rounded,
-                              size: 10,
-                              color: cs.primaryContainer,
-                            ),
-                          ),
-                        Text(
-                          track.isHiRes
-                              ? 'HI-RES'
-                              : track.isLossless
-                                  ? track.codec.toUpperCase()
-                                  : '${track.bitrateKbps}K',
-                          style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      track.providerType.icon,
+                      size: 12,
+                      color: track.providerType.accentColor,
                     ),
                   ),
                 ),
+              ),
 
-              // 4. Top-Right: Cloud Provider / Source Badge
-              if (showSourceBadge)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        track.providerType.icon,
-                        size: 12,
-                        color: track.providerType.accentColor,
-                      ),
-                    ),
+            // 5. Centered Playing Animation on Album Art (without dark shadow)
+            if (isPlaying && showPlayingAnimation)
+              Center(
+                child: RepaintBoundary(
+                  child: PixelPlayingEqualizerAnimation(
+                    size: (size * 0.36).clamp(16.0, 32.0),
+                    color: Colors.white,
                   ),
                 ),
-
-              // 5. Centered Playing Animation on Album Art (without dark shadow)
-              if (isPlaying && showPlayingAnimation)
-                Center(
-                  child: RepaintBoundary(
-                    child: PixelPlayingEqualizerAnimation(
-                      size: (size * 0.36).clamp(16.0, 32.0),
-                      color: Colors.white,
-                    ),
-                  ),
-                )
-              else if (showPlayButton)
-                Positioned(
-                  bottom: 8,
-                  right: 8,
+              )
+            else if (showPlayButton)
+              Positioned(
+                bottom: 8,
+                right: 8,
+                child: SpringPressScale(
+                  onTap: onPlayTap,
                   child: Container(
                     width: 38,
                     height: 38,
@@ -202,20 +213,36 @@ class MaterialYouAlbumCover extends StatelessWidget {
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
+
+    if (onPlayTap != null && !showPlayButton) {
+      return SpringPressScale(
+        onTap: onPlayTap,
+        child: coverContent,
+      );
+    }
+
+    return coverContent;
   }
 
   Widget _buildCoverImage(BuildContext context, Color trackColor, ColorScheme cs) {
     if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
       final art = track.artworkUrl!;
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.5;
+      final int targetCache = size.isFinite
+          ? (size * dpr).round().clamp(96, 720)
+          : 512;
+
       if (art.startsWith('http://') || art.startsWith('https://')) {
         return Image.network(
           art,
           fit: BoxFit.cover,
+          cacheWidth: targetCache,
+          cacheHeight: targetCache,
           errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
       } else {
@@ -224,6 +251,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
           return Image.file(
             file,
             fit: BoxFit.cover,
+            cacheWidth: targetCache,
+            cacheHeight: targetCache,
             errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
           );
         }

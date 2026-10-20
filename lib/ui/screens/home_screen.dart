@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -565,7 +566,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
                 children: [
                   for (final cat in _HomeCategoryFilter.values) ...[
                     _PixelCategoryPill(
@@ -655,13 +659,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
+                      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
                       itemCount: artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
                         final artist = artists[idx];
                         final isSelected = selectedArtist == artist.name;
                         return ChoiceChip(
+                          key: ValueKey('filter_chip_artist_${artist.name}'),
                           label: Text('${artist.name} (${artist.trackCount})'),
                           selected: isSelected,
                           onSelected: (selected) {
@@ -739,13 +747,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
+                      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
                       itemCount: albums.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
                         final album = albums[idx];
                         final isSelected = selectedAlbum == album.title;
                         return ChoiceChip(
+                          key: ValueKey('filter_chip_album_${album.title}'),
                           label: Text(album.title),
                           selected: isSelected,
                           onSelected: (selected) {
@@ -1053,13 +1065,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
                 itemCount: tracks.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 14),
                 itemBuilder: (context, idx) {
                   final track = tracks[idx];
                   final isCurrent = currentTrackId == track.id;
                   return _PixelCoverCard(
+                    key: ValueKey('home_filtered_${track.id}'),
                     track: track,
                     isCurrent: isCurrent,
                     isPlaying: isCurrent && isPlaying,
@@ -1133,12 +1149,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
                   itemCount: albums.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
                     final album = albums[idx];
                     return _PixelAlbumCoverCard(
+                      key: ValueKey('home_album_${album.title}'),
                       album: album,
                       onTap: () {
                         PixelHaptics.tick();
@@ -1213,13 +1233,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
                   itemCount: allTracks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
                     final track = allTracks[allTracks.length - 1 - idx];
                     final isCurrent = currentTrackId == track.id;
                     return _PixelCoverCard(
+                      key: ValueKey('home_recent_${track.id}'),
                       track: track,
                       isCurrent: isCurrent,
                       isPlaying: isCurrent && isPlaying,
@@ -1302,13 +1326,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
                   itemCount: topPicks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
                     final track = topPicks[idx];
                     final isCurrent = currentTrackId == track.id;
                     return _PixelCoverCard(
+                      key: ValueKey('home_top_picks_${track.id}'),
                       track: track,
                       isCurrent: isCurrent,
                       isPlaying: isCurrent && isPlaying,
@@ -1381,73 +1409,79 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
                     final artist = artists[idx];
-                    return SpringPressScale(
-                      onTap: () {
-                        PixelHaptics.tick();
-                        if (ref.read(selectedArtistFilterProvider) == artist.name) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ArtistDetailsScreen(
-                                artistName: artist.name,
+                    return RepaintBoundary(
+                      key: ValueKey('home_artist_${artist.name}'),
+                      child: SpringPressScale(
+                        onTap: () {
+                          PixelHaptics.tick();
+                          if (ref.read(selectedArtistFilterProvider) == artist.name) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ArtistDetailsScreen(
+                                  artistName: artist.name,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ref.read(selectedArtistFilterProvider.notifier).state =
+                                artist.name;
+                          }
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 68,
+                              height: 68,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: cs.surfaceContainerHigh,
+                                border: Border.all(
+                                  color: cs.primary.withValues(alpha: 0.35),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: ClipOval(
+                                child: MaterialYouAlbumCover(
+                                  track: artist.representativeTrack,
+                                  size: 68,
+                                  borderRadius: 34,
+                                  showQualityBadge: false,
+                                  showSourceBadge: false,
+                                ),
                               ),
                             ),
-                          );
-                        } else {
-                          ref.read(selectedArtistFilterProvider.notifier).state =
-                              artist.name;
-                        }
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 68,
-                            height: 68,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: cs.surfaceContainerHigh,
-                              border: Border.all(
-                                color: cs.primary.withValues(alpha: 0.35),
-                                width: 1.5,
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: 78,
+                              child: Text(
+                                artist.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                            child: ClipOval(
-                              child: MaterialYouAlbumCover(
-                                track: artist.representativeTrack,
-                                size: 68,
-                                borderRadius: 34,
-                                showQualityBadge: false,
-                                showSourceBadge: false,
+                            Text(
+                              '${artist.trackCount} ${artist.trackCount == 1 ? "track" : "tracks"}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: cs.onSurfaceVariant,
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: 78,
-                            child: Text(
-                              artist.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            '${artist.trackCount} ${artist.trackCount == 1 ? "track" : "tracks"}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -1617,6 +1651,7 @@ class _PixelPlaylistCard extends StatelessWidget {
 /// Strictly horizontally scrollable with spring press scale physics.
 class _PixelCoverCard extends StatelessWidget {
   const _PixelCoverCard({
+    super.key,
     required this.track,
     required this.isCurrent,
     required this.isPlaying,
@@ -1638,86 +1673,88 @@ class _PixelCoverCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      onTap: onTap,
-      onLongPress: onOpenOptions,
-      child: SizedBox(
-        width: cardWidth,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MaterialYouAlbumCover(
-              track: track,
-              size: cardWidth,
-              borderRadius: 24,
-              showQualityBadge: true,
-              showSourceBadge: true,
-              showPlayButton: true,
-              isPlaying: isPlaying,
-              onPlayTap: onTap,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
-                color: isCurrent ? cs.primary : cs.onSurface,
+    return RepaintBoundary(
+      child: SpringPressScale(
+        onTap: onTap,
+        onLongPress: onOpenOptions,
+        child: SizedBox(
+          width: cardWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MaterialYouAlbumCover(
+                track: track,
+                size: cardWidth,
+                borderRadius: 24,
+                showQualityBadge: true,
+                showSourceBadge: true,
+                showPlayButton: true,
+                isPlaying: isPlaying,
+                onPlayTap: onTap,
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              track.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurfaceVariant,
+              const SizedBox(height: 8),
+              Text(
+                track.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
+                  color: isCurrent ? cs.primary : cs.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                MaterialYouDownloadButton(
-                  track: track,
-                  size: 22,
-                ),
-                IconButton(
-                  iconSize: 20,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  icon: Icon(
-                    track.isFavorite
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
-                  ),
-                  onPressed: () {
-                    PixelHaptics.tick();
-                    onToggleFavorite();
-                  },
-                ),
-                IconButton(
-                  iconSize: 20,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  icon: const Icon(Icons.more_vert_rounded),
+              const SizedBox(height: 2),
+              Text(
+                track.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
                   color: cs.onSurfaceVariant,
-                  onPressed: () {
-                    PixelHaptics.tick();
-                    onOpenOptions();
-                  },
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  MaterialYouDownloadButton(
+                    track: track,
+                    size: 22,
+                  ),
+                  IconButton(
+                    iconSize: 20,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    icon: Icon(
+                      track.isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                    ),
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      onToggleFavorite();
+                    },
+                  ),
+                  IconButton(
+                    iconSize: 20,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    icon: const Icon(Icons.more_vert_rounded),
+                    color: cs.onSurfaceVariant,
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      onOpenOptions();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1727,6 +1764,7 @@ class _PixelCoverCard extends StatelessWidget {
 /// Squircle Album Cover Card for New Albums section with spring press physics.
 class _PixelAlbumCoverCard extends StatelessWidget {
   const _PixelAlbumCoverCard({
+    super.key,
     required this.album,
     required this.onTap,
     required this.onPlay,
@@ -1742,44 +1780,46 @@ class _PixelAlbumCoverCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      onTap: onTap,
-      child: SizedBox(
-        width: cardWidth,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MaterialYouAlbumCover(
-              track: album.representativeTrack,
-              size: cardWidth,
-              borderRadius: 24,
-              showQualityBadge: false,
-              showSourceBadge: true,
-              showPlayButton: true,
-              onPlayTap: onPlay,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              album.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
+    return RepaintBoundary(
+      child: SpringPressScale(
+        onTap: onTap,
+        child: SizedBox(
+          width: cardWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MaterialYouAlbumCover(
+                track: album.representativeTrack,
+                size: cardWidth,
+                borderRadius: 24,
+                showQualityBadge: false,
+                showSourceBadge: true,
+                showPlayButton: true,
+                onPlayTap: onPlay,
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '${album.artist} • ${album.trackCount} ${album.trackCount == 1 ? "track" : "tracks"}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11.5,
-                color: cs.onSurfaceVariant,
+              const SizedBox(height: 8),
+              Text(
+                album.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                '${album.artist} • ${album.trackCount} ${album.trackCount == 1 ? "track" : "tracks"}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
