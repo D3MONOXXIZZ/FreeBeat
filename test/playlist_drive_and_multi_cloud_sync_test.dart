@@ -571,6 +571,8 @@ void main() {
       // Modal should be visible with Spotify / Apple branding and input fields
       expect(find.text('Import Playlist'), findsOneWidget);
       expect(find.text('Match Tracks'), findsOneWidget);
+      expect(find.text('Save Playlist'), findsOneWidget);
+      expect(find.text('Get Missing Tracks'), findsOneWidget);
     });
   });
 }

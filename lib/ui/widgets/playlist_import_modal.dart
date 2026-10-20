@@ -118,7 +118,25 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     await _analyzeContent(text);
   }
 
-  Future<void> _analyzeContent(String content, {String? fileName}) async {
+  Future<void> _directImport({required bool syncMissing}) async {
+    final text = _inputController.text.trim();
+    if (text.isEmpty) {
+      setState(() => _errorMessage = 'Please paste a link or tracklist first.');
+      return;
+    }
+    await _analyzeContent(
+      text,
+      autoSync: syncMissing,
+      directSave: !syncMissing,
+    );
+  }
+
+  Future<void> _analyzeContent(
+    String content, {
+    String? fileName,
+    bool autoSync = false,
+    bool directSave = false,
+  }) async {
     PixelHaptics.tick();
     setState(() {
       _isLoading = true;
@@ -178,6 +196,18 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         _isLoading = false;
       });
       await PixelHaptics.hifiConfirm();
+
+      if (directSave) {
+        if (res.matchedCount == 0) {
+          setState(() {
+            _errorMessage = 'No matching tracks found in library. Tap "Get Missing Tracks" to download them to cloud!';
+          });
+        } else {
+          await _createAndSyncPlaylist(syncMissing: false);
+        }
+      } else if (autoSync) {
+        await _createAndSyncPlaylist(syncMissing: res.missingTracks.isNotEmpty);
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -375,7 +405,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   child: OutlinedButton.icon(
                     onPressed: _isLoading ? null : _pickM3uFile,
                     icon: const Icon(Icons.file_open_outlined, size: 18),
-                    label: const Text('Pick .M3U File'),
+                    label: const Text('Pick File'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -384,21 +414,50 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: FilledButton.icon(
+                  child: FilledButton.tonalIcon(
                     onPressed: _isLoading ? null : _analyzeInput,
                     icon: _isLoading
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.auto_fix_high_rounded, size: 18),
+                        : const Icon(Icons.manage_search_rounded, size: 18),
                     label: Text(_isLoading ? 'Matching...' : 'Match Tracks'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () => _directImport(syncMissing: false),
+                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                    label: const Text('Save Playlist'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _isLoading ? null : () => _directImport(syncMissing: true),
+                    icon: const Icon(Icons.cloud_download_rounded, size: 18),
+                    label: const Text('Get Missing Tracks'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -720,49 +779,46 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        _result = null;
-                        _errorMessage = null;
-                      });
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _result = null;
+                      _errorMessage = null;
+                    });
+                  },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Text('Back'),
                   ),
+                  child: const Text('Back'),
                 ),
                 const SizedBox(width: 8),
-                if (_result!.matchedCount > 0 &&
-                    _syncMissingTracks &&
-                    _result!.missingTracks.isNotEmpty) ...[
+                if (_result!.matchedCount > 0) ...[
                   Expanded(
-                    child: OutlinedButton(
+                    child: OutlinedButton.icon(
                       onPressed: () => _createAndSyncPlaylist(syncMissing: false),
+                      icon: const Icon(Icons.playlist_add_rounded, size: 16),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: Text(
-                        'Matched Only (${_result!.matchedCount})',
-                        style: const TextStyle(fontSize: 11),
+                      label: Text(
+                        'Save Playlist (${_result!.matchedCount})',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
-                  flex: 2,
+                  flex: 1,
                   child: FilledButton.icon(
-                    onPressed: (_result!.matchedCount > 0 ||
-                            (_syncMissingTracks && _result!.missingTracks.isNotEmpty))
+                    onPressed: (_result!.matchedCount > 0 || _result!.missingTracks.isNotEmpty)
                         ? () => _createAndSyncPlaylist(
                             syncMissing: _syncMissingTracks && _result!.missingTracks.isNotEmpty)
                         : null,
@@ -774,9 +830,10 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     ),
                     label: Text(
                       _syncMissingTracks && _result!.missingTracks.isNotEmpty
-                          ? 'Sync & Save (${_result!.totalParsed})'
-                          : 'Save (${_result!.matchedCount})',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                          ? 'Get Missing Tracks (${_result!.totalParsed})'
+                          : 'Save Playlist (${_result!.matchedCount})',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
