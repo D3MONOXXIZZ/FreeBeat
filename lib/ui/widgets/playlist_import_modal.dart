@@ -405,7 +405,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   child: OutlinedButton.icon(
                     onPressed: _isLoading ? null : _pickM3uFile,
                     icon: const Icon(Icons.file_open_outlined, size: 18),
-                    label: const Text('Pick File'),
+                    label: const Text('Pick .M3U File'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(

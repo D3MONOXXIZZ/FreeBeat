@@ -204,11 +204,22 @@ class PlaylistMissingTracksSyncNotifier
 
     await PixelHaptics.tick();
 
-    // Process queue with concurrency of 2 to balance throughput and network bandwidth
-    const concurrency = 2;
-    for (var i = 0; i < missingTracks.length && !_isCancelled; i += concurrency) {
-      final batch = <Future<void>>[];
-      for (var c = 0; c < concurrency && (i + c) < missingTracks.length && !_isCancelled; c++) {
+    // Process queue in batches of 10 tracks
+    const batchSize = 10;
+    final totalBatches = (missingTracks.length / batchSize).ceil();
+
+    for (var i = 0; i < missingTracks.length && !_isCancelled; i += batchSize) {
+      final batchIndex = (i ~/ batchSize) + 1;
+      final currentBatchEnd =
+          (i + batchSize) > missingTracks.length ? missingTracks.length : (i + batchSize);
+
+      state = state.copyWith(
+        currentStatusText:
+            'Processing batch $batchIndex of $totalBatches (tracks ${i + 1}–$currentBatchEnd) to ${account.displayName}...',
+      );
+
+      final batch = <Future<Track?>>[];
+      for (var c = 0; c < batchSize && (i + c) < missingTracks.length && !_isCancelled; c++) {
         final idx = i + c;
         batch.add(_processSingleTrack(
           index: idx,
@@ -220,7 +231,15 @@ class PlaylistMissingTracksSyncNotifier
         ));
       }
       if (batch.isNotEmpty) {
-        await Future.wait(batch);
+        final batchResults = await Future.wait(batch);
+        final newlyUploaded = batchResults.whereType<Track>().toList();
+        if (newlyUploaded.isNotEmpty) {
+          await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks(newlyUploaded);
+          await _ref.read(playlistsProvider.notifier).addTracksToPlaylist(
+                playlistId,
+                newlyUploaded.map((t) => t.id).toList(),
+              );
+        }
       }
     }
 
@@ -236,7 +255,7 @@ class PlaylistMissingTracksSyncNotifier
     }
   }
 
-  Future<void> _processSingleTrack({
+  Future<Track?> _processSingleTrack({
     required int index,
     required MissingTrackItem item,
     required String playlistId,
@@ -244,7 +263,7 @@ class PlaylistMissingTracksSyncNotifier
     required CloudAccount account,
     required Map<String, String> secrets,
   }) async {
-    if (_isCancelled) return;
+    if (_isCancelled) return null;
 
     _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.resolving));
     state = state.copyWith(
@@ -264,7 +283,7 @@ class PlaylistMissingTracksSyncNotifier
         throw Exception('No stream candidate found for "${item.displayName}"');
       }
 
-      if (_isCancelled) return;
+      if (_isCancelled) return null;
 
       // 2. Download and Tag Audio
       _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.downloading));
@@ -285,7 +304,7 @@ class PlaylistMissingTracksSyncNotifier
 
       if (_isCancelled) {
         await preparedAudio.purge();
-        return;
+        return null;
       }
 
       // 3. Upload to Cloud
@@ -304,13 +323,7 @@ class PlaylistMissingTracksSyncNotifier
         },
       );
 
-      // 4. Register in Track Catalog and SQLite Database
-      await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks([uploadedTrack]);
-
-      // 5. Append to Playlist
-      await _ref.read(playlistsProvider.notifier).addTrackToPlaylist(playlistId, uploadedTrack.id);
-
-      // 6. Update State
+      // 4. Update Track State
       _updateTrackProgress(
         index,
         (p) => p.copyWith(
@@ -326,6 +339,7 @@ class PlaylistMissingTracksSyncNotifier
       );
 
       await PixelHaptics.tick();
+      return uploadedTrack;
     } catch (e) {
       debugPrint('Sync failed for ${item.displayName}: $e');
       _updateTrackProgress(
@@ -338,6 +352,7 @@ class PlaylistMissingTracksSyncNotifier
       state = state.copyWith(
         failedCount: state.failedCount + 1,
       );
+      return null;
     }
   }
 

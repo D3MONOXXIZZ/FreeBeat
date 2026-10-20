@@ -508,6 +508,92 @@ void main() {
       expect(updatedPlaylist.trackIds, contains(finalState.uploadedTracks.first.id));
     });
 
+    test('Processes large track queue in discrete batches of 10 tracks', () async {
+      final mockResolver = MissingTrackAudioResolver(
+        customResolver: ({required title, required artist, expectedDurationMs}) async {
+          return AudioStreamCandidate(
+            streamUrl: 'https://mock.stream/$title.m4a',
+            format: 'm4a',
+            bitrateKbps: 256,
+            sourceId: 'id_$title',
+            sourceTitle: title,
+            channelOrArtist: artist,
+            durationMs: 200000,
+          );
+        },
+      );
+
+      final mockTagger = TrackAudioTaggerService(
+        httpClient: MockClient((req) async {
+          return http.Response.bytes(List.filled(256, 1), 200);
+        }),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          playlistMissingTracksSyncProvider.overrideWith((ref) {
+            return PlaylistMissingTracksSyncNotifier(
+              ref: ref,
+              resolver: mockResolver,
+              tagger: mockTagger,
+              uploader: UniversalCloudUploadService(
+                httpClient: MockClient((req) async => http.Response('{}', 200)),
+              ),
+            );
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final playlist = await container.read(playlistsProvider.notifier).createPlaylist(
+            'Batch Test Mix',
+            description: 'Batch 10 track test',
+            initialTrackIds: [],
+          );
+
+      const testAccount = CloudAccount(
+        id: 'acc_batch_test',
+        providerType: CloudProviderType.androidSaf,
+        displayName: 'Test Local Storage',
+        endpointOrFolder: '/imported_music/',
+      );
+
+      final syncNotifier = container.read(playlistMissingTracksSyncProvider.notifier);
+
+      // Create 23 missing tracks (expecting batches of 10: 10 + 10 + 3)
+      final missingList = List.generate(
+        23,
+        (i) => MissingTrackItem(
+          title: 'Track ${i + 1}',
+          artist: 'Artist ${i + 1}',
+          expectedDurationMs: 200000,
+        ),
+      );
+
+      await syncNotifier.startSync(
+        missingTracks: missingList,
+        playlistId: playlist.id,
+        playlistTitle: playlist.title,
+        account: testAccount,
+      );
+
+      final finalState = container.read(playlistMissingTracksSyncProvider);
+      expect(finalState.isSyncing, isFalse);
+      expect(finalState.totalCount, equals(23));
+      expect(finalState.completedCount, equals(23));
+      expect(finalState.uploadedTracks.length, equals(23));
+
+      // Verify all 23 tracks are in catalog and playlist
+      final catalog = container.read(tracksCatalogProvider);
+      for (var i = 1; i <= 23; i++) {
+        expect(catalog.any((t) => t.title == 'Track $i'), isTrue);
+      }
+
+      final updatedPlaylists = container.read(playlistsProvider);
+      final updatedPlaylist = updatedPlaylists.firstWhere((p) => p.id == playlist.id);
+      expect(updatedPlaylist.trackIds.length, equals(23));
+    });
+
     testWidgets('CloudSyncProgressBanner renders correctly when sync is active', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);

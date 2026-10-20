@@ -2483,6 +2483,29 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     }
   }
 
+  Future<void> addTracksToPlaylist(
+    String playlistId,
+    List<String> trackIds,
+  ) async {
+    if (trackIds.isEmpty) return;
+    await PixelHaptics.tick();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final newIds = trackIds.where((id) => !p.trackIds.contains(id)).toList();
+        if (newIds.isEmpty) return p;
+        final updated = p.copyWith(
+          trackIds: [...p.trackIds, ...newIds],
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
   Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
     await PixelHaptics.tick();
     state = state.map((p) {
