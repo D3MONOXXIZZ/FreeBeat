@@ -190,6 +190,15 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         res = _importService.parseTextOrCsv(trimmed, allTracks, defaultTitle: defaultTitle);
       }
 
+      if (res.totalParsed == 0) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage =
+              'No tracks could be found in this playlist. Please check that the playlist link is public.';
+        });
+        return;
+      }
+
       setState(() {
         _result = res;
         _titleController.text = res.title;
@@ -200,7 +209,8 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
       if (directSave) {
         if (res.matchedCount == 0) {
           setState(() {
-            _errorMessage = 'No matching tracks found in library. Tap "Get Missing Tracks" to download them to cloud!';
+            _errorMessage =
+                'No matching tracks found in library. Tap "Get Missing Tracks" to download them to cloud!';
           });
         } else {
           await _createAndSyncPlaylist(syncMissing: false);
@@ -262,7 +272,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         SnackBar(
           content: Text(
             syncMissing && missing.isNotEmpty
-                ? 'Created "$title" • Syncing ${missing.length} missing songs in background...'
+                ? 'Created "$title" • Downloading & syncing ${missing.length} missing songs in batches of 10...'
                 : 'Created playlist "$title" with ${_result!.matchedCount} tracks!',
           ),
           behavior: SnackBarBehavior.floating,

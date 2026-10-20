@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -48,7 +49,8 @@ class MissingTrackAudioResolver {
   })  : _yt = yt,
         _http = httpClient ?? http.Client();
 
-  final YoutubeExplode? _yt;
+  YoutubeExplode? _yt;
+  YoutubeExplode get ytClient => _yt ??= YoutubeExplode();
   final http.Client _http;
   final Future<AudioStreamCandidate?> Function({
     required String title,
@@ -79,62 +81,62 @@ class MissingTrackAudioResolver {
     final cleanTitle = _sanitizeQuery(title);
     final cleanArtist = _sanitizeQuery(artist);
 
-    // 1. Primary: YouTube Explode search query (if yt client available or created)
-    final ytClient = _yt;
-    if (ytClient != null) {
-      try {
-        final query = cleanArtist.isNotEmpty
-            ? '$cleanArtist - $cleanTitle audio'
-            : '$cleanTitle audio';
+    // 1. Primary: YouTube Explode search query (direct stream extraction)
+    try {
+      final client = ytClient;
+      final query = cleanArtist.isNotEmpty
+          ? '$cleanArtist - $cleanTitle audio'
+          : '$cleanTitle audio';
 
-        final searchResults = await ytClient.search.search(query);
-        if (searchResults.isNotEmpty) {
-          // Find best match matching duration if available
-          for (final video in searchResults.take(6)) {
-            if (expectedDurationMs != null && expectedDurationMs > 0) {
-              final videoDurMs = video.duration?.inMilliseconds ?? 0;
-              if (videoDurMs > 0) {
-                final diff = (videoDurMs - expectedDurationMs).abs();
-                if (diff > 35000) continue;
-              }
-            }
-
-            final lowerTitle = video.title.toLowerCase();
-            if (lowerTitle.contains('reaction') ||
-                lowerTitle.contains('review') ||
-                lowerTitle.contains('karaoke') ||
-                lowerTitle.contains('1 hour') ||
-                lowerTitle.contains('10 hours')) {
-              continue;
-            }
-
-            try {
-              final manifest = await ytClient.videos.streamsClient.getManifest(video.id);
-              final audioOnly = manifest.audioOnly;
-              if (audioOnly.isNotEmpty) {
-                final bestAudio = audioOnly.withHighestBitrate();
-                final format = bestAudio.container.name.toLowerCase();
-                final kbps = (bestAudio.bitrate.bitsPerSecond / 1000).round();
-
-                return AudioStreamCandidate(
-                  streamUrl: bestAudio.url.toString(),
-                  format: format == 'webm' ? 'opus' : format,
-                  bitrateKbps: kbps > 0 ? kbps : 192,
-                  sourceId: video.id.value,
-                  sourceTitle: video.title,
-                  channelOrArtist: video.author,
-                  durationMs: video.duration?.inMilliseconds ?? expectedDurationMs ?? 210000,
-                  streamSizeBytes: bestAudio.size.totalBytes,
-                  audioOnlyStreamInfo: bestAudio,
-                  ytClient: ytClient,
-                );
-              }
-            } catch (_) {
-              continue;
+      final searchResults = await client.search.search(query);
+      if (searchResults.isNotEmpty) {
+        // Find best match matching duration if available
+        for (final video in searchResults.take(6)) {
+          if (expectedDurationMs != null && expectedDurationMs > 0) {
+            final videoDurMs = video.duration?.inMilliseconds ?? 0;
+            if (videoDurMs > 0) {
+              final diff = (videoDurMs - expectedDurationMs).abs();
+              if (diff > 35000) continue;
             }
           }
+
+          final lowerTitle = video.title.toLowerCase();
+          if (lowerTitle.contains('reaction') ||
+              lowerTitle.contains('review') ||
+              lowerTitle.contains('karaoke') ||
+              lowerTitle.contains('1 hour') ||
+              lowerTitle.contains('10 hours')) {
+            continue;
+          }
+
+          try {
+            final manifest = await client.videos.streamsClient.getManifest(video.id);
+            final audioOnly = manifest.audioOnly;
+            if (audioOnly.isNotEmpty) {
+              final bestAudio = audioOnly.withHighestBitrate();
+              final format = bestAudio.container.name.toLowerCase();
+              final kbps = (bestAudio.bitrate.bitsPerSecond / 1000).round();
+
+              return AudioStreamCandidate(
+                streamUrl: bestAudio.url.toString(),
+                format: format == 'webm' ? 'opus' : format,
+                bitrateKbps: kbps > 0 ? kbps : 192,
+                sourceId: video.id.value,
+                sourceTitle: video.title,
+                channelOrArtist: video.author,
+                durationMs: video.duration?.inMilliseconds ?? expectedDurationMs ?? 210000,
+                streamSizeBytes: bestAudio.size.totalBytes,
+                audioOnlyStreamInfo: bestAudio,
+                ytClient: client,
+              );
+            }
+          } catch (_) {
+            continue;
+          }
         }
-      } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('YouTube Explode search failed for "$title": $e');
     }
 
     // 2. Secondary: Public Piped / Invidious Fallback Search

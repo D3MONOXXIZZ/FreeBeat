@@ -660,5 +660,117 @@ void main() {
       expect(find.text('Save Playlist'), findsOneWidget);
       expect(find.text('Get Missing Tracks'), findsOneWidget);
     });
+
+    test('Spotify Embed parsing extracts exact playlist name and tracks', () async {
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('open.spotify.com/oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': "Today's Top Hits",
+              'thumbnail_url': 'https://image.spotify.com/tth.jpg',
+            }),
+            200,
+          );
+        } else if (url.contains('open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M')) {
+          final nextData = {
+            'props': {
+              'pageProps': {
+                'state': {
+                  'data': {
+                    'entity': {
+                      'name': "Today's Top Hits",
+                      'subtitle': 'The hottest hits right now',
+                      'trackList': [
+                        {
+                          'title': 'expectations',
+                          'subtitle': 'Olivia Rodrigo, Chappell Roan',
+                          'duration': 223935,
+                        },
+                        {
+                          'title': 'Nicole Kidman',
+                          'subtitle': 'ADÉLA',
+                          'duration': 181270,
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          };
+          return http.Response(
+            '<html><head><script id="__NEXT_DATA__" type="application/json">${jsonEncode(nextData)}</script></head><body></body></html>',
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      final result = await service.importFromUrl(
+        'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc123',
+        [],
+      );
+
+      expect(result.title, equals("Today's Top Hits"));
+      expect(result.totalParsed, equals(2));
+      expect(result.missingTracks.length, equals(2));
+      expect(result.missingTracks[0].title, equals('expectations'));
+      expect(result.missingTracks[0].artist, equals('Olivia Rodrigo, Chappell Roan'));
+      expect(result.missingTracks[0].expectedDurationMs, equals(223935));
+      expect(result.missingTracks[1].title, equals('Nicole Kidman'));
+      expect(result.missingTracks[1].artist, equals('ADÉLA'));
+    });
+
+    test('Apple Music parsing extracts exact playlist name and tracks', () async {
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('music.apple.com/api/oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': "Today's Hits",
+              'thumbnail_url': 'https://image.apple.com/tth.jpg',
+            }),
+            200,
+          );
+        } else if (url.contains('music.apple.com/us/playlist/todays-hits')) {
+          final jsonLd = {
+            '@context': 'http://schema.org',
+            '@type': 'MusicPlaylist',
+            'name': "Today's Hits",
+            'description': 'Listen to Today\'s Hits',
+            'track': [
+              {
+                '@type': 'MusicRecording',
+                'name': 'expectations',
+                'duration': 'PT3M43S',
+                'byArtist': [
+                  {'name': 'Olivia Rodrigo'}
+                ],
+              },
+            ],
+          };
+          return http.Response(
+            '<html><head><script id="schema:music-playlist" type="application/ld+json">${jsonEncode(jsonLd)}</script></head><body></body></html>',
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      final result = await service.importFromUrl(
+        'https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb',
+        [],
+      );
+
+      expect(result.title, equals("Today's Hits"));
+      expect(result.totalParsed, equals(1));
+      expect(result.missingTracks.length, equals(1));
+      expect(result.missingTracks[0].title, equals('expectations'));
+      expect(result.missingTracks[0].artist, equals('Olivia Rodrigo'));
+      expect(result.missingTracks[0].expectedDurationMs, equals(223000));
+    });
   });
 }
