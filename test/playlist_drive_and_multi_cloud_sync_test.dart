@@ -80,6 +80,66 @@ void main() {
       expect(candidate.bitrateKbps, equals(256));
       expect(candidate.streamUrl, equals('https://mock.stream.server/audio.m4a'));
     });
+
+    test('iTunes API resolves AAC stream candidate instantly with metadata', () async {
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('itunes.apple.com/search')) {
+          return http.Response(
+            jsonEncode({
+              'resultCount': 1,
+              'results': [
+                {
+                  'trackId': 998877,
+                  'trackName': 'Hello',
+                  'artistName': 'Adele',
+                  'collectionName': '25',
+                  'previewUrl': 'https://audio-ssl.itunes.apple.com/m4a/hello.m4a',
+                  'artworkUrl100': 'https://is1-ssl.mzstatic.com/100x100bb.jpg',
+                  'trackTimeMillis': 295502,
+                }
+              ]
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final resolver = MissingTrackAudioResolver(httpClient: mockClient);
+      final candidate = await resolver.resolveTrackAudio(
+        title: 'Hello',
+        artist: 'Adele',
+        expectedDurationMs: 295000,
+      );
+
+      expect(candidate, isNotNull);
+      expect(candidate!.sourceId, equals('itunes_998877'));
+      expect(candidate.sourceTitle, equals('Hello'));
+      expect(candidate.channelOrArtist, equals('Adele'));
+      expect(candidate.album, equals('25'));
+      expect(candidate.streamUrl, equals('https://audio-ssl.itunes.apple.com/m4a/hello.m4a'));
+      expect(candidate.format, equals('m4a'));
+      expect(candidate.bitrateKbps, equals(256));
+      expect(candidate.artworkUrl, contains('600x600bb'));
+    });
+
+    test('Direct preview URL passes through immediately with 0ms delay', () async {
+      final resolver = MissingTrackAudioResolver();
+      final candidate = await resolver.resolveTrackAudio(
+        title: 'Direct Song',
+        artist: 'Direct Artist',
+        directPreviewUrl: 'https://p.scdn.co/mp3-preview/direct123.mp3',
+        preferredArtworkUrl: 'https://i.scdn.co/image/art123.jpg',
+        preferredAlbum: 'Direct Album',
+      );
+
+      expect(candidate, isNotNull);
+      expect(candidate!.streamUrl, equals('https://p.scdn.co/mp3-preview/direct123.mp3'));
+      expect(candidate.format, equals('mp3'));
+      expect(candidate.artworkUrl, equals('https://i.scdn.co/image/art123.jpg'));
+      expect(candidate.album, equals('Direct Album'));
+    });
   });
 
   group('TrackAudioTaggerService & PreparedTrackAudio', () {

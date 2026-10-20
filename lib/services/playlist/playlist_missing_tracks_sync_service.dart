@@ -16,12 +16,16 @@ class MissingTrackItem {
     required this.artist,
     this.expectedDurationMs,
     this.preferredArtworkUrl,
+    this.previewAudioUrl,
+    this.album,
   });
 
   final String title;
   final String artist;
   final int? expectedDurationMs;
   final String? preferredArtworkUrl;
+  final String? previewAudioUrl;
+  final String? album;
 
   String get displayName =>
       artist.isNotEmpty ? '$artist - $title' : title;
@@ -215,7 +219,7 @@ class PlaylistMissingTracksSyncNotifier
 
       state = state.copyWith(
         currentStatusText:
-            'Processing batch $batchIndex of $totalBatches (tracks ${i + 1}–$currentBatchEnd) to ${account.displayName}...',
+            'Syncing batch $batchIndex of $totalBatches (tracks ${i + 1}–$currentBatchEnd)...',
       );
 
       final batch = <Future<Track?>>[];
@@ -234,6 +238,7 @@ class PlaylistMissingTracksSyncNotifier
         final batchResults = await Future.wait(batch);
         final newlyUploaded = batchResults.whereType<Track>().toList();
         if (newlyUploaded.isNotEmpty) {
+          // Double-check indexing and playlist linkage to guarantee consistency
           await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks(newlyUploaded);
           await _ref.read(playlistsProvider.notifier).addTracksToPlaylist(
                 playlistId,
@@ -272,11 +277,14 @@ class PlaylistMissingTracksSyncNotifier
     );
 
     try {
-      // 1. Resolve Audio Stream
+      // 1. Resolve Audio Stream with multi-tiered fast fallback
       final candidate = await _resolver.resolveTrackAudio(
         title: item.title,
         artist: item.artist,
         expectedDurationMs: item.expectedDurationMs,
+        directPreviewUrl: item.previewAudioUrl,
+        preferredArtworkUrl: item.preferredArtworkUrl,
+        preferredAlbum: item.album,
       );
 
       if (candidate == null) {
@@ -288,7 +296,7 @@ class PlaylistMissingTracksSyncNotifier
       // 2. Download and Tag Audio
       _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.downloading));
       state = state.copyWith(
-        currentStatusText: 'Downloading and preparing "${item.displayName}"...',
+        currentStatusText: 'Downloading "${item.displayName}"...',
       );
 
       final preparedAudio = await _tagger.downloadAndPrepareAudio(
@@ -296,7 +304,7 @@ class PlaylistMissingTracksSyncNotifier
         targetTitle: item.title,
         targetArtist: item.artist,
         targetAlbum: playlistName,
-        preferredArtworkUrl: item.preferredArtworkUrl,
+        preferredArtworkUrl: item.preferredArtworkUrl ?? candidate.artworkUrl,
         onProgress: (frac) {
           _updateTrackProgress(index, (p) => p.copyWith(progressFraction: frac * 0.5));
         },
@@ -322,6 +330,14 @@ class PlaylistMissingTracksSyncNotifier
           _updateTrackProgress(index, (p) => p.copyWith(progressFraction: 0.5 + (frac * 0.5)));
         },
       );
+
+      // LIVE PLAYLIST AND CATALOG INJECTION:
+      // Immediately index track and append to playlist so it appears on screen without delay!
+      await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks([uploadedTrack]);
+      await _ref.read(playlistsProvider.notifier).addTracksToPlaylist(
+            playlistId,
+            [uploadedTrack.id],
+          );
 
       // 4. Update Track State
       _updateTrackProgress(

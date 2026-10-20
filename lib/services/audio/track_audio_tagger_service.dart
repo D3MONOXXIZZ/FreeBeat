@@ -123,27 +123,31 @@ class TrackAudioTaggerService {
     final actualSizeBytes = await scratchFile.length();
 
     // 2. Resolve High-Res Artwork & Official Album Name via iTunes metadata if needed
-    String resolvedArtworkUrl = preferredArtworkUrl ?? '';
-    String resolvedAlbum = targetAlbum ?? 'Imported Playlist';
+    String resolvedArtworkUrl = preferredArtworkUrl ?? candidate.artworkUrl ?? '';
+    String resolvedAlbum = (targetAlbum != null && targetAlbum != 'Imported Playlist')
+        ? targetAlbum
+        : (candidate.album ?? 'Imported Playlist');
     String resolvedArtist = targetArtist.isNotEmpty ? targetArtist : candidate.channelOrArtist;
 
-    try {
-      final meta = await _metadataService.lookupSongMetadata(
-        artist: resolvedArtist,
-        title: targetTitle,
-      );
-      if (meta != null) {
-        if (meta.artworkUrl != null && meta.artworkUrl!.isNotEmpty && resolvedArtworkUrl.isEmpty) {
-          resolvedArtworkUrl = meta.artworkUrl!;
+    if (resolvedArtworkUrl.isEmpty || resolvedAlbum == 'Imported Playlist') {
+      try {
+        final meta = await _metadataService.lookupSongMetadata(
+          artist: resolvedArtist,
+          title: targetTitle,
+        ).timeout(const Duration(seconds: 2));
+        if (meta != null) {
+          if (meta.artworkUrl != null && meta.artworkUrl!.isNotEmpty && resolvedArtworkUrl.isEmpty) {
+            resolvedArtworkUrl = meta.artworkUrl!;
+          }
+          if (meta.album != null && meta.album!.isNotEmpty && resolvedAlbum == 'Imported Playlist') {
+            resolvedAlbum = meta.album!;
+          }
+          if (meta.artist != null && meta.artist!.isNotEmpty && ArtworkAndLyricsService.isInvalidOrGenericArtist(resolvedArtist)) {
+            resolvedArtist = meta.artist!;
+          }
         }
-        if (meta.album != null && meta.album!.isNotEmpty && resolvedAlbum == 'Imported Playlist') {
-          resolvedAlbum = meta.album!;
-        }
-        if (meta.artist != null && meta.artist!.isNotEmpty && ArtworkAndLyricsService.isInvalidOrGenericArtist(resolvedArtist)) {
-          resolvedArtist = meta.artist!;
-        }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     // 3. Extract Dominant Color for Material You Theme
     int dominantColor = 0xFF1E293B;
@@ -154,7 +158,7 @@ class TrackAudioTaggerService {
       } catch (_) {}
     }
 
-    // 4. Fetch Synced Lyrics
+    // 4. Fetch Synced Lyrics (with strict 2.5s safety timeout)
     List<LyricLine> lyrics = const [];
     try {
       final dummyTrack = Track(
@@ -168,7 +172,8 @@ class TrackAudioTaggerService {
         durationMs: candidate.durationMs,
         streamUrl: '',
       );
-      lyrics = await _metadataService.fetchSyncedLyricsForTrack(dummyTrack);
+      lyrics = await _metadataService.fetchSyncedLyricsForTrack(dummyTrack)
+          .timeout(const Duration(milliseconds: 2500));
     } catch (_) {}
 
     return PreparedTrackAudio(

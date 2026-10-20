@@ -387,11 +387,28 @@ class PlaylistImportService {
                           .replaceAll('\u202F', ' ')
                           .trim();
                       final tDur = (item['duration'] as num?)?.toInt();
+
+                      String? previewUrl;
+                      if (item['audioPreview'] is Map && item['audioPreview']['url'] != null) {
+                        previewUrl = item['audioPreview']['url']?.toString();
+                      } else if (item['previewUrl'] != null) {
+                        previewUrl = item['previewUrl']?.toString();
+                      } else if (item['preview_url'] != null) {
+                        previewUrl = item['preview_url']?.toString();
+                      }
+
+                      String? artwork;
+                      if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                        artwork = item['images'][0]['url']?.toString();
+                      }
+
                       if (tName.isNotEmpty) {
                         entries.add(_RawTrackEntry(
                           title: _unescapeHtml(tName),
                           artist: _unescapeHtml(tArtist),
                           durationMs: tDur,
+                          previewAudioUrl: previewUrl,
+                          artworkUrl: artwork,
                         ));
                       }
                     }
@@ -523,11 +540,27 @@ class PlaylistImportService {
                       durMs = _parseIsoDuration(t['duration'].toString());
                     }
 
+                    String? previewUrl;
+                    if (t['audio'] is Map && t['audio']['url'] != null) {
+                      previewUrl = t['audio']['url']?.toString();
+                    } else if (t['audio'] is String) {
+                      previewUrl = t['audio']?.toString();
+                    }
+
+                    String? artwork;
+                    if (t['image'] is String) {
+                      artwork = t['image']?.toString();
+                    } else if (t['image'] is Map && t['image']['url'] != null) {
+                      artwork = t['image']['url']?.toString();
+                    }
+
                     if (tName.isNotEmpty) {
                       entries.add(_RawTrackEntry(
                         title: _unescapeHtml(tName),
                         artist: _unescapeHtml(tArtist),
                         durationMs: durMs,
+                        previewAudioUrl: previewUrl,
+                        artworkUrl: artwork,
                       ));
                     }
                   }
@@ -801,6 +834,8 @@ class PlaylistImportService {
               title: entry.title,
               artist: entry.artist,
               expectedDurationMs: entry.durationMs,
+              preferredArtworkUrl: entry.artworkUrl,
+              previewAudioUrl: entry.previewAudioUrl,
             ),
           );
         }
@@ -835,12 +870,16 @@ class _RawTrackEntry {
     required this.artist,
     this.urlOrPath,
     this.durationMs,
+    this.previewAudioUrl,
+    this.artworkUrl,
   });
 
   final String title;
   final String artist;
   final String? urlOrPath;
   final int? durationMs;
+  final String? previewAudioUrl;
+  final String? artworkUrl;
 }
 
 class HttpException implements Exception {
