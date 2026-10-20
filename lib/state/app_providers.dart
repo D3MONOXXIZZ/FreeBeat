@@ -289,13 +289,39 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
           if (ArtworkAndLyricsService.isInvalidOrGenericArtist(clean.artist)) {
             clean = clean.copyWith(artist: 'Unknown Artist');
           }
+        }
 
-          // Self-heal tracks whose streamUrl was ephemeral (e.g. in /cache/file_picker/)
-          if (!clean.streamUrl.startsWith('http://') &&
-              !clean.streamUrl.startsWith('https://') &&
-              !clean.streamUrl.startsWith('content://')) {
-            final streamFile = File(clean.streamUrl);
-            if (!streamFile.existsSync()) {
+        // Self-heal tracks with ephemeral or legacy /cache/file_picker/ paths
+        // 1. If streamUrl or localCachePath points into /cache/file_picker/, restore to direct content:// URI or local file.
+        if (clean.streamUrl.contains('/cache/file_picker/') ||
+            (clean.localCachePath != null && clean.localCachePath!.contains('/cache/file_picker/'))) {
+          if (clean.remotePathOrId.startsWith('content://')) {
+            clean = clean.copyWith(
+              streamUrl: clean.remotePathOrId,
+              clearLocalCachePath: true,
+              isPinnedOffline: false,
+            );
+          } else {
+            clean = clean.copyWith(
+              clearLocalCachePath: true,
+              isPinnedOffline: false,
+            );
+          }
+        }
+
+        // 2. Self-heal non-HTTP / non-content tracks whose file was moved or deleted
+        if (!clean.streamUrl.startsWith('http://') &&
+            !clean.streamUrl.startsWith('https://') &&
+            !clean.streamUrl.startsWith('content://')) {
+          final streamFile = File(clean.streamUrl);
+          if (!streamFile.existsSync()) {
+            if (clean.remotePathOrId.startsWith('content://')) {
+              clean = clean.copyWith(
+                streamUrl: clean.remotePathOrId,
+                clearLocalCachePath: true,
+                isPinnedOffline: false,
+              );
+            } else {
               try {
                 final appDir = await getApplicationDocumentsDirectory();
                 final musicDir = Directory(p.join(appDir.path, 'imported_music'));
@@ -316,10 +342,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
               } catch (_) {}
             }
           }
+        }
 
-          if (clean != t) {
-            await _db.upsertTracks([clean]);
-          }
+        if (clean != t) {
+          await _db.upsertTracks([clean]);
         }
         sanitized.add(clean);
       }
@@ -1429,6 +1455,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       });
 
       _audioPlayer = player;
+      // Proactively purge orphaned cache copies on startup without touching user downloads
+      unawaited(_ref.read(cloudAudioCacheServiceProvider).autoPurgeOrphanedCache());
     } catch (_) {
       // Headless widget test environment fallback uses smooth internal ticker
       _audioPlayer = null;

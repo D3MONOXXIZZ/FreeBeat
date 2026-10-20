@@ -223,7 +223,7 @@ class CloudSyncSettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'FreeBeat caches audio byte-ranges locally to ensure instant, stutter-free playback. Clearing stream cache removes temporary chunks without deleting your pinned offline songs.',
+                    'FreeBeat caches audio byte-ranges locally to ensure instant, stutter-free playback. Clearing cache removes temporary files, picker buffers, and unpinned stream chunks without deleting your pinned offline songs.',
                     style: textTheme.bodyMedium?.copyWith(
                       color: cs.onSurfaceVariant,
                     ),
@@ -238,7 +238,7 @@ class CloudSyncSettingsScreen extends ConsumerWidget {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'Reclaimed ${StorageUsageInfo.formatBytes(reclaimed)} of stream cache. Pinned downloads preserved.',
+                              'Reclaimed ${StorageUsageInfo.formatBytes(reclaimed)} of cache. Pinned downloads preserved.',
                             ),
                             behavior: SnackBarBehavior.floating,
                           ),

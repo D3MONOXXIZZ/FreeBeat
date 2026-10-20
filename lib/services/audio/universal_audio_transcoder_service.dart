@@ -131,6 +131,8 @@ class UniversalAudioTranscoderService {
       if (ReturnCode.isSuccess(returnCode) && tempWavFile.existsSync() && tempWavFile.lengthSync() > 44) {
         tempWavFile.renameSync(outputWav.path);
         debugPrint('[Transcoder] FFmpeg transcode SUCCESS: ${outputWav.path} (${outputWav.lengthSync()} bytes)');
+        _cleanLocalInputCopies();
+        _enforceTranscodeCacheLimit(transcodeDir);
         return outputWav.path;
       } else {
         final logs = await session.getAllLogsAsString();
@@ -142,13 +144,46 @@ class UniversalAudioTranscoderService {
       final nativeRes = await _channel.invokeMethod<String>('transcodeAudioIfNeeded', {
         'path': effectiveInput,
       });
+      _cleanLocalInputCopies();
       if (nativeRes != null && nativeRes.isNotEmpty && nativeRes.endsWith('.wav') && File(nativeRes).existsSync()) {
         debugPrint('[Transcoder] Native MediaCodec transcode SUCCESS: $nativeRes');
+        _enforceTranscodeCacheLimit(transcodeDir);
         return nativeRes;
       }
     } catch (e, st) {
       debugPrint('[Transcoder] Error during audio transcode for "${track.title}": $e\n$st');
     }
     return null;
+  }
+
+  static void _enforceTranscodeCacheLimit(Directory transcodeDir, {int maxBytes = 52428800}) {
+    try {
+      if (!transcodeDir.existsSync()) return;
+      final wavFiles = transcodeDir.listSync().whereType<File>().where((f) => f.path.endsWith('.wav')).toList();
+      int totalBytes = wavFiles.fold(0, (sum, f) => sum + f.lengthSync());
+      if (totalBytes > maxBytes) {
+        wavFiles.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
+        for (final f in wavFiles) {
+          if (totalBytes <= maxBytes) break;
+          final len = f.lengthSync();
+          try {
+            f.deleteSync();
+            totalBytes -= len;
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _cleanLocalInputCopies() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final inDir = Directory(p.join(tempDir.path, 'transcode_in'));
+      if (inDir.existsSync()) {
+        for (final f in inDir.listSync().whereType<File>()) {
+          try { f.deleteSync(); } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 }

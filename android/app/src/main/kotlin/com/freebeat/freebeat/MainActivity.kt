@@ -31,11 +31,13 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterActivity() {
     companion object {
         private const val REQUEST_CODE_PICK_DIRECTORY = 4201
+        private const val REQUEST_CODE_PICK_AUDIO_FILES = 4202
     }
 
     private val channelName = "com.freebeat.app/dsp"
     private var currentSessionId: Int = 0
     private var pendingDirectoryResult: MethodChannel.Result? = null
+    private var pendingFilesResult: MethodChannel.Result? = null
 
     // Tier 1: Android 9+ (API 28+) Studio-Grade 10-Band DynamicsProcessing
     private var dynamicsProcessing: DynamicsProcessing? = null
@@ -386,6 +388,63 @@ class MainActivity : FlutterActivity() {
                             pendingDirectoryResult = null
                             result.error("PICK_DIR_ERROR", e.message, null)
                         }
+                    }
+                    "pickAudioFiles" -> {
+                        if (pendingFilesResult != null) {
+                            result.error("ALREADY_ACTIVE", "A file picker is already active", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingFilesResult = result
+                        try {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                                type = "audio/*"
+                                putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                putExtra(
+                                    android.content.Intent.EXTRA_MIME_TYPES,
+                                    arrayOf(
+                                        "audio/*",
+                                        "application/ogg",
+                                        "application/x-flac",
+                                        "application/octet-stream"
+                                    )
+                                )
+                                addFlags(
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                                )
+                            }
+                            startActivityForResult(intent, REQUEST_CODE_PICK_AUDIO_FILES)
+                        } catch (e: Throwable) {
+                            pendingFilesResult = null
+                            result.error("PICK_FILES_ERROR", e.message, null)
+                        }
+                    }
+                    "getAppCacheSize" -> {
+                        Thread {
+                            var totalBytes = 0L
+                            try {
+                                totalBytes += getDirSize(cacheDir)
+                                externalCacheDir?.let { totalBytes += getDirSize(it) }
+                                codeCacheDir?.let { totalBytes += getDirSize(it) }
+                            } catch (_: Throwable) {}
+                            runOnUiThread {
+                                result.success(totalBytes)
+                            }
+                        }.start()
+                    }
+                    "clearAppCache" -> {
+                        Thread {
+                            var reclaimedBytes = 0L
+                            try {
+                                reclaimedBytes += clearDir(cacheDir)
+                                externalCacheDir?.let { reclaimedBytes += clearDir(it) }
+                            } catch (_: Throwable) {}
+                            runOnUiThread {
+                                result.success(reclaimedBytes)
+                            }
+                        }.start()
                     }
                     "readContentUriHeaderBytes" -> {
                         val uriString = call.argument<String>("uri")
@@ -996,6 +1055,70 @@ class MainActivity : FlutterActivity() {
             } else {
                 pending?.success(null)
             }
+        } else if (requestCode == REQUEST_CODE_PICK_AUDIO_FILES) {
+            val pending = pendingFilesResult
+            pendingFilesResult = null
+            if (resultCode == android.app.Activity.RESULT_OK && data != null) {
+                val uris = mutableListOf<android.net.Uri>()
+                val clip = data.clipData
+                if (clip != null) {
+                    for (i in 0 until clip.itemCount) {
+                        val u = clip.getItemAt(i).uri
+                        if (u != null) uris.add(u)
+                    }
+                } else if (data.data != null) {
+                    uris.add(data.data!!)
+                }
+
+                Thread {
+                    val list = mutableListOf<Map<String, Any?>>()
+                    for (uri in uris) {
+                        try {
+                            contentResolver.takePersistableUriPermission(
+                                uri,
+                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        } catch (_: Throwable) {}
+
+                        var displayName = "Audio Track"
+                        var sizeBytes = 0L
+
+                        try {
+                            contentResolver.query(
+                                uri,
+                                arrayOf(
+                                    android.provider.OpenableColumns.DISPLAY_NAME,
+                                    android.provider.OpenableColumns.SIZE
+                                ),
+                                null,
+                                null,
+                                null
+                            )?.use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                    if (nameIdx >= 0) displayName = cursor.getString(nameIdx) ?: displayName
+                                    val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                    if (sizeIdx >= 0) sizeBytes = cursor.getLong(sizeIdx)
+                                }
+                            }
+                        } catch (_: Throwable) {}
+
+                        list.add(
+                            mapOf(
+                                "uri" to uri.toString(),
+                                "name" to displayName,
+                                "size" to sizeBytes
+                            )
+                        )
+                    }
+
+                    runOnUiThread {
+                        pending?.success(list)
+                    }
+                }.start()
+            } else {
+                pending?.success(emptyList<Map<String, Any?>>())
+            }
         }
     }
 
@@ -1254,6 +1377,34 @@ class MainActivity : FlutterActivity() {
                 requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
+    }
+
+    private fun getDirSize(dir: File): Long {
+        var size = 0L
+        if (!dir.exists()) return 0L
+        val children = dir.listFiles() ?: return 0L
+        for (child in children) {
+            size += if (child.isDirectory) getDirSize(child) else child.length()
+        }
+        return size
+    }
+
+    private fun clearDir(dir: File): Long {
+        var reclaimed = 0L
+        if (!dir.exists()) return 0L
+        val children = dir.listFiles() ?: return 0L
+        for (child in children) {
+            if (child.isDirectory) {
+                reclaimed += clearDir(child)
+                try { child.delete() } catch (_: Throwable) {}
+            } else {
+                val len = child.length()
+                if (child.delete()) {
+                    reclaimed += len
+                }
+            }
+        }
+        return reclaimed
     }
 
     override fun onDestroy() {

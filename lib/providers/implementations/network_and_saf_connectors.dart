@@ -111,28 +111,41 @@ class AndroidSafConnector implements CloudProviderConnector {
         allowMultiple: true,
       );
       if (result == null) return [];
-      return result.files.where((f) => f.path != null).map((file) {
+      final tracks = result.files.map((file) {
         final parsed = RangeTagParser.parseFromFilename(file.name);
+        final effectiveUrl = (file.identifier != null && file.identifier!.startsWith('content://'))
+            ? file.identifier!
+            : (file.path ?? '');
+        final isTrueLocal = file.path != null &&
+            !file.path!.contains('/cache/file_picker/') &&
+            !file.path!.contains('/cache/');
+
         return Track(
           id: 'saf_${file.name.hashCode.abs()}',
           accountId: account.id,
           providerType: type,
-          remotePathOrId: file.path!,
+          remotePathOrId: effectiveUrl,
           title: parsed.title ?? file.name,
           artist: parsed.artist ?? 'Mounted Cloud Drive',
           album: parsed.album ?? account.displayName,
           durationMs: 210000,
-          streamUrl: file.path!,
+          streamUrl: effectiveUrl,
           codec: parsed.codec ?? 'FLAC',
           bitDepth: parsed.bitDepth ?? 24,
           sampleRateHz: parsed.sampleRateHz ?? 96000,
           bitrateKbps: parsed.bitrateKbps ?? 1411,
           sizeBytes: file.size,
           dominantColorValue: 0xFF1E293B,
-          isPinnedOffline: true,
-          localCachePath: file.path,
+          isPinnedOffline: isTrueLocal,
+          localCachePath: isTrueLocal ? file.path : null,
         );
-      }).toList();
+      }).where((t) => t.streamUrl.isNotEmpty).toList();
+
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {}
+
+      return tracks;
     } catch (_) {
       return [];
     }

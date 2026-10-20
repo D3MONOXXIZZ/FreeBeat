@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -41,6 +43,7 @@ class StorageUsageInfo {
     required this.transcodedBytes,
     required this.totalAppCacheBytes,
     required this.freeDiskBytes,
+    this.nativeCacheBytes = 0,
   });
 
   final int pinnedBytes;
@@ -48,12 +51,14 @@ class StorageUsageInfo {
   final int transcodedBytes;
   final int totalAppCacheBytes;
   final int freeDiskBytes;
+  final int nativeCacheBytes;
 
   String get pinnedFormatted => _formatBytes(pinnedBytes);
   String get streamCacheFormatted => _formatBytes(streamCacheBytes);
   String get transcodedFormatted => _formatBytes(transcodedBytes);
   String get totalFormatted => _formatBytes(totalAppCacheBytes);
   String get freeFormatted => _formatBytes(freeDiskBytes);
+  String get nativeCacheFormatted => _formatBytes(nativeCacheBytes);
 
   static String formatBytes(int bytes) => _formatBytes(bytes);
 
@@ -290,11 +295,12 @@ class CloudAudioCacheService extends ChangeNotifier {
   }
 
   /// Computes storage usage breakdown across pinned offline tracks, unpinned stream cache,
-  /// and transcoded audio files.
+  /// transcoded audio files, and native Android cache.
   Future<StorageUsageInfo> getStorageUsage(List<Track> catalogTracks) async {
     int pinnedBytes = 0;
     int streamCacheBytes = 0;
     int transcodedBytes = 0;
+    int nativeCacheBytes = 0;
 
     try {
       final cacheDir = await _getCacheDirectory();
@@ -323,7 +329,7 @@ class CloudAudioCacheService extends ChangeNotifier {
         }
       }
 
-      // Check temporary transcoded WAV cache directory
+      // Check temporary transcoded WAV cache directory and inputs
       final tempDir = await getTemporaryDirectory();
       final transcodeDir = Directory(p.join(tempDir.path, 'transcoded_audio'));
       if (transcodeDir.existsSync()) {
@@ -333,19 +339,42 @@ class CloudAudioCacheService extends ChangeNotifier {
           }
         }
       }
+
+      final transcodeInDir = Directory(p.join(tempDir.path, 'transcode_in'));
+      if (transcodeInDir.existsSync()) {
+        for (final entity in transcodeInDir.listSync()) {
+          if (entity is File) {
+            transcodedBytes += entity.lengthSync();
+          }
+        }
+      }
+
+      // Query native Android cache size (file_picker, cacheDir, externalCacheDir)
+      if (Platform.isAndroid) {
+        try {
+          const channel = MethodChannel('com.freebeat.freebeat/native_cloud_auth');
+          final result = await channel.invokeMethod<int>('getAppCacheSize');
+          if (result != null && result > 0) {
+            nativeCacheBytes = result;
+          }
+        } catch (_) {}
+      }
     } catch (_) {}
 
-    final totalAppCacheBytes = pinnedBytes + streamCacheBytes + transcodedBytes;
+    final totalStreamAndNative = streamCacheBytes + nativeCacheBytes;
+    final totalAppCacheBytes = pinnedBytes + totalStreamAndNative + transcodedBytes;
     return StorageUsageInfo(
       pinnedBytes: pinnedBytes,
-      streamCacheBytes: streamCacheBytes,
+      streamCacheBytes: totalStreamAndNative,
       transcodedBytes: transcodedBytes,
       totalAppCacheBytes: totalAppCacheBytes,
+      nativeCacheBytes: nativeCacheBytes,
       freeDiskBytes: 15 * 1024 * 1024 * 1024,
     );
   }
 
-  /// Clears only unpinned streaming cache and temporary transcoded audio files.
+  /// Clears only unpinned streaming cache, temporary transcoded audio files,
+  /// and any native file_picker / temporary caches.
   /// Strictly preserves all user-pinned offline downloads.
   Future<int> clearStreamCache(List<Track> catalogTracks) async {
     int reclaimedBytes = 0;
@@ -377,7 +406,7 @@ class CloudAudioCacheService extends ChangeNotifier {
         }
       }
 
-      // Also clean temporary transcoded files
+      // Also clean temporary transcoded files and staging copies
       final tempDir = await getTemporaryDirectory();
       final transcodeDir = Directory(p.join(tempDir.path, 'transcoded_audio'));
       if (transcodeDir.existsSync()) {
@@ -391,9 +420,69 @@ class CloudAudioCacheService extends ChangeNotifier {
           }
         }
       }
+
+      final transcodeInDir = Directory(p.join(tempDir.path, 'transcode_in'));
+      if (transcodeInDir.existsSync()) {
+        for (final entity in transcodeInDir.listSync()) {
+          if (entity is File) {
+            final len = entity.lengthSync();
+            try {
+              entity.deleteSync();
+              reclaimedBytes += len;
+            } catch (_) {}
+          }
+        }
+      }
+
+      // Clear Flutter file_picker plugin temporary files
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {}
+
+      // Clear Android native cache directory (e.g. file_picker copies, transcoded WAVs)
+      if (Platform.isAndroid) {
+        try {
+          const channel = MethodChannel('com.freebeat.freebeat/native_cloud_auth');
+          final nativeReclaimed = await channel.invokeMethod<int>('clearAppCache');
+          if (nativeReclaimed != null && nativeReclaimed > 0) {
+            reclaimedBytes += nativeReclaimed;
+          }
+        } catch (_) {}
+      }
+
       notifyListeners();
     } catch (_) {}
     return reclaimedBytes;
+  }
+
+  /// Proactively cleans orphaned cache on startup (e.g. leftover file_picker copies,
+  /// orphaned transcode input files, stale temporary files).
+  /// Strictly preserves user-pinned offline downloads.
+  Future<void> autoPurgeOrphanedCache() async {
+    try {
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {}
+
+      final tempDir = await getTemporaryDirectory();
+      final transcodeInDir = Directory(p.join(tempDir.path, 'transcode_in'));
+      if (transcodeInDir.existsSync()) {
+        for (final entity in transcodeInDir.listSync()) {
+          if (entity is File) {
+            try {
+              entity.deleteSync();
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (Platform.isAndroid) {
+        try {
+          const channel = MethodChannel('com.freebeat.freebeat/native_cloud_auth');
+          await channel.invokeMethod<int>('clearAppCache');
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   /// Automatically purges oldest unpinned files if stream cache exceeds [maxCacheSizeMb].

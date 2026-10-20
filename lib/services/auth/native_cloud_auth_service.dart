@@ -312,6 +312,54 @@ class NativeCloudAuthService {
     }
   }
 
+  /// Opens the native Android Storage Access Framework multi-file audio picker
+  /// (ACTION_OPEN_DOCUMENT), returning selected audio content:// URIs, display names,
+  /// and file sizes without copying any bytes to local cache.
+  Future<List<({String uri, String name, int size})>?> pickAudioFilesNative() async {
+    try {
+      final res = await _channel.invokeListMethod<dynamic>('pickAudioFiles');
+      if (res != null) {
+        final list = <({String uri, String name, int size})>[];
+        for (final item in res) {
+          if (item is Map) {
+            final uri = item['uri'] as String?;
+            if (uri != null && uri.isNotEmpty) {
+              list.add((
+                uri: uri,
+                name: item['name'] as String? ?? 'Audio Track',
+                size: (item['size'] as num?)?.toInt() ?? 0,
+              ));
+            }
+          }
+        }
+        return list;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Queries the total size in bytes of Android's app cache directory.
+  Future<int> getNativeAppCacheSize() async {
+    try {
+      final size = await _channel.invokeMethod<int>('getAppCacheSize');
+      return size ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Reclaims disk space by clearing Android's internal and external app cache directories.
+  Future<int> clearNativeAppCache() async {
+    try {
+      final reclaimed = await _channel.invokeMethod<int>('clearAppCache');
+      return reclaimed ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Reads initial header bytes (up to 128 KB) from a content:// URI.
   Future<Uint8List?> readContentUriHeaderBytes(String uri, {int maxBytes = 131072}) async {
     try {
@@ -350,35 +398,57 @@ class NativeCloudAuthService {
     int batchSize = 10,
   }) async {
     try {
-      FilePickerResult? result;
-      try {
-        result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: supportedAudioExtensions,
-          allowMultiple: true,
-          withData: false,
-          withReadStream: false,
-        );
-      } catch (_) {
-        // Fallback to FileType.any if custom throws on OEM Android picker
-        result = await FilePicker.platform.pickFiles(
-          type: FileType.any,
-          allowMultiple: true,
-          withData: false,
-          withReadStream: false,
-        );
+      List<SelectedFileEntry> allFiles = [];
+
+      // 1. High-Performance Zero-Copy Android SAF Picker (copies 0 MB to cache)
+      if (Platform.isAndroid) {
+        final nativeFiles = await pickAudioFilesNative();
+        if (nativeFiles != null) {
+          if (nativeFiles.isEmpty) {
+            // User cancelled picker
+            return [];
+          }
+          allFiles = nativeFiles.map((f) => SelectedFileEntry(
+            name: f.name,
+            path: null,
+            identifier: f.uri,
+            size: f.size,
+          )).toList();
+        }
       }
 
-      if (result == null || result.files.isEmpty) return [];
+      // 2. Fallback to FilePicker if not on Android or native picker returned null
+      if (allFiles.isEmpty) {
+        FilePickerResult? result;
+        try {
+          result = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: supportedAudioExtensions,
+            allowMultiple: true,
+            withData: false,
+            withReadStream: false,
+          );
+        } catch (_) {
+          // Fallback to FileType.any if custom throws on OEM Android picker
+          result = await FilePicker.platform.pickFiles(
+            type: FileType.any,
+            allowMultiple: true,
+            withData: false,
+            withReadStream: false,
+          );
+        }
 
-      final allFiles = result.files.map((f) => SelectedFileEntry(
-        name: f.name,
-        path: f.path,
-        identifier: f.identifier,
-        size: f.size,
-      )).toList();
+        if (result == null || result.files.isEmpty) return [];
 
-      return await _processBatchAudioFiles(
+        allFiles = result.files.map((f) => SelectedFileEntry(
+          name: f.name,
+          path: f.path,
+          identifier: f.identifier,
+          size: f.size,
+        )).toList();
+      }
+
+      final imported = await _processBatchAudioFiles(
         allFiles: allFiles,
         account: account,
         onFilesSelected: onFilesSelected,
@@ -387,6 +457,13 @@ class NativeCloudAuthService {
         onBatchCompleted: onBatchCompleted,
         batchSize: batchSize,
       );
+
+      // Immediately purge temporary picker cache copies
+      try {
+        await FilePicker.platform.clearTemporaryFiles();
+      } catch (_) {}
+
+      return imported;
     } catch (_) {
       return [];
     }
@@ -738,6 +815,12 @@ class NativeCloudAuthService {
             // Avoids blocking CPU on heavy color-quantization across 50+ files during active import.
             final dominantColor = 0xFF1E293B;
 
+            final isTrueLocalFile = localTagFile != null &&
+                !localTagFile.path.contains('/cache/file_picker/') &&
+                !localTagFile.path.contains('/cache/') &&
+                !localTagFile.path.contains('\\cache\\') &&
+                !localTagFile.path.contains('/tmp/');
+
             final newTrack = Track(
               id: trackId,
               accountId: account.id,
@@ -758,8 +841,8 @@ class NativeCloudAuthService {
               bitrateKbps: finalBitrate,
               sizeBytes: file.size > 0 ? file.size : 25000000,
               dominantColorValue: dominantColor,
-              isPinnedOffline: localTagFile != null,
-              localCachePath: localTagFile?.path,
+              isPinnedOffline: isTrueLocalFile,
+              localCachePath: isTrueLocalFile ? localTagFile.path : null,
             );
 
             onProgress?.call(fileIndex, totalFiles, newTrack);
