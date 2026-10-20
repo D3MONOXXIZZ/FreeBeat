@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/core/models/track.dart';
 import 'package:freebeat/services/audio/cloud_audio_cache_service.dart';
-import 'package:freebeat/services/audio/universal_audio_transcoder_service.dart';
 import 'package:path/path.dart' as p;
 
 Track makeTestTrack({

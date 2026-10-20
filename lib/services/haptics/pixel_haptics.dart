@@ -109,4 +109,38 @@ class PixelHaptics {
       await HapticFeedback.heavyImpact();
     }
   }
+
+  static DateTime _lastSwipeTick = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Progressive tactile load-up tick during horizontal swipe gestures.
+  /// Throttled to ~28ms to prevent vibration engine saturation while scaling intensity
+  /// proportionally to swipe progress (0.0 -> 1.0) for an authentic physical tension feel.
+  static Future<void> swipeLoadTick({required double progress}) async {
+    final now = DateTime.now();
+    if (now.difference(_lastSwipeTick).inMilliseconds < 28) return;
+    _lastSwipeTick = now;
+    final clamped = progress.clamp(0.0, 1.0);
+    final intensity = (0.22 + (0.48 * clamped)).clamp(0.20, 0.75);
+    try {
+      await _channel.invokeMethod('triggerPixelHaptic', {
+        'type': 'low_tick',
+        'intensity': intensity,
+      });
+    } catch (_) {
+      await HapticFeedback.selectionClick();
+    }
+  }
+
+  /// Sharp, satisfying mechanical "click" triggered the moment a track item
+  /// is fully swiped past the activation threshold.
+  static Future<void> swipeClick() async {
+    try {
+      await _channel.invokeMethod('triggerPixelHaptic', {
+        'type': 'swipe_click',
+        'intensity': 0.95,
+      });
+    } catch (_) {
+      await HapticFeedback.mediumImpact();
+    }
+  }
 }

@@ -26,6 +26,8 @@ class _FakeCloudStreamProxy extends CloudStreamProxy {
   Future<void> start() async {}
 }
 
+final List<MethodCall> hapticCalls = [];
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -38,7 +40,12 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
       const MethodChannel('com.freebeat.app/dsp'),
-      (MethodCall methodCall) async => null,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'triggerPixelHaptic') {
+          hapticCalls.add(methodCall);
+        }
+        return null;
+      },
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -269,6 +276,56 @@ void main() {
         expect(find.text('Added "Comfortably Numb" to queue'), findsOneWidget);
         // Track still present in library
         expect(find.text('Comfortably Numb'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Swipe gesture triggers progressive load-up ticks and click when fully swiped',
+      (tester) async {
+        hapticCalls.clear();
+
+        await tester.pumpWidget(
+          createTestWidget(
+            child: ListView(
+              children: [
+                SwipeToQueueWrapper(
+                  track: testTrack1,
+                  child: const ListTile(
+                    key: ValueKey('haptic_tile'),
+                    title: Text('Comfortably Numb'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Perform gradual drag
+        final gesture = await tester.startGesture(tester.getCenter(find.byKey(const ValueKey('haptic_tile'))));
+        
+        // Drag in small increments to trigger progressive milestones
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump(const Duration(milliseconds: 40));
+        
+        await gesture.moveBy(const Offset(60, 0));
+        await tester.pump(const Duration(milliseconds: 40));
+
+        await gesture.moveBy(const Offset(80, 0));
+        await tester.pump(const Duration(milliseconds: 40));
+
+        // Move past threshold (raw > 180dp)
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump(const Duration(milliseconds: 40));
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Verify that low_tick (load-up) and swipe_click (full swipe) were called
+        final types = hapticCalls.map((c) => c.arguments['type'] as String?).toList();
+        expect(types.contains('low_tick'), isTrue, reason: 'Must emit progressive load-up ticks while swiping');
+        expect(types.contains('swipe_click'), isTrue, reason: 'Must emit click haptic when fully swiped past threshold');
+        expect(types.contains('hifi_confirm'), isTrue, reason: 'Must confirm queued action on release');
       },
     );
   });

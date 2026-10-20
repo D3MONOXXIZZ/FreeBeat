@@ -426,60 +426,22 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
             },
             itemBuilder: (context, index) {
               final track = upNext[index];
-              return Dismissible(
+              return SwipeToQueueWrapper(
                 key: ValueKey('queue_item_${track.id}_$index'),
-                direction: DismissDirection.horizontal,
-                background: Container(
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.only(left: 20),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.playlist_play_rounded,
-                          color: cs.onPrimaryContainer),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Play Next',
-                        style: TextStyle(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                secondaryBackground: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  decoration: BoxDecoration(
-                    color: cs.errorContainer,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Remove',
-                        style: TextStyle(
-                          color: cs.onErrorContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.delete_outline_rounded,
-                          color: cs.onErrorContainer),
-                    ],
-                  ),
-                ),
-                onDismissed: (direction) {
-                  if (direction == DismissDirection.startToEnd) {
-                    playbackNotifier.playNext(track);
-                  } else {
-                    playbackNotifier.removeFromQueue(track.id);
-                  }
+                track: track,
+                borderRadius: BorderRadius.circular(18),
+                primaryActionTitle: 'Play Next',
+                primaryActionIcon: Icons.playlist_play_rounded,
+                dismissOnPrimaryAction: true,
+                onPrimaryAction: () {
+                  playbackNotifier.playNext(track);
+                },
+                enableSecondaryAction: true,
+                secondaryActionTitle: 'Remove',
+                secondaryActionIcon: Icons.delete_outline_rounded,
+                dismissOnSecondaryAction: true,
+                onSecondaryAction: () {
+                  playbackNotifier.removeFromQueue(track.id);
                 },
                 child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 4),

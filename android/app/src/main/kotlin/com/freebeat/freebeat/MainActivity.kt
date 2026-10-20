@@ -866,6 +866,15 @@ class MainActivity : FlutterActivity() {
                             usedComposition = true
                         }
                     }
+                    "swipe_click" -> {
+                        if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)) {
+                            composition.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, (scale * 1.0f).coerceIn(0.75f, 1.0f))
+                            usedComposition = true
+                        } else if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK)) {
+                            composition.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, scale * 0.95f)
+                            usedComposition = true
+                        }
+                    }
                 }
 
                 if (usedComposition) {
@@ -880,11 +889,15 @@ class MainActivity : FlutterActivity() {
             val durationMs = when (type) {
                 "low_tick" -> 5L
                 "tick" -> 8L
+                "swipe_click" -> 10L
                 "detent_snap" -> 14L
                 "rail_thud" -> 22L
                 else -> 12L
             }
-            val amp = (scale * 180).roundToInt().coerceIn(25, 255)
+            val amp = when (type) {
+                "swipe_click" -> (scale * 230).roundToInt().coerceIn(40, 255)
+                else -> (scale * 180).roundToInt().coerceIn(25, 255)
+            }
             vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amp))
         } else {
             @Suppress("DEPRECATION")
