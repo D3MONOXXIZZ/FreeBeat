@@ -15,6 +15,7 @@ import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/playlist_import_modal.dart';
+import '../widgets/remove_track_dialog.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -208,6 +209,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref
                         .read(tracksCatalogProvider.notifier)
                         .togglePinOffline(track.id);
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      Icon(Icons.delete_outline_rounded, color: cs.error),
+                  title: Text(
+                    'Remove from Library',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: cs.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Remove from library, offline cache, and playlists',
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showRemoveTrackConfirmationDialog(context, ref, track);
                   },
                 ),
               ],

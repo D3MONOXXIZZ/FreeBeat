@@ -12,6 +12,7 @@ import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/playback_speed_modal.dart';
 import '../widgets/queue_bottom_sheet.dart';
+import '../widgets/remove_track_dialog.dart';
 import '../widgets/signal_path_sheet.dart';
 import '../widgets/sleep_timer_modal.dart';
 import '../widgets/waveform_seekbar.dart';
@@ -841,6 +842,31 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     onTap: () {
                       Navigator.of(ctx).pop();
                       showAddToPlaylistModal(context, track);
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading:
+                        Icon(Icons.delete_outline_rounded, color: cs.error),
+                    title: Text(
+                      'Remove from Library',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.error,
+                      ),
+                    ),
+                    subtitle:
+                        const Text('Remove this track from your collection'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showRemoveTrackConfirmationDialog(
+                        context,
+                        ref,
+                        track,
+                        onRemoved: () {
+                          Navigator.of(context).maybePop();
+                        },
+                      );
                     },
                   ),
                 ],

@@ -6,6 +6,7 @@ import '../../services/audio/cloud_audio_cache_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/remove_track_dialog.dart';
 import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
 
@@ -85,6 +86,23 @@ class TrackDetailsScreen extends ConsumerWidget {
                   ref
                       .read(tracksCatalogProvider.notifier)
                       .toggleFavorite(liveTrack.id);
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: cs.error,
+                ),
+                tooltip: 'Remove from Library',
+                onPressed: () {
+                  showRemoveTrackConfirmationDialog(
+                    context,
+                    ref,
+                    liveTrack,
+                    onRemoved: () {
+                      Navigator.of(context).maybePop();
+                    },
+                  );
                 },
               ),
               const SizedBox(width: 8),
@@ -397,6 +415,46 @@ class TrackDetailsScreen extends ConsumerWidget {
                 ),
               ),
             ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    showRemoveTrackConfirmationDialog(
+                      context,
+                      ref,
+                      liveTrack,
+                      onRemoved: () {
+                        Navigator.of(context).maybePop();
+                      },
+                    );
+                  },
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: cs.error,
+                    size: 20,
+                  ),
+                  label: Text(
+                    'Remove Track from Library',
+                    style: TextStyle(
+                      color: cs.error,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: const StadiumBorder(),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 60)),
         ],

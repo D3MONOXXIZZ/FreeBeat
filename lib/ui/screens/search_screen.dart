@@ -9,6 +9,7 @@ import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
+import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
@@ -764,6 +765,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       builder: (_) => TrackDetailsScreen(track: track),
                     ),
                   );
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.delete_outline_rounded, color: cs.error),
+                title: Text(
+                  'Remove from Library',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: cs.error,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showRemoveTrackConfirmationDialog(context, ref, track);
                 },
               ),
             ],

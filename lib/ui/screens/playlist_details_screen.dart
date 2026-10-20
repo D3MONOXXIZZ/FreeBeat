@@ -10,6 +10,7 @@ import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/playlist_qr_modal.dart';
+import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import 'track_details_screen.dart';
 
@@ -459,6 +460,25 @@ class _PlaylistDetailsScreenState
                         builder: (_) => TrackDetailsScreen(track: track),
                       ),
                     );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading:
+                      Icon(Icons.delete_outline_rounded, color: cs.error),
+                  title: Text(
+                    'Remove from Library',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: cs.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Delete completely from FreeBeat and all playlists',
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showRemoveTrackConfirmationDialog(context, ref, track);
                   },
                 ),
               ],

@@ -19,6 +19,7 @@ import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/pending_import_track_tile.dart';
 import '../widgets/playlist_import_modal.dart';
+import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
@@ -466,6 +467,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       ref
                           .read(tracksCatalogProvider.notifier)
                           .togglePinOffline(track.id);
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading:
+                        Icon(Icons.delete_outline_rounded, color: cs.error),
+                    title: Text(
+                      'Remove from Library',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.error,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Remove from library, offline cache, and playlists',
+                    ),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showRemoveTrackConfirmationDialog(context, ref, track);
                     },
                   ),
                 ],
@@ -1416,6 +1436,10 @@ class _LibraryTrackTile extends StatelessWidget {
       onTap: () {
         PixelHaptics.tick();
         onTap();
+      },
+      onLongPress: () {
+        PixelHaptics.sheetExpand();
+        onOptionsTap();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

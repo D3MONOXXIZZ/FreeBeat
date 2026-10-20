@@ -524,11 +524,31 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
   }
 
   Future<void> removeTracks(List<String> trackIds) async {
+    if (trackIds.isEmpty) return;
     await PixelHaptics.tick();
+    final toRemove = state.where((t) => trackIds.contains(t.id)).toList();
     state = state.where((t) => !trackIds.contains(t.id)).toList();
     if (_db != null) {
       await _db.deleteTracks(trackIds);
     }
+
+    if (_ref != null) {
+      final queueMgr = _ref.read(downloadQueueManagerProvider);
+      final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+      for (final t in toRemove) {
+        queueMgr.cancel(t.id);
+        unawaited(cacheSvc.removeCachedTrack(t));
+      }
+
+      await _ref
+          .read(playlistsProvider.notifier)
+          .removeTracksFromAllPlaylists(trackIds);
+      await _ref.read(playbackProvider.notifier).handleTracksRemoved(trackIds);
+    }
+  }
+
+  Future<void> removeTrack(String trackId) async {
+    await removeTracks([trackId]);
   }
 }
 
@@ -2015,6 +2035,43 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     ]);
   }
 
+  Future<void> handleTracksRemoved(List<String> trackIds) async {
+    final idSet = trackIds.toSet();
+    final newQueue = state.queue.where((t) => !idSet.contains(t.id)).toList();
+    if (idSet.contains(state.currentTrack.id)) {
+      if (newQueue.isNotEmpty) {
+        if (state.isPlaying) {
+          try {
+            await playTrack(newQueue.first);
+          } catch (_) {}
+        } else {
+          state = state.copyWith(
+            currentTrack: newQueue.first,
+            queue: newQueue,
+            positionMs: 0,
+            bufferedPositionMs: 0,
+          );
+        }
+      } else {
+        _progressTicker?.cancel();
+        try {
+          await _audioPlayer?.pause();
+          _ref.read(powerampDspServiceProvider).stopForegroundPlayback();
+        } catch (_) {}
+        state = state.copyWith(
+          isPlaying: false,
+          currentTrack: PlaybackViewState.emptyTrack,
+          queue: const [],
+          positionMs: 0,
+          bufferedPositionMs: 0,
+        );
+        _syncForegroundNotification(isPlaying: false);
+      }
+    } else {
+      state = state.copyWith(queue: newQueue);
+    }
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Phase 1: Smart Autoplay
   // ───────────────────────────────────────────────────────────────────────────
@@ -2561,6 +2618,24 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
         list.insert(newIndex, item);
         final updated = p.copyWith(
           trackIds: list,
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> removeTracksFromAllPlaylists(List<String> trackIds) async {
+    if (trackIds.isEmpty) return;
+    final idSet = trackIds.toSet();
+    state = state.map((p) {
+      if (p.trackIds.any(idSet.contains)) {
+        final updated = p.copyWith(
+          trackIds: p.trackIds.where((id) => !idSet.contains(id)).toList(),
           updatedAt: DateTime.now(),
         );
         if (_db != null) {
