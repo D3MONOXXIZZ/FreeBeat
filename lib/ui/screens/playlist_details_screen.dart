@@ -6,6 +6,7 @@ import '../../core/models/track.dart';
 import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/playlist_qr_modal.dart';
@@ -535,6 +536,11 @@ class _PlaylistDetailsScreenState
                 ),
               const SizedBox(width: 8),
             ],
+          ),
+
+          // Cloud Sync Progress Banner (when actively syncing this playlist)
+          SliverToBoxAdapter(
+            child: CloudSyncProgressBanner(playlistId: livePlaylist.id),
           ),
 
           // 2. Playlist Header & Cover Art

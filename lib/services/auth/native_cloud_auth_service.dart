@@ -50,6 +50,7 @@ class NativeCloudAuthService {
             GoogleSignIn(
               scopes: <String>[
                 'email',
+                'https://www.googleapis.com/auth/drive.file',
                 'https://www.googleapis.com/auth/drive.readonly',
               ],
             ),

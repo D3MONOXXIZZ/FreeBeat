@@ -13,6 +13,7 @@ import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
 import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/playlist_import_modal.dart';
 
 enum _HomeCategoryFilter {
@@ -491,6 +492,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Cloud Missing Track Sync Progress Banner
+        // ─────────────────────────────────────────────────────────────────────
+        const SliverToBoxAdapter(
+          child: CloudSyncProgressBanner(),
+        ),
 
         // ─────────────────────────────────────────────────────────────────────
         // 2. Pixel M3 Expressive Search Bar

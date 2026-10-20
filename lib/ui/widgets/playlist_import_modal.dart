@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/models/cloud_account.dart';
+import '../../services/auth/native_cloud_auth_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../services/playlist/playlist_import_service.dart';
+import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../screens/playlist_details_screen.dart';
 import 'material_you_album_cover.dart';
@@ -37,6 +41,18 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   PlaylistImportResult? _result;
   late TextEditingController _titleController;
 
+  bool _syncMissingTracks = true;
+  String? _selectedAccountId;
+  bool _isConnectingGoogle = false;
+
+  static const CloudAccount _defaultLocalStorageAccount = CloudAccount(
+    id: 'device_storage_import',
+    providerType: CloudProviderType.androidSaf,
+    displayName: 'Device Storage (Offline)',
+    endpointOrFolder: '/imported_music/',
+    usernameOrEmail: 'Local Storage',
+  );
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +64,30 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     _inputController.dispose();
     _titleController.dispose();
     super.dispose();
+  }
+
+  Future<void> _connectGoogleDrive() async {
+    PixelHaptics.tick();
+    setState(() => _isConnectingGoogle = true);
+    try {
+      final authService = NativeCloudAuthService();
+      final result = await authService.signInWithGoogleDrive();
+      if (result.isSuccess && result.account != null) {
+        final account = result.account!;
+        final secrets = {'accessToken': result.accessToken ?? ''};
+        await ref.read(cloudAccountsProvider.notifier).addAccount(account, secrets);
+        setState(() {
+          _selectedAccountId = account.id;
+        });
+        await PixelHaptics.hifiConfirm();
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Failed to connect Google Drive: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isConnectingGoogle = false);
+      }
+    }
   }
 
   Future<void> _pickM3uFile() async {
@@ -146,7 +186,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     }
   }
 
-  Future<void> _createPlaylist() async {
+  Future<void> _createAndSyncPlaylist({required bool syncMissing}) async {
     if (_result == null) return;
     PixelHaptics.hifiConfirm();
 
@@ -160,11 +200,41 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
           initialTrackIds: _result!.matchedTracks.map((t) => t.id).toList(),
         );
 
+    final missing = _result!.missingTracks;
+
+    if (syncMissing && missing.isNotEmpty) {
+      final accounts = ref.read(cloudAccountsProvider);
+      CloudAccount targetAccount;
+      if (_selectedAccountId != null && _selectedAccountId != 'device_storage') {
+        targetAccount = accounts.firstWhere(
+          (a) => a.id == _selectedAccountId,
+          orElse: () => _defaultLocalStorageAccount,
+        );
+      } else if (accounts.isNotEmpty && _selectedAccountId != 'device_storage') {
+        targetAccount = accounts.first;
+      } else {
+        targetAccount = _defaultLocalStorageAccount;
+      }
+
+      unawaited(
+        ref.read(playlistMissingTracksSyncProvider.notifier).startSync(
+              missingTracks: missing,
+              playlistId: playlist.id,
+              playlistTitle: title,
+              account: targetAccount,
+            ),
+      );
+    }
+
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Created playlist "$title" with ${_result!.matchedCount} tracks!'),
+          content: Text(
+            syncMissing && missing.isNotEmpty
+                ? 'Created "$title" • Syncing ${missing.length} missing songs in background...'
+                : 'Created playlist "$title" with ${_result!.matchedCount} tracks!',
+          ),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -186,6 +256,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final accounts = ref.watch(cloudAccountsProvider);
 
     return Container(
       constraints: BoxConstraints(
@@ -434,15 +505,189 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
               ),
             ),
 
-            if (_result!.unmatchedTrackNames.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (_result!.missingTracks.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              // Cloud Sync Missing Songs Card
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: 0.28),
+                    width: 1.0,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 17,
+                          backgroundColor: cs.primaryContainer,
+                          child: Icon(Icons.cloud_sync_rounded,
+                              size: 19, color: cs.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Sync Missing Songs to Cloud',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                '${_result!.missingTracks.length} tracks will be downloaded & saved',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _syncMissingTracks,
+                          onChanged: (val) {
+                            PixelHaptics.tick();
+                            setState(() => _syncMissingTracks = val);
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_syncMissingTracks) ...[
+                      const SizedBox(height: 10),
+                      Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3)),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Cloud Destination',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (accounts.isEmpty) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.tonalIcon(
+                                onPressed: _isConnectingGoogle ? null : _connectGoogleDrive,
+                                icon: _isConnectingGoogle
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.add_to_drive_rounded, size: 16),
+                                label: const Text('Connect Google Drive',
+                                    style: TextStyle(fontSize: 11.5)),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: () {
+                                PixelHaptics.tick();
+                                setState(() => _selectedAccountId = 'device_storage');
+                              },
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              ),
+                              child: const Text('Device Storage',
+                                  style: TextStyle(fontSize: 11.5)),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              value: (_selectedAccountId != null &&
+                                      (accounts.any((a) => a.id == _selectedAccountId) ||
+                                          _selectedAccountId == 'device_storage'))
+                                  ? _selectedAccountId
+                                  : accounts.first.id,
+                              items: [
+                                for (final acc in accounts)
+                                  DropdownMenuItem(
+                                    value: acc.id,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          acc.providerType.icon,
+                                          size: 18,
+                                          color: acc.providerType.accentColor,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${acc.displayName} (${acc.providerType.displayName})',
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                const DropdownMenuItem(
+                                  value: 'device_storage',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.phone_android_rounded,
+                                          size: 18, color: Colors.teal),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Device Storage (No Cloud / Offline)',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  PixelHaptics.tick();
+                                  setState(() => _selectedAccountId = val);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
               Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   dense: true,
                   tilePadding: EdgeInsets.zero,
                   title: Text(
-                    '${_result!.unmatchedTrackNames.length} tracks missing from library',
+                    '${_result!.missingTracks.length} tracks missing from library',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -454,11 +699,11 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                       constraints: const BoxConstraints(maxHeight: 120),
                       child: ListView.builder(
                         shrinkWrap: true,
-                        itemCount: _result!.unmatchedTrackNames.length,
+                        itemCount: _result!.missingTracks.length,
                         itemBuilder: (_, i) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           child: Text(
-                            '• ${_result!.unmatchedTrackNames[i]}',
+                            '• ${_result!.missingTracks[i].displayName}',
                             style: TextStyle(
                               fontSize: 11.5,
                               color: cs.onSurfaceVariant.withValues(alpha: 0.8),
@@ -492,13 +737,47 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     child: const Text('Back'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                if (_result!.matchedCount > 0 &&
+                    _syncMissingTracks &&
+                    _result!.missingTracks.isNotEmpty) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _createAndSyncPlaylist(syncMissing: false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        'Matched Only (${_result!.matchedCount})',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: _result!.matchedCount > 0 ? _createPlaylist : null,
-                    icon: const Icon(Icons.playlist_add_rounded, size: 20),
-                    label: Text('Save (${_result!.matchedCount} Tracks)'),
+                    onPressed: (_result!.matchedCount > 0 ||
+                            (_syncMissingTracks && _result!.missingTracks.isNotEmpty))
+                        ? () => _createAndSyncPlaylist(
+                            syncMissing: _syncMissingTracks && _result!.missingTracks.isNotEmpty)
+                        : null,
+                    icon: Icon(
+                      _syncMissingTracks && _result!.missingTracks.isNotEmpty
+                          ? Icons.cloud_download_rounded
+                          : Icons.playlist_add_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _syncMissingTracks && _result!.missingTracks.isNotEmpty
+                          ? 'Sync & Save (${_result!.totalParsed})'
+                          : 'Save (${_result!.matchedCount})',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(

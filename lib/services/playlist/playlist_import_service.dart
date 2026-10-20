@@ -1,22 +1,26 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../core/models/track.dart';
+import 'playlist_missing_tracks_sync_service.dart';
 
 /// Result of an imported playlist analysis.
 class PlaylistImportResult {
-  const PlaylistImportResult({
+  PlaylistImportResult({
     required this.title,
     this.description = '',
     required this.matchedTracks,
     required this.unmatchedTrackNames,
+    List<MissingTrackItem>? missingTracks,
     required this.totalParsed,
     this.sourceType = 'text',
-  });
+  }) : missingTracks = missingTracks ??
+            unmatchedTrackNames.map(MissingTrackItem.fromString).toList();
 
   final String title;
   final String description;
   final List<Track> matchedTracks;
   final List<String> unmatchedTrackNames;
+  final List<MissingTrackItem> missingTracks;
   final int totalParsed;
   final String sourceType; // 'spotify', 'apple', 'm3u', 'text', 'csv'
 
@@ -423,6 +427,7 @@ class PlaylistImportService {
   }) {
     final List<Track> matched = [];
     final List<String> unmatched = [];
+    final List<MissingTrackItem> missingTrackItems = [];
     final Set<String> matchedIds = {};
 
     for (final entry in entries) {
@@ -454,6 +459,12 @@ class PlaylistImportService {
             : entry.title;
         if (!unmatched.contains(display)) {
           unmatched.add(display);
+          missingTrackItems.add(
+            MissingTrackItem(
+              title: entry.title,
+              artist: entry.artist,
+            ),
+          );
         }
       }
     }
@@ -463,6 +474,7 @@ class PlaylistImportService {
       description: description,
       matchedTracks: matched,
       unmatchedTrackNames: unmatched,
+      missingTracks: missingTrackItems,
       totalParsed: entries.length,
       sourceType: sourceType,
     );

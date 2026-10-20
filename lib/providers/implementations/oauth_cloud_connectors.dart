@@ -34,7 +34,8 @@ class OAuth2PkceHelper {
           'client_id': clientId,
           'redirect_uri': redirectUri,
           'response_type': 'code',
-          'scope': 'https://www.googleapis.com/auth/drive.readonly',
+          'scope':
+              'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly email',
           'code_challenge': codeChallenge,
           'code_challenge_method': 'S256',
           'access_type': 'offline',
@@ -47,7 +48,7 @@ class OAuth2PkceHelper {
             'client_id': clientId,
             'redirect_uri': redirectUri,
             'response_type': 'code',
-            'scope': 'Files.Read offline_access User.Read',
+            'scope': 'Files.ReadWrite offline_access User.Read',
             'code_challenge': codeChallenge,
             'code_challenge_method': 'S256',
           },

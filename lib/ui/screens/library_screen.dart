@@ -14,6 +14,7 @@ import 'settings/settings_screen.dart';
 import 'track_details_screen.dart';
 import '../../core/models/playlist.dart';
 import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/pending_import_track_tile.dart';
@@ -686,6 +687,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               ),
             ),
+
+          // ───────────────────────────────────────────────────────────────────
+          // Cloud Missing Track Sync Progress Banner
+          // ───────────────────────────────────────────────────────────────────
+          const SliverToBoxAdapter(
+            child: CloudSyncProgressBanner(),
+          ),
 
           // ───────────────────────────────────────────────────────────────────
           // 2. M3 Expressive Pill Filters

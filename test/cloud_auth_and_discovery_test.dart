@@ -52,7 +52,8 @@ void main() {
       );
       expect(driveUri.host, 'accounts.google.com');
       expect(driveUri.queryParameters['client_id'], 'drive_client_id_123');
-      expect(driveUri.queryParameters['scope'], 'https://www.googleapis.com/auth/drive.readonly');
+      expect(driveUri.queryParameters['scope'], contains('https://www.googleapis.com/auth/drive.file'));
+      expect(driveUri.queryParameters['scope'], contains('https://www.googleapis.com/auth/drive.readonly'));
       expect(driveUri.queryParameters['code_challenge'], 'challenge_xyz');
 
       final oneDriveUri = OAuth2PkceHelper.buildAuthorizationUri(
@@ -62,6 +63,7 @@ void main() {
       );
       expect(oneDriveUri.host, 'login.microsoftonline.com');
       expect(oneDriveUri.queryParameters['client_id'], 'onedrive_client_123');
+      expect(oneDriveUri.queryParameters['scope'], contains('Files.ReadWrite'));
 
       final dropboxUri = OAuth2PkceHelper.buildAuthorizationUri(
         provider: CloudProviderType.dropbox,
