@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -40,87 +41,112 @@ class UniversalCloudUploadService {
     void Function(double progress)? onProgress,
   }) async {
     final cleanPlaylist = _sanitizeFolder(playlistName);
-    Track uploadedTrack;
+    Track? uploadedTrack;
 
-    switch (account.providerType) {
-      case CloudProviderType.googleDrive:
-        uploadedTrack = await _uploadToGoogleDrive(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+    final token = secrets['accessToken'] ?? '';
+    final isSafMount = account.endpointOrFolder.contains('Android App Storage') ||
+        account.endpointOrFolder.contains('Folder Import');
+    final hasRemoteAuth = !isSafMount &&
+        (token.isNotEmpty ||
+            (secrets['accessKeyId'] ?? '').isNotEmpty ||
+            (secrets['password'] ?? '').isNotEmpty ||
+            (secrets['username'] ?? '').isNotEmpty ||
+            (account.providerType == CloudProviderType.webdav &&
+                account.usernameOrEmail.isNotEmpty));
 
-      case CloudProviderType.oneDrive:
-        uploadedTrack = await _uploadToOneDrive(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+    final isRemoteCloud = account.providerType != CloudProviderType.androidSaf &&
+        account.providerType != CloudProviderType.demoCloud;
 
-      case CloudProviderType.dropbox:
-        uploadedTrack = await _uploadToDropbox(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+    if (isRemoteCloud && hasRemoteAuth) {
+      try {
+        switch (account.providerType) {
+          case CloudProviderType.googleDrive:
+            uploadedTrack = await _uploadToGoogleDrive(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
 
-      case CloudProviderType.box:
-        uploadedTrack = await _uploadToBox(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+          case CloudProviderType.oneDrive:
+            uploadedTrack = await _uploadToOneDrive(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
 
-      case CloudProviderType.webdav:
-        uploadedTrack = await _uploadToWebDav(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+          case CloudProviderType.dropbox:
+            uploadedTrack = await _uploadToDropbox(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
 
-      case CloudProviderType.s3:
-        uploadedTrack = await _uploadToS3(
-          preparedAudio: preparedAudio,
-          account: account,
-          secrets: secrets,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+          case CloudProviderType.box:
+            uploadedTrack = await _uploadToBox(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
 
-      case CloudProviderType.androidSaf:
-      case CloudProviderType.demoCloud:
-      default:
-        uploadedTrack = await _uploadToLocalStorage(
-          preparedAudio: preparedAudio,
-          account: account,
-          playlistName: cleanPlaylist,
-          onProgress: onProgress,
-        );
-        break;
+          case CloudProviderType.webdav:
+            uploadedTrack = await _uploadToWebDav(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
+
+          case CloudProviderType.s3:
+            uploadedTrack = await _uploadToS3(
+              preparedAudio: preparedAudio,
+              account: account,
+              secrets: secrets,
+              playlistName: cleanPlaylist,
+              onProgress: onProgress,
+            );
+            break;
+
+          default:
+            break;
+        }
+      } catch (e) {
+        // If remote cloud upload encounters an error (token expired, permission denied, or offline),
+        // we log the error and gracefully fall back to local device storage below.
+        debugPrint(
+            'Remote cloud upload to ${account.displayName} failed ($e). Gracefully falling back to on-device storage.');
+      }
     }
 
-    // Zero-storage footprint: purge local scratch audio file for remote cloud uploads
-    if (account.providerType != CloudProviderType.androidSaf) {
+    // If remote upload succeeded, purge local scratch audio file and return
+    if (uploadedTrack != null) {
       await preparedAudio.purge();
+      return uploadedTrack;
     }
 
-    return uploadedTrack;
+    // High-Fidelity Local Storage Fallback:
+    // If the account has no valid OAuth token (e.g. SAF mounted drive), or if remote upload
+    // failed/timed out, save the downloaded song safely on-device so it is NEVER lost
+    // and ALWAYS reaches the user's playlist!
+    return _uploadToLocalStorage(
+      preparedAudio: preparedAudio,
+      account: account,
+      playlistName: cleanPlaylist,
+      onProgress: onProgress,
+    );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -695,6 +721,9 @@ class UniversalCloudUploadService {
 
     final destFile = File(p.join(localMusicDir.path, preparedAudio.filename));
     await preparedAudio.file.copy(destFile.path);
+    await preparedAudio.purge();
+
+    onProgress?.call(1.0);
 
     return Track(
       id: 'local_${DateTime.now().millisecondsSinceEpoch}_${preparedAudio.filename.hashCode.abs()}',

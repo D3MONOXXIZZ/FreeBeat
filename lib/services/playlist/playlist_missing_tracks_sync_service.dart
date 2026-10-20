@@ -186,7 +186,21 @@ class PlaylistMissingTracksSyncNotifier
 
     _isCancelled = false;
     final credStore = _ref.read(credentialStoreProvider);
-    final secrets = await credStore.readSecrets(account.id);
+    var secrets = await credStore.readSecrets(account.id);
+
+    if (account.providerType == CloudProviderType.googleDrive) {
+      final token = secrets['accessToken'];
+      if (token == null || token.isEmpty) {
+        try {
+          final authService = _ref.read(nativeCloudAuthServiceProvider);
+          final freshToken = await authService.getFreshGoogleAccessToken();
+          if (freshToken != null && freshToken.isNotEmpty) {
+            secrets = {'accessToken': freshToken};
+            await credStore.saveSecrets(account.id, secrets);
+          }
+        } catch (_) {}
+      }
+    }
 
     final initialProgresses = missingTracks
         .map((item) => SyncTrackProgress(item: item))

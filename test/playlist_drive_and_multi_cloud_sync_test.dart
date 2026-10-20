@@ -481,6 +481,41 @@ void main() {
       // Clean up destination
       File(track.localCachePath!).deleteSync();
     });
+
+    test('Gracefully falls back to on-device storage when remote cloud token is missing', () async {
+      final uploader = UniversalCloudUploadService();
+      final prepared = PreparedTrackAudio(
+        file: scratchFile,
+        filename: 'Missing_Token_Song.m4a',
+        title: 'Missing Token Song',
+        artist: 'SAF Artist',
+        album: 'SAF Mix',
+        format: 'm4a',
+        durationMs: 180000,
+        sizeBytes: 2048,
+        bitrateKbps: 256,
+      );
+
+      const account = CloudAccount(
+        id: 'acc_saf_gdrive',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'Google Drive (SAF)',
+        endpointOrFolder: 'Android App Storage (Google Drive)',
+      );
+
+      final track = await uploader.uploadPreparedTrack(
+        preparedAudio: prepared,
+        account: account,
+        secrets: {}, // Empty secrets from SAF mount
+        playlistName: 'SAF Mix',
+      );
+
+      expect(track, isNotNull);
+      expect(track.title, equals('Missing Token Song'));
+      expect(track.isPinnedOffline, isTrue);
+      expect(File(track.localCachePath!).existsSync(), isTrue);
+      File(track.localCachePath!).deleteSync();
+    });
   });
 
   group('PlaylistMissingTracksSyncService State and Queue Coordinator', () {
