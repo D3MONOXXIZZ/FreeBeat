@@ -98,10 +98,21 @@ class CloudSyncProgressBanner extends ConsumerWidget {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
+                  icon: const Icon(Icons.info_outline_rounded, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  tooltip: 'Storage Location',
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    _showStorageLocationDialog(context, syncState.activePlaylistTitle);
+                  },
+                ),
+                IconButton(
                   icon: const Icon(Icons.close_rounded, size: 16),
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                   tooltip: 'Cancel Cloud Sync',
                   onPressed: () {
                     PixelHaptics.tick();
@@ -134,6 +145,72 @@ class CloudSyncProgressBanner extends ConsumerWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  void _showStorageLocationDialog(BuildContext context, String? playlistTitle) {
+    final title = (playlistTitle != null && playlistTitle.isNotEmpty)
+        ? playlistTitle
+        : 'FreeBeat Playlist';
+    final cs = Theme.of(context).colorScheme;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(Icons.folder_open_rounded, color: cs.primary),
+            const SizedBox(width: 10),
+            const Text(
+              'Download Folder',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Imported and downloaded tracks are saved in your device\'s standard Music folder:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: SelectableText(
+                '/storage/emulated/0/Music/$title/',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'How to find in File Manager:\nInternal Storage > Music > $title',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Fallback location:\n/storage/emulated/0/Android/data/com.freebeat.app/files/Music/$title/',
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.8)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }

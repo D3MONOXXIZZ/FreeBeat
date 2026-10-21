@@ -753,25 +753,118 @@ class UniversalCloudUploadService {
   // 7. On-Device Local Storage (Fallback)
   // ───────────────────────────────────────────────────────────────────────────
 
+  /// Resolves the most accessible, user-visible public music directory
+  /// for saving playlist tracks on the local device.
+  ///
+  /// Priority:
+  /// 1. Custom folder path if configured and accessible.
+  /// 2. Primary Public Android Music folder: `/storage/emulated/0/Music/<playlistName>/`
+  /// 3. Public Android Download folder: `/storage/emulated/0/Download/FreeBeat Music/<playlistName>/`
+  /// 4. App-specific External Storage Music directory:
+  ///    `/storage/emulated/0/Android/data/com.freebeat.app/files/Music/<playlistName>/`
+  /// 5. Application Documents Directory (Desktop, iOS, or sandboxed fallback).
+  static Future<Directory> resolveMusicStorageDirectory(
+    String playlistName, {
+    String? customFolder,
+  }) async {
+    final clean = _sanitizeFolder(playlistName);
+
+    // 1. Explicit valid custom folder
+    if (customFolder != null &&
+        customFolder.isNotEmpty &&
+        customFolder != '/FreeBeat Music/' &&
+        customFolder != 'Local Music Files') {
+      try {
+        final d = Directory(p.join(customFolder, clean));
+        if (!await d.exists()) await d.create(recursive: true);
+        final probe = File(p.join(d.path, '.write_test_${DateTime.now().millisecondsSinceEpoch}'));
+        await probe.writeAsString('ok');
+        await probe.delete();
+        return d;
+      } catch (_) {}
+    }
+
+    if (Platform.isAndroid) {
+      // 2. Standard Public Music folder: /storage/emulated/0/Music/<playlistName>
+      try {
+        final d = Directory('/storage/emulated/0/Music/$clean');
+        if (!await d.exists()) await d.create(recursive: true);
+        final probe = File(p.join(d.path, '.write_test_${DateTime.now().millisecondsSinceEpoch}'));
+        await probe.writeAsString('ok');
+        await probe.delete();
+        return d;
+      } catch (_) {}
+
+      // 3. Public Download folder: /storage/emulated/0/Download/FreeBeat Music/<playlistName>
+      try {
+        final d = Directory('/storage/emulated/0/Download/FreeBeat Music/$clean');
+        if (!await d.exists()) await d.create(recursive: true);
+        final probe = File(p.join(d.path, '.write_test_${DateTime.now().millisecondsSinceEpoch}'));
+        await probe.writeAsString('ok');
+        await probe.delete();
+        return d;
+      } catch (_) {}
+
+      // 4. App-Specific External Storage Music directory
+      // (always writable on Android 10-15+ without needing special permissions, accessible via USB)
+      try {
+        final extMusicDirs = await getExternalStorageDirectories(type: StorageDirectory.music);
+        if (extMusicDirs != null && extMusicDirs.isNotEmpty) {
+          final d = Directory(p.join(extMusicDirs.first.path, clean));
+          if (!await d.exists()) await d.create(recursive: true);
+          return d;
+        }
+      } catch (_) {}
+
+      // 5. App-Specific External Storage Files root
+      try {
+        final extDir = await getExternalStorageDirectory();
+        if (extDir != null) {
+          final d = Directory(p.join(extDir.path, 'Music', clean));
+          if (!await d.exists()) await d.create(recursive: true);
+          return d;
+        }
+      } catch (_) {}
+    }
+
+    // 6. Application Documents Directory (Desktop/iOS/sandbox fallback)
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final d = Directory(p.join(appDocDir.path, 'FreeBeat Music', clean));
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// Returns the human-readable storage address where imported or downloaded
+  /// songs are stored on device for a given playlist.
+  static Future<String> getPublicMusicStorageAddress({String playlistName = 'YourPlaylist'}) async {
+    final dir = await resolveMusicStorageDirectory(playlistName);
+    return dir.path;
+  }
+
+  /// Public accessor for saving tracks directly to local on-device storage.
+  Future<Track> uploadToLocalStorage({
+    required PreparedTrackAudio preparedAudio,
+    required CloudAccount account,
+    required String playlistName,
+    void Function(double progress)? onProgress,
+  }) =>
+      _uploadToLocalStorage(
+        preparedAudio: preparedAudio,
+        account: account,
+        playlistName: playlistName,
+        onProgress: onProgress,
+      );
+
   Future<Track> _uploadToLocalStorage({
     required PreparedTrackAudio preparedAudio,
     required CloudAccount account,
     required String playlistName,
     void Function(double progress)? onProgress,
   }) async {
-    final appDocDir = await getApplicationDocumentsDirectory();
-    Directory localMusicDir;
-    if (account.endpointOrFolder.isNotEmpty &&
-        !account.endpointOrFolder.startsWith('/') &&
-        Directory(account.endpointOrFolder).existsSync()) {
-      localMusicDir = Directory(p.join(account.endpointOrFolder, playlistName));
-    } else {
-      localMusicDir = Directory(p.join(appDocDir.path, 'FreeBeat Music', playlistName));
-    }
-
-    if (!await localMusicDir.exists()) {
-      await localMusicDir.create(recursive: true);
-    }
+    final localMusicDir = await resolveMusicStorageDirectory(
+      playlistName,
+      customFolder: account.endpointOrFolder,
+    );
 
     final destFile = File(p.join(localMusicDir.path, preparedAudio.filename));
     try {

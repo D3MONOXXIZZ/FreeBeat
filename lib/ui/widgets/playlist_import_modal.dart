@@ -274,17 +274,29 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
           .toList();
 
       CloudAccount targetAccount;
-      if (_selectedAccountId != null && _selectedAccountId != 'device_storage') {
+      if (_selectedAccountId == 'device_storage') {
+        targetAccount = _defaultLocalStorageAccount;
+      } else if (_selectedAccountId != null) {
         targetAccount = accounts.firstWhere(
           (a) => a.id == _selectedAccountId,
-          orElse: () => remoteAccounts.isNotEmpty ? remoteAccounts.first : _defaultLocalStorageAccount,
+          orElse: () => _defaultLocalStorageAccount,
         );
-      } else if (remoteAccounts.isNotEmpty && _selectedAccountId != 'device_storage') {
-        targetAccount = remoteAccounts.first;
-      } else if (accounts.isNotEmpty && _selectedAccountId != 'device_storage') {
-        targetAccount = accounts.first;
       } else {
-        targetAccount = _defaultLocalStorageAccount;
+        // Autodetect: use authenticated remote cloud account if credentials exist,
+        // otherwise default to device local music storage.
+        final credStore = ref.read(credentialStoreProvider);
+        CloudAccount? authedAccount;
+        for (final ra in remoteAccounts) {
+          final s = await credStore.readSecrets(ra.id);
+          if ((s['accessToken'] ?? '').isNotEmpty ||
+              (s['password'] ?? '').isNotEmpty ||
+              (s['accessKeyId'] ?? '').isNotEmpty) {
+            authedAccount = ra;
+            break;
+          }
+        }
+        targetAccount = authedAccount ??
+            (remoteAccounts.isNotEmpty ? remoteAccounts.first : _defaultLocalStorageAccount);
       }
 
       unawaited(
@@ -808,11 +820,11 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                                   value: 'device_storage',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.phone_android_rounded,
+                                      Icon(Icons.folder_special_rounded,
                                           size: 18, color: Colors.teal),
                                       SizedBox(width: 8),
                                       Text(
-                                        'Device Storage (No Cloud / Offline)',
+                                        'Device Storage (Music Folder)',
                                         style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w600,

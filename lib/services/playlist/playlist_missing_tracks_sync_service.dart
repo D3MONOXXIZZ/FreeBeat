@@ -311,7 +311,7 @@ class PlaylistMissingTracksSyncNotifier
       // 2. Download and Tag Audio
       _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.downloading));
       state = state.copyWith(
-        currentStatusText: 'Downloading "${item.displayName}"...',
+        currentStatusText: 'Downloading "${item.displayName}" (0%)...',
       );
 
       final preparedAudio = await _tagger.downloadAndPrepareAudio(
@@ -321,7 +321,11 @@ class PlaylistMissingTracksSyncNotifier
         targetAlbum: playlistName,
         preferredArtworkUrl: item.preferredArtworkUrl ?? candidate.artworkUrl,
         onProgress: (frac) {
+          final pct = (frac * 100).toInt();
           _updateTrackProgress(index, (p) => p.copyWith(progressFraction: frac * 0.5));
+          state = state.copyWith(
+            currentStatusText: 'Downloading "${item.displayName}" ($pct%)...',
+          );
         },
       );
 
@@ -330,34 +334,57 @@ class PlaylistMissingTracksSyncNotifier
         return null;
       }
 
-      // 3. Upload to Cloud
+      // 3. Upload to Cloud (with Graceful Local Music Fallback)
       _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.uploading));
       state = state.copyWith(
         currentStatusText: 'Uploading "${item.displayName}" to ${account.displayName}...',
       );
 
-      final uploadedTrack = await _uploader.uploadPreparedTrack(
-        preparedAudio: preparedAudio,
-        account: account,
-        secrets: secrets,
-        playlistName: playlistName,
-        onProgress: (frac) {
-          _updateTrackProgress(index, (p) => p.copyWith(progressFraction: 0.5 + (frac * 0.5)));
-        },
-        onTokenExpired: () async {
-          try {
-            final authService = _ref.read(nativeCloudAuthServiceProvider);
-            final freshToken = await authService.getFreshGoogleAccessToken();
-            if (freshToken != null && freshToken.isNotEmpty) {
-              secrets['accessToken'] = freshToken;
-              final credStore = _ref.read(credentialStoreProvider);
-              await credStore.saveSecrets(account.id, secrets);
-              return freshToken;
-            }
-          } catch (_) {}
-          return null;
-        },
-      );
+      Track uploadedTrack;
+      try {
+        uploadedTrack = await _uploader.uploadPreparedTrack(
+          preparedAudio: preparedAudio,
+          account: account,
+          secrets: secrets,
+          playlistName: playlistName,
+          onProgress: (frac) {
+            final pct = (frac * 100).toInt();
+            _updateTrackProgress(index, (p) => p.copyWith(progressFraction: 0.5 + (frac * 0.5)));
+            state = state.copyWith(
+              currentStatusText: 'Uploading "${item.displayName}" ($pct%)...',
+            );
+          },
+          onTokenExpired: () async {
+            try {
+              final authService = _ref.read(nativeCloudAuthServiceProvider);
+              final freshToken = await authService.getFreshGoogleAccessToken();
+              if (freshToken != null && freshToken.isNotEmpty) {
+                secrets['accessToken'] = freshToken;
+                final credStore = _ref.read(credentialStoreProvider);
+                await credStore.saveSecrets(account.id, secrets);
+                return freshToken;
+              }
+            } catch (_) {}
+            return null;
+          },
+        );
+      } catch (cloudErr) {
+        debugPrint(
+          'Cloud upload failed for "${item.displayName}" ($cloudErr). '
+          'Gracefully saving to on-device Music folder for playlist "$playlistName"',
+        );
+        state = state.copyWith(
+          currentStatusText: 'Saving "${item.displayName}" to Music folder...',
+        );
+        uploadedTrack = await _uploader.uploadToLocalStorage(
+          preparedAudio: preparedAudio,
+          account: account,
+          playlistName: playlistName,
+          onProgress: (frac) {
+            _updateTrackProgress(index, (p) => p.copyWith(progressFraction: 1.0));
+          },
+        );
+      }
 
       // LIVE PLAYLIST AND CATALOG INJECTION:
       // Immediately index track and append to playlist so it appears on screen without delay!
