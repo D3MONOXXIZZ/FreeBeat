@@ -191,6 +191,118 @@ void main() {
       expect(candidate.isFullLength, isTrue);
       expect(candidate.artworkUrl, contains('500x500'));
     });
+
+    test('TrackMatchScorer rigorously identifies authentic artists and eliminates covers, karaoke, and lullabies', () {
+      // Authentic match
+      final match1 = TrackMatchScorer.evaluate(
+        targetTitle: 'Cruel Summer',
+        targetArtist: 'Taylor Swift',
+        candidateTitle: 'Cruel Summer',
+        candidateArtist: 'Taylor Swift',
+        targetDurationMs: 178000,
+        candidateDurationMs: 178000,
+      );
+      expect(match1.isMatch, isTrue);
+      expect(match1.score, greaterThanOrEqualTo(1.0));
+
+      // Cover band rejection
+      final coverMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'Come Together',
+        targetArtist: 'The Beatles',
+        candidateTitle: 'Come Together',
+        candidateArtist: 'Sound Unlimited Electronic Orchestra',
+        targetDurationMs: 260000,
+        candidateDurationMs: 276000,
+      );
+      expect(coverMatch.isMatch, isFalse);
+      expect(coverMatch.isDisqualified, isTrue);
+
+      // Karaoke rejection
+      final karaokeMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'Bohemian Rhapsody',
+        targetArtist: 'Queen',
+        candidateTitle: 'Bohemian Rhapsody (By Queen) (Instrumental Karaoke Version)',
+        candidateArtist: 'ZZang KARAOKE',
+        targetDurationMs: 354000,
+        candidateDurationMs: 361000,
+      );
+      expect(karaokeMatch.isMatch, isFalse);
+      expect(karaokeMatch.isDisqualified, isTrue);
+
+      // Lullaby rejection
+      final lullabyMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'Birds of a Feather',
+        targetArtist: 'Billie Eilish',
+        candidateTitle: 'BIRDS OF A FEATHER',
+        candidateArtist: 'Lullapop',
+        targetDurationMs: 210000,
+        candidateDurationMs: 188000,
+      );
+      expect(lullabyMatch.isMatch, isFalse);
+      expect(lullabyMatch.isDisqualified, isTrue);
+
+      // Collaboration match
+      final collabMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'Get Lucky',
+        targetArtist: 'Daft Punk feat. Pharrell Williams',
+        candidateTitle: 'Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)',
+        candidateArtist: 'Daft Punk, Pharrell Williams, Nile Rodgers',
+        targetDurationMs: 248000,
+        candidateDurationMs: 248000,
+      );
+      expect(collabMatch.isMatch, isTrue);
+    });
+
+    test('JioSaavn engine bypasses cover band at index 0 and selects genuine artist at index 1', () async {
+      final key = utf8.encode('38346591');
+      final des = DES(key: key, mode: DESMode.ECB, paddingType: DESPaddingType.PKCS5);
+      final rawCoverUrl = utf8.encode('https://aac.saavncdn.com/123/cover_song_96.mp4');
+      final rawAuthenticUrl = utf8.encode('https://aac.saavncdn.com/123/authentic_queen_96.mp4');
+      final encCoverB64 = base64Encode(des.encrypt(rawCoverUrl));
+      final encAuthenticB64 = base64Encode(des.encrypt(rawAuthenticUrl));
+
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('jiosaavn.com/api.php') && url.contains('search.getResults')) {
+          return http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'id': 'cover_0',
+                  'song': 'Bohemian Rhapsody',
+                  'primary_artists': 'The Cat And Owl',
+                  'duration': '393',
+                  'encrypted_media_url': encCoverB64,
+                },
+                {
+                  'id': 'authentic_1',
+                  'song': 'Bohemian Rhapsody',
+                  'primary_artists': 'Queen',
+                  'album': 'A Night at the Opera',
+                  'duration': '354',
+                  'image': 'https://c.saavncdn.com/queen/art_150x150.jpg',
+                  'encrypted_media_url': encAuthenticB64,
+                },
+              ]
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final resolver = MissingTrackAudioResolver(httpClient: mockClient);
+      final candidate = await resolver.resolveTrackAudio(
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        expectedDurationMs: 354000,
+      );
+
+      expect(candidate, isNotNull);
+      expect(candidate!.channelOrArtist, equals('Queen'));
+      expect(candidate.sourceId, equals('saavn_authentic_1'));
+      expect(candidate.streamUrl, contains('authentic_queen_320.mp4'));
+    });
   });
 
   group('TrackAudioTaggerService & PreparedTrackAudio', () {
