@@ -696,7 +696,9 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                       ),
                     ),
                     Text(
-                      widget.targetPlaylist != null ? 'Adding songs to "${widget.targetPlaylist!.title}"' : 'Spotify, Apple Music, .M3U8, or CSV tracklists',
+                      widget.targetPlaylist != null
+                          ? 'Adding songs to "${widget.targetPlaylist!.title}"'
+                          : 'Spotify, Apple Music, YouTube, .M3U8, or tracklists',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onSurfaceVariant,
@@ -710,13 +712,42 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
           const SizedBox(height: 18),
 
           if (_result == null) ...[
+            // Platform Badges
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const _PlatformPill(
+                    label: 'Spotify',
+                    color: Color(0xFF1DB954),
+                  ),
+                  const SizedBox(width: 6),
+                  const _PlatformPill(
+                    label: 'Apple Music',
+                    color: Color(0xFFFC3C44),
+                  ),
+                  const SizedBox(width: 6),
+                  const _PlatformPill(
+                    label: 'YouTube & Music',
+                    color: Color(0xFFFF0000),
+                  ),
+                  const SizedBox(width: 6),
+                  _PlatformPill(
+                    label: '.M3U8 / Text',
+                    color: cs.primary,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
             // Input Mode: Paste link or text
             TextField(
               controller: _inputController,
               maxLines: 4,
               decoration: InputDecoration(
                 hintText:
-                    'Paste a public Spotify or Apple Music link, or enter a list of songs:\nArtist - Song Title\nSong Title, Artist\n#EXTM3U ...',
+                    'Paste a Spotify, Apple Music, or YouTube / YouTube Music link (playlist or song), or enter tracks:\nArtist - Song Title\nSong Title, Artist\n#EXTM3U ...',
                 hintStyle: TextStyle(
                   fontSize: 12.5,
                   color: cs.onSurfaceVariant.withValues(alpha: 0.7),
@@ -1280,6 +1311,51 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlatformPill extends StatelessWidget {
+  const _PlatformPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: 0.1,
+            ),
+          ),
         ],
       ),
     );

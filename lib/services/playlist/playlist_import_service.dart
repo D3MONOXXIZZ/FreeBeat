@@ -268,7 +268,8 @@ class PlaylistImportService {
     final isYoutube = uri.host.contains('youtube.com') || uri.host.contains('youtu.be');
 
     if (!isSpotify && !isApple && !isYoutube) {
-      throw const FormatException('Unsupported URL. Spotify, Apple Music, and YouTube playlist links are supported.');
+      throw const FormatException(
+          'Unsupported URL. Spotify, Apple Music, and YouTube / YouTube Music links are supported.');
     }
 
     if (isSpotify) {
@@ -340,13 +341,20 @@ class PlaylistImportService {
     // 4. Fetch Spotify Embed Page (Contains __NEXT_DATA__ SSR track list)
     if (entityId.isNotEmpty) {
       try {
-        final embedUrl = 'https://open.spotify.com/embed/$entityType/$entityId';
+        final cacheBuster =
+            'utm_source=generator&t=${DateTime.now().millisecondsSinceEpoch}&_cb=${DateTime.now().microsecondsSinceEpoch}';
+        final embedUrl =
+            'https://open.spotify.com/embed/$entityType/$entityId?$cacheBuster';
         final response = await _http.get(
           Uri.parse(embedUrl),
           headers: {
             'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
           },
         ).timeout(const Duration(seconds: 12));
 
@@ -446,6 +454,8 @@ class PlaylistImportService {
           headers: {
             'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
           },
         ).timeout(const Duration(seconds: 8));
         if (mainRes.statusCode == 200) {
@@ -476,9 +486,15 @@ class PlaylistImportService {
     // 1. Query Apple Music oEmbed for exact clean playlist title
     try {
       final oembedUri = Uri.parse(
-        'https://music.apple.com/api/oembed?url=${Uri.encodeComponent(cleanUrl)}',
+        'https://music.apple.com/api/oembed?url=${Uri.encodeComponent(cleanUrl)}&t=${DateTime.now().millisecondsSinceEpoch}',
       );
-      final oembedRes = await _http.get(oembedUri).timeout(const Duration(seconds: 5));
+      final oembedRes = await _http.get(
+        oembedUri,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      ).timeout(const Duration(seconds: 5));
       if (oembedRes.statusCode == 200) {
         final oembedJson = jsonDecode(oembedRes.body) as Map<String, dynamic>;
         if (oembedJson['title'] != null && oembedJson['title'].toString().isNotEmpty) {
@@ -495,6 +511,8 @@ class PlaylistImportService {
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
         },
       ).timeout(const Duration(seconds: 12));
 
@@ -599,46 +617,237 @@ class PlaylistImportService {
     );
   }
 
+  /// Extracts the 11-character YouTube video ID from standard, mobile, shorts,
+  /// or YouTube Music links.
+  static String? extractYouTubeVideoId(String url) {
+    final regExp = RegExp(
+      r'(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/|music\.youtube\.com\/(?:watch\?(?:.*&)?v=|track\/))([a-zA-Z0-9_-]{11})',
+      caseSensitive: false,
+    );
+    final match = regExp.firstMatch(url);
+    if (match != null && match.group(1) != null) {
+      return match.group(1);
+    }
+    final uri = Uri.tryParse(url);
+    return uri?.queryParameters['v'];
+  }
+
+  /// Extracts the playlist ID (e.g. PL..., RD..., etc.) from a YouTube or YouTube Music link.
+  static String? extractYouTubePlaylistId(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      final list = uri.queryParameters['list'];
+      if (list != null && list.isNotEmpty) {
+        return list;
+      }
+    }
+    final regExp = RegExp(r'[?&]list=([a-zA-Z0-9_-]+)', caseSensitive: false);
+    return regExp.firstMatch(url)?.group(1);
+  }
+
+  /// Cleans YouTube video titles and channel authors into neat music title and artist pairs.
+  ///
+  /// Strips fluff like "(Official Music Video)", "[4K Remaster]", "(Audio)",
+  /// decomposes "Artist - Title" strings, and removes "- Topic" or "VEVO" channel artifacts.
+  static ({String title, String artist}) _cleanYouTubeTrackInfo(
+    String rawTitle,
+    String rawAuthor,
+  ) {
+    // 1. Clean author / channel name
+    var author = rawAuthor.trim();
+    if (author.endsWith(' - Topic')) {
+      author = author.substring(0, author.length - ' - Topic'.length).trim();
+    }
+    if (author.toLowerCase().endsWith('vevo')) {
+      author = author.substring(0, author.length - 4).trim();
+    }
+
+    // 2. Strip standard video fluff brackets / parentheses
+    final fluffRegex = RegExp(
+      r'[\(\[\{]\s*(?:official\s+)?(?:music\s+)?(?:video|audio|lyric|lyrics|visualizer|hd|4k|remaster(?:ed)?|explicit|clean|live|studio|clip|performance).*?[\)\]\}]',
+      caseSensitive: false,
+    );
+    var cleanedTitle = rawTitle.replaceAll(fluffRegex, '').trim();
+
+    // Strip generic trailing quality/media tags
+    cleanedTitle = cleanedTitle
+        .replaceAll(
+          RegExp(
+            r'[\(\[]\s*(?:4k|hd|hq|audio|video|remastered)\s*[\)\]]',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+
+    // 3. Check for "Artist - Title" separator
+    final separatorRegex = RegExp(r'\s+[-–—:]\s+');
+    final match = separatorRegex.firstMatch(cleanedTitle);
+
+    if (match != null) {
+      final part1 = cleanedTitle.substring(0, match.start).trim();
+      final part2 = cleanedTitle.substring(match.end).trim();
+
+      if (part1.isNotEmpty && part2.isNotEmpty) {
+        final unquotedTitle =
+            part2.replaceAll(RegExp(r'^["' "'" r']|["' "'" r']$'), '').trim();
+        return (title: unquotedTitle, artist: part1);
+      }
+    }
+
+    // If no hyphen separator, use cleanedTitle and author
+    return (
+      title: cleanedTitle.isNotEmpty ? cleanedTitle : rawTitle,
+      artist: author,
+    );
+  }
+
+  Future<PlaylistImportResult> _importSingleYouTubeVideo(
+    String videoId,
+    List<Track> libraryTracks,
+  ) async {
+    String rawTitle = '';
+    String rawAuthor = '';
+    int? durationMs;
+    String? artworkUrl;
+
+    // 1. Try YoutubeExplode
+    final yt = YoutubeExplode();
+    try {
+      final video = await yt.videos.get(videoId);
+      rawTitle = video.title;
+      rawAuthor = video.author;
+      durationMs = video.duration?.inMilliseconds;
+      artworkUrl = video.thumbnails.highResUrl;
+    } catch (e) {
+      debugPrint('YoutubeExplode video fetch note ($e), trying oEmbed...');
+    } finally {
+      yt.close();
+    }
+
+    // 2. Fallback to YouTube oEmbed API if YoutubeExplode was unavailable
+    if (rawTitle.isEmpty) {
+      try {
+        final oembedUri = Uri.parse(
+          'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=$videoId&format=json',
+        );
+        final res =
+            await _http.get(oembedUri).timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final json = jsonDecode(res.body) as Map<String, dynamic>;
+          if (json['title'] != null) {
+            rawTitle = json['title'].toString();
+          }
+          if (json['author_name'] != null) {
+            rawAuthor = json['author_name'].toString();
+          }
+          if (json['thumbnail_url'] != null) {
+            artworkUrl = json['thumbnail_url'].toString();
+          }
+        }
+      } catch (e) {
+        debugPrint('YouTube oEmbed fallback note: $e');
+      }
+    }
+
+    if (rawTitle.isEmpty) {
+      throw const FormatException(
+        'Could not load YouTube track. Please ensure the link is public and valid.',
+      );
+    }
+
+    final cleaned = _cleanYouTubeTrackInfo(rawTitle, rawAuthor);
+    final entries = [
+      _RawTrackEntry(
+        title: cleaned.title,
+        artist: cleaned.artist,
+        durationMs: durationMs,
+        artworkUrl: artworkUrl,
+        urlOrPath: 'https://www.youtube.com/watch?v=$videoId',
+      ),
+    ];
+
+    return _matchEntries(
+      entries: entries,
+      title: cleaned.title,
+      description: cleaned.artist.isNotEmpty
+          ? 'YouTube track by ${cleaned.artist}'
+          : 'Imported YouTube track',
+      libraryTracks: libraryTracks,
+      sourceType: 'youtube',
+    );
+  }
+
   Future<PlaylistImportResult> _importYouTube(
     String cleanUrl,
     Uri uri,
     List<Track> libraryTracks,
   ) async {
-    final listId = uri.queryParameters['list'];
-    if (listId == null || listId.isEmpty) {
-      throw const FormatException('Could not find playlist ID in YouTube link.');
+    final listId = extractYouTubePlaylistId(cleanUrl);
+    final videoId = extractYouTubeVideoId(cleanUrl);
+
+    if (listId == null && videoId == null) {
+      throw const FormatException(
+        'Could not find YouTube playlist or track ID in link.',
+      );
     }
 
-    String title = 'YouTube Playlist';
-    String description = 'Imported from YouTube';
-    final List<_RawTrackEntry> entries = [];
+    // 1. If it is a dynamic YouTube Music radio/mix (RD... or UL...) or single track link,
+    // import the song directly.
+    if (videoId != null &&
+        (listId == null || listId.startsWith('RD') || listId.startsWith('UL'))) {
+      return _importSingleYouTubeVideo(videoId, libraryTracks);
+    }
 
-    final yt = YoutubeExplode();
-    try {
-      final playlist = await yt.playlists.get(listId);
-      title = playlist.title;
-      description = playlist.description;
+    // 2. If a playlist ID is present, fetch the full playlist.
+    if (listId != null) {
+      String title = 'YouTube Playlist';
+      String description = 'Imported from YouTube';
+      final List<_RawTrackEntry> entries = [];
 
-      await for (final video in yt.playlists.getVideos(listId).take(100)) {
-        entries.add(_RawTrackEntry(
-          title: video.title,
-          artist: video.author,
-          durationMs: video.duration?.inMilliseconds,
-        ));
+      final yt = YoutubeExplode();
+      try {
+        final playlist = await yt.playlists.get(listId);
+        title = playlist.title;
+        description = playlist.description;
+
+        await for (final video in yt.playlists.getVideos(listId).take(200)) {
+          final cleaned = _cleanYouTubeTrackInfo(video.title, video.author);
+          entries.add(_RawTrackEntry(
+            title: cleaned.title,
+            artist: cleaned.artist,
+            durationMs: video.duration?.inMilliseconds,
+            artworkUrl: video.thumbnails.highResUrl,
+            urlOrPath: 'https://www.youtube.com/watch?v=${video.id.value}',
+          ));
+        }
+      } catch (e) {
+        debugPrint('YouTube playlist import note: $e');
+        // If playlist enumeration failed (e.g. unlisted/private or special mix)
+        // but a videoId was provided, fall back to importing the single video!
+        if (videoId != null) {
+          return _importSingleYouTubeVideo(videoId, libraryTracks);
+        }
+        rethrow;
+      } finally {
+        yt.close();
       }
-    } catch (e) {
-      debugPrint('YouTube playlist import error: $e');
-    } finally {
-      yt.close();
+
+      if (entries.isEmpty && videoId != null) {
+        return _importSingleYouTubeVideo(videoId, libraryTracks);
+      }
+
+      return _matchEntries(
+        entries: entries,
+        title: title,
+        description: description,
+        libraryTracks: libraryTracks,
+        sourceType: 'youtube',
+      );
     }
 
-    return _matchEntries(
-      entries: entries,
-      title: title,
-      description: description,
-      libraryTracks: libraryTracks,
-      sourceType: 'youtube',
-    );
+    // 3. Otherwise import single video.
+    return _importSingleYouTubeVideo(videoId!, libraryTracks);
   }
 
   static int? _parseIsoDuration(String? iso) {

@@ -205,7 +205,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   showPlaylistImportModal(context);
                 },
                 icon: const Icon(Icons.auto_awesome_rounded),
-                label: const Text('Or import from Spotify / Apple Music'),
+                label: const Text('Or import from Spotify, Apple, or YouTube'),
               ),
             ],
           ),
@@ -1056,7 +1056,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ] else ...[
                   IconButton(
                     icon: const Icon(Icons.playlist_add_check_circle_outlined),
-                    tooltip: 'Import Spotify / Apple Music Playlist',
+                    tooltip: 'Import Spotify, Apple Music, or YouTube Playlist',
                     onPressed: () => showPlaylistImportModal(context),
                   ),
                   IconButton(
@@ -2352,7 +2352,7 @@ class _ImportPlaylistCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Spotify, Apple, .M3U',
+              'Spotify, Apple, YouTube, .M3U',
               style: TextStyle(
                 fontSize: 11.5,
                 color: cs.onSurfaceVariant,
@@ -2475,6 +2475,45 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                // YouTube badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF0000).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(
+                      color: const Color(0xFFFF0000).withValues(alpha: 0.40),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF0000),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'YouTube',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFFF0000),
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const Spacer(),
                 FilledButton.tonalIcon(
                   onPressed: onTap,
@@ -2493,7 +2532,7 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Import from Spotify / Apple Music',
+              'Import Playlists & Tracks',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -2503,7 +2542,7 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             Text(
-              'Paste public playlist link, text tracklist, or pick .M3U8 file',
+              'Paste Spotify, Apple Music, or YouTube links, tracklists, or .M3U8',
               style: TextStyle(
                 fontSize: 12,
                 color: cs.onSurfaceVariant,

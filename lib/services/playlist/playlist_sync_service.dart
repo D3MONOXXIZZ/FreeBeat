@@ -161,7 +161,11 @@ class PlaylistSyncService {
       final totalNew = newMatched.length + newMissing.length;
       final sourceName = cleanUrl.contains('spotify')
           ? 'Spotify'
-          : (cleanUrl.contains('apple') ? 'Apple Music' : 'source');
+          : (cleanUrl.contains('apple')
+              ? 'Apple Music'
+              : (cleanUrl.contains('youtube') || cleanUrl.contains('youtu.be')
+                  ? 'YouTube'
+                  : 'source'));
 
       if (totalNew == 0) {
         return PlaylistSyncOutcome(
@@ -170,7 +174,7 @@ class PlaylistSyncService {
           newMatchedTracksCount: 0,
           newMissingTracksCount: 0,
           message:
-              'Playlist is already up to date with $sourceName! (No new tracks)',
+              'Playlist is already up to date with $sourceName (${importResult.totalParsed} tracks checked). Note: Newly added songs on $sourceName may take 1-2 minutes to propagate across their CDN.',
         );
       }
 

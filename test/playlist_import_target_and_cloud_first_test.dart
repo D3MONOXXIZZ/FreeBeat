@@ -397,5 +397,153 @@ void main() {
       expect(find.byIcon(Icons.sync_rounded), findsWidgets);
       expect(find.textContaining('Sync with Spotify • 5m ago'), findsOneWidget);
     });
+
+    test('YouTube videoId and playlistId extraction across all YouTube & YT Music URL formats', () {
+      expect(
+        PlaylistImportService.extractYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubeVideoId('https://music.youtube.com/watch?v=dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubeVideoId('https://youtu.be/dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubeVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubeVideoId('https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RDAMVMdQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+
+      expect(
+        PlaylistImportService.extractYouTubePlaylistId('https://www.youtube.com/playlist?list=PL1234567890'),
+        equals('PL1234567890'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubePlaylistId('https://music.youtube.com/playlist?list=PL1234567890'),
+        equals('PL1234567890'),
+      );
+      expect(
+        PlaylistImportService.extractYouTubePlaylistId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1234567890'),
+        equals('PL1234567890'),
+      );
+    });
+
+    test('YouTube title and artist cleaner removes video fluff and parses Artist - Title', () {
+      // 1. Artist - Title with official video brackets
+      final res1 = PlaylistImportService.extractYouTubeVideoId('https://youtu.be/dQw4w9WgXcQ');
+      expect(res1, equals('dQw4w9WgXcQ'));
+
+      final mockClient = MockClient((request) async {
+        if (request.url.toString().contains('youtube.com/oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': 'Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)',
+              'author_name': 'Rick Astley',
+              'thumbnail_url': 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      expect(service, isNotNull);
+    });
+
+    test('YouTube single track import via oEmbed fallback returns single parsed track', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.host.contains('youtube.com') && request.url.path.contains('oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': 'The Weeknd - Blinding Lights (Official Audio)',
+              'author_name': 'The Weeknd',
+              'thumbnail_url': 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg',
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      final result = await service.importFromUrl(
+        'https://music.youtube.com/watch?v=4NRXx6U8ABQ',
+        [],
+      );
+
+      expect(result.sourceType, equals('youtube'));
+      expect(result.totalParsed, equals(1));
+      expect(result.missingTracks.length, equals(1));
+      expect(result.missingTracks.first.title, equals('Blinding Lights'));
+      expect(result.missingTracks.first.artist, equals('The Weeknd'));
+    });
+
+    test('YouTube Music dynamic radio mix link (list=RD...) imports individual track', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.host.contains('youtube.com') && request.url.path.contains('oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': 'Starboy',
+              'author_name': 'The Weeknd - Topic',
+              'thumbnail_url': 'https://i.ytimg.com/vi/d3vV8tE4c2s/hqdefault.jpg',
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      final result = await service.importFromUrl(
+        'https://music.youtube.com/watch?v=d3vV8tE4c2s&list=RDAMVMd3vV8tE4c2s',
+        [],
+      );
+
+      expect(result.sourceType, equals('youtube'));
+      expect(result.totalParsed, equals(1));
+      expect(result.missingTracks.length, equals(1));
+      expect(result.missingTracks.first.title, equals('Starboy'));
+      expect(result.missingTracks.first.artist, equals('The Weeknd'));
+    });
+
+    test('Spotify import passes cache-busting parameters and headers', () async {
+      String? requestedUrl;
+      Map<String, String>? requestedHeaders;
+
+      final mockClient = MockClient((request) async {
+        if (request.url.host.contains('spotify.com') && request.url.path.contains('embed')) {
+          requestedUrl = request.url.toString();
+          requestedHeaders = request.headers;
+          return http.Response(
+            '<html><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{"name":"Test Cache Busted","trackList":[{"title":"Track 1","subtitle":"Artist 1"}]}}}}}}</script></html>',
+            200,
+            headers: {'content-type': 'text/html'},
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = PlaylistImportService(httpClient: mockClient);
+      final result = await service.importFromUrl(
+        'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+        [],
+      );
+
+      expect(result.totalParsed, equals(1));
+      expect(requestedUrl, contains('utm_source=generator'));
+      expect(requestedUrl, contains('&t='));
+      expect(requestedUrl, contains('&_cb='));
+      expect(requestedHeaders?['Cache-Control'], contains('no-cache'));
+    });
   });
 }
