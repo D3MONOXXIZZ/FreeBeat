@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/playlist.dart';
-import '../../services/auth/native_cloud_auth_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../services/playlist/playlist_import_service.dart';
 import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
@@ -53,6 +52,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   bool _syncMissingTracks = true;
   String? _selectedAccountId;
   bool _isConnectingGoogle = false;
+  Set<String> _authenticatedAccountIds = {};
 
   static const CloudAccount _defaultLocalStorageAccount = CloudAccount(
     id: 'device_storage_import',
@@ -66,6 +66,36 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.targetPlaylist?.title ?? '');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshAuthenticatedAccounts();
+    });
+  }
+
+  Future<void> _refreshAuthenticatedAccounts() async {
+    final accounts = ref.read(cloudAccountsProvider);
+    final credStore = ref.read(credentialStoreProvider);
+    final authed = <String>{};
+    for (final acc in accounts) {
+      if (acc.providerType == CloudProviderType.androidSaf) {
+        authed.add(acc.id);
+      } else {
+        final s = await credStore.readSecrets(acc.id);
+        if ((s['accessToken'] ?? '').isNotEmpty ||
+            (s['password'] ?? '').isNotEmpty ||
+            (s['accessKeyId'] ?? '').isNotEmpty) {
+          authed.add(acc.id);
+        }
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _authenticatedAccountIds = authed;
+        if (_selectedAccountId == null ||
+            (_selectedAccountId != 'device_storage' && !_authenticatedAccountIds.contains(_selectedAccountId))) {
+          _selectedAccountId = _authenticatedAccountIds.isNotEmpty ? _authenticatedAccountIds.first : 'device_storage';
+        }
+      });
+    }
   }
 
   @override
@@ -79,24 +109,110 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     PixelHaptics.tick();
     setState(() => _isConnectingGoogle = true);
     try {
-      final authService = NativeCloudAuthService();
+      final authService = ref.read(nativeCloudAuthServiceProvider);
       final result = await authService.signInWithGoogleDrive();
       if (result.isSuccess && result.account != null) {
         final account = result.account!;
         final secrets = {'accessToken': result.accessToken ?? ''};
         await ref.read(cloudAccountsProvider.notifier).addAccount(account, secrets);
-        setState(() {
-          _selectedAccountId = account.id;
-        });
+        if (mounted) {
+          setState(() {
+            _selectedAccountId = account.id;
+            _authenticatedAccountIds.add(account.id);
+          });
+        }
         await PixelHaptics.hifiConfirm();
+      } else if (!result.isCancelled) {
+        if (mounted) {
+          await _showGoogleDriveAlternativeDialog(
+            error: result.errorMessage ?? 'Google Play Services requires app registration (Code 10).',
+          );
+        }
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to connect Google Drive: $e');
+      if (mounted) {
+        setState(() => _errorMessage = 'Failed to connect Google Drive: $e');
+      }
     } finally {
       if (mounted) {
         setState(() => _isConnectingGoogle = false);
       }
     }
+  }
+
+  Future<void> _showGoogleDriveAlternativeDialog({required String error}) async {
+    final cs = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cs.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        icon: CircleAvatar(
+          radius: 24,
+          backgroundColor: cs.errorContainer,
+          child: Icon(Icons.cloud_off_rounded, color: cs.error, size: 28),
+        ),
+        title: const Text(
+          'Google Drive Sign-In Error',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Google Play Services native sign-in is unavailable on this device:\n$error\n\n'
+              'Because FreeBeat is installed directly as an APK outside Google Play, Google requires SHA-1 registration in Google Cloud Console for 1-tap sign-in.',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, size: 18, color: Colors.green),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Recommended: Use Device Storage to import tracks directly into your Music folder (/storage/emulated/0/Music/<PlaylistName>/).',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (mounted) {
+                setState(() => _selectedAccountId = 'device_storage');
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Switched to Device Storage (Music folder). Ready to import!'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            icon: const Icon(Icons.phone_android_rounded, size: 16),
+            label: const Text('Use Device Storage'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickM3uFile() async {
@@ -338,9 +454,41 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             return;
           } else if (choice == _CloudAuthChoice.signIn) {
             await _connectGoogleDrive();
-            final updatedSecrets = await credStore.readSecrets(targetAccount.id);
-            if ((updatedSecrets['accessToken'] ?? '').isEmpty) {
-              return;
+            if (_selectedAccountId == 'device_storage') {
+              targetAccount = _defaultLocalStorageAccount;
+              fallbackApproved = true;
+            } else {
+              final updatedSecrets = await credStore.readSecrets(targetAccount.id);
+              if ((updatedSecrets['accessToken'] ?? '').isEmpty) {
+                if (!mounted) return;
+                final switchChoice = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    title: const Text('Google Sign-In Unsuccessful', style: TextStyle(fontWeight: FontWeight.w800)),
+                    content: const Text(
+                      'Google Drive could not be authenticated on this device.\n\n'
+                      'Would you like to save these tracks to your device\'s Music folder instead (/storage/emulated/0/Music/<PlaylistName>/)?'
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        icon: const Icon(Icons.phone_android_rounded, size: 16),
+                        label: const Text('Save to Device Storage'),
+                      ),
+                    ],
+                  ),
+                );
+                if (switchChoice == true) {
+                  if (mounted) setState(() => _selectedAccountId = 'device_storage');
+                  targetAccount = _defaultLocalStorageAccount;
+                  fallbackApproved = true;
+                } else {
+                  return;
+                }
+              }
             }
           } else if (choice == _CloudAuthChoice.deviceStorage) {
             targetAccount = _defaultLocalStorageAccount;
@@ -459,18 +607,18 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
           OutlinedButton.icon(
             onPressed: () {
               PixelHaptics.tick();
-              Navigator.of(ctx).pop(_CloudAuthChoice.deviceStorage);
-            },
-            icon: const Icon(Icons.phone_android_rounded, size: 16),
-            label: const Text('Save to Device Storage'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              PixelHaptics.tick();
               Navigator.of(ctx).pop(_CloudAuthChoice.signIn);
             },
             icon: Icon(account.providerType.icon, size: 16),
             label: Text('Sign In to ${account.displayName}'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              PixelHaptics.tick();
+              Navigator.of(ctx).pop(_CloudAuthChoice.deviceStorage);
+            },
+            icon: const Icon(Icons.phone_android_rounded, size: 16),
+            label: const Text('Save to Device Storage'),
           ),
         ],
       ),
@@ -918,15 +1066,9 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                                       (accounts.any((a) => a.id == _selectedAccountId) ||
                                           _selectedAccountId == 'device_storage'))
                                   ? _selectedAccountId
-                                  : (accounts.any((a) =>
-                                          a.providerType != CloudProviderType.androidSaf &&
-                                          a.providerType != CloudProviderType.demoCloud)
-                                      ? accounts
-                                          .firstWhere((a) =>
-                                              a.providerType != CloudProviderType.androidSaf &&
-                                              a.providerType != CloudProviderType.demoCloud)
-                                          .id
-                                      : (accounts.isNotEmpty ? accounts.first.id : 'device_storage')),
+                                  : (_authenticatedAccountIds.isNotEmpty
+                                      ? _authenticatedAccountIds.first
+                                      : 'device_storage'),
                               items: [
                                 for (final acc in accounts)
                                   DropdownMenuItem(
@@ -936,16 +1078,23 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                                         Icon(
                                           acc.providerType.icon,
                                           size: 18,
-                                          color: acc.providerType.accentColor,
+                                          color: _authenticatedAccountIds.contains(acc.id)
+                                              ? acc.providerType.accentColor
+                                              : cs.outline,
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '${acc.displayName} (${acc.providerType.displayName})',
+                                            _authenticatedAccountIds.contains(acc.id)
+                                                ? '${acc.displayName} (${acc.providerType.displayName})'
+                                                : '${acc.displayName} (Sign-In Required)',
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 12.5,
                                               fontWeight: FontWeight.w600,
+                                              color: _authenticatedAccountIds.contains(acc.id)
+                                                  ? null
+                                                  : cs.onSurfaceVariant.withValues(alpha: 0.6),
                                             ),
                                           ),
                                         ),

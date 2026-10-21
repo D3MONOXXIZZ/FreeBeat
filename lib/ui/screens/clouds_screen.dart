@@ -594,6 +594,12 @@ class CloudsScreen extends ConsumerWidget {
       if (account.providerType == CloudProviderType.googleDrive) {
         final credStore = ref.read(credentialStoreProvider);
         final secrets = await credStore.readSecrets(account.id);
+        final token = secrets['accessToken'] ?? '';
+        if (token.isEmpty) {
+          throw Exception(
+            'Missing Google Drive access token. Please re-authenticate or connect via Android Files app.',
+          );
+        }
         final connector = GoogleDriveConnector();
         final tracks = await connector.scanLibrary(account, secrets);
         if (tracks.isNotEmpty) {
@@ -832,6 +838,10 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
   void _showGoogleDriveConnectSheet({String? initialError}) {
     final cs = Theme.of(context).colorScheme;
     final emailController = TextEditingController();
+    final tokenController = TextEditingController();
+    var showManualToken = false;
+    var isValidatingToken = false;
+    String? tokenError;
 
     showModalBottomSheet<void>(
       context: context,
@@ -849,205 +859,252 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
               top: 16,
               bottom: MediaQuery.of(context).viewInsets.bottom + 32,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(2),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Row(
-                  children: [
-                    Icon(Icons.add_to_drive_rounded,
-                        color: Color(0xFF4285F4), size: 28),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Connect Google Drive',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w800),
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Icon(Icons.add_to_drive_rounded,
+                          color: Color(0xFF4285F4), size: 28),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Connect Google Drive',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Because FreeBeat is installed directly outside the Play Store, Google\'s 1-tap sign-in requires Google Cloud Console registration (Code 10).\n\n'
+                    'You can connect Google Drive seamlessly using Android\'s built-in Files integration with zero setup, or provide an OAuth Access Token.',
+                    style: TextStyle(
+                        fontSize: 12.5, color: cs.onSurfaceVariant, height: 1.4),
+                  ),
+                  if (initialError != null && initialError.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 16, color: cs.error),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              initialError,
+                              style: TextStyle(
+                                  fontSize: 12, color: cs.onErrorContainer),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Connects via Android\'s native Google Drive integration. You can import audio files and stream directly from your Google Drive using your phone\'s signed-in account.',
-                  style: TextStyle(
-                      fontSize: 13, color: cs.onSurfaceVariant, height: 1.4),
-                ),
-                if (initialError != null && initialError.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _mountViaSaf(
+                          providerType: CloudProviderType.googleDrive,
+                          defaultName: 'Google Drive',
+                        );
+                      },
+                      icon: const Icon(Icons.folder_shared_rounded, size: 20),
+                      label: const Text(
+                        'Connect via Android Files (Recommended)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF4285F4),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline_rounded,
-                            size: 16, color: cs.error),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            initialError,
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onErrorContainer),
-                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setModalState(() {
+                          showManualToken = !showManualToken;
+                        });
+                      },
+                      icon: Icon(
+                        showManualToken ? Icons.expand_less_rounded : Icons.key_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        showManualToken ? 'Hide Token Input' : 'Enter OAuth Access Token Manually',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                  if (showManualToken) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'Google Account Email (Optional)',
+                        hintText: 'user@gmail.com',
+                        prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: cs.surfaceContainerLow,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: tokenController,
+                      decoration: InputDecoration(
+                        labelText: 'OAuth 2.0 Access Token',
+                        hintText: 'ya29.a0AfH6SM...',
+                        prefixIcon: const Icon(Icons.vpn_key_rounded, size: 20),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: cs.surfaceContainerLow,
+                      ),
+                    ),
+                    if (tokenError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        tokenError!,
+                        style: TextStyle(fontSize: 12, color: cs.error, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: isValidatingToken
+                            ? null
+                            : () async {
+                                final token = tokenController.text.trim();
+                                if (token.isEmpty) {
+                                  setModalState(() => tokenError = 'Please paste an OAuth Access Token.');
+                                  return;
+                                }
+                                setModalState(() {
+                                  isValidatingToken = true;
+                                  tokenError = null;
+                                });
+
+                                final input = emailController.text.trim();
+                                final isCustom = input.isNotEmpty;
+                                final label = isCustom ? input : 'Google Drive';
+                                final authService = ref.read(nativeCloudAuthServiceProvider);
+                                final authResult = authService.createGoogleDriveAccount(
+                                  email: isCustom ? input : 'Google Drive',
+                                  displayName: 'Google Drive',
+                                  accessToken: token,
+                                );
+
+                                if (authResult.account != null) {
+                                  final connector = GoogleDriveConnector();
+                                  final isValid = await connector.testConnection(
+                                    authResult.account!,
+                                    {'accessToken': token},
+                                  );
+
+                                  if (!isValid) {
+                                    setModalState(() {
+                                      isValidatingToken = false;
+                                      tokenError = 'Invalid or expired Google Drive access token.';
+                                    });
+                                    return;
+                                  }
+
+                                  await ref.read(cloudAccountsProvider.notifier).addAccount(
+                                    authResult.account!,
+                                    {'accessToken': token, 'email': label},
+                                  );
+
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                  if (context.mounted) {
+                                    if (Navigator.of(context).canPop()) {
+                                      Navigator.of(context).pop();
+                                    }
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('$label connected successfully with valid token!'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                        icon: isValidatingToken
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check_circle_rounded, size: 18),
+                        label: Text(isValidatingToken ? 'Verifying...' : 'Validate & Connect Token'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            final authService =
+                                ref.read(nativeCloudAuthServiceProvider);
+                            final sha1 =
+                                await authService.getAppSha1Fingerprint();
+                            await Clipboard.setData(ClipboardData(
+                              text: 'Package: com.freebeat.freebeat\nSHA-1: $sha1',
+                            ));
+                            PixelHaptics.tick();
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content:
+                                      Text('Copied Package & SHA-1: $sha1'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.copy_rounded, size: 16),
+                          label: const Text('Copy SHA-1 Fingerprint',
+                              style: TextStyle(fontSize: 11.5)),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
-                const SizedBox(height: 16),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Account Label / Email (Optional)',
-                    hintText: 'e.g. user@gmail.com or leave blank',
-                    prefixIcon:
-                        const Icon(Icons.alternate_email_rounded, size: 20),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    filled: true,
-                    fillColor: cs.surfaceContainerLow,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      final input = emailController.text.trim();
-                      final isCustom = input.isNotEmpty;
-                      final label = isCustom ? input : 'Google Drive';
-                      final authService =
-                          ref.read(nativeCloudAuthServiceProvider);
-                      final authResult =
-                          authService.createGoogleDriveAccount(
-                        email: isCustom ? input : 'Google Drive',
-                        displayName: 'Google Drive',
-                      );
-                      if (authResult.account != null) {
-                        await ref
-                            .read(cloudAccountsProvider.notifier)
-                            .addAccount(
-                          authResult.account!,
-                          {'email': label, 'provider': 'googleDrive'},
-                        );
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                        }
-                        if (context.mounted) {
-                          if (Navigator.of(context).canPop()) {
-                            Navigator.of(context).pop();
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  '$label connected successfully!'),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.cloud_done_rounded, size: 20),
-                    label: const Text(
-                      'Connect Google Drive',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF4285F4),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size.fromHeight(50),
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final authService =
-                          ref.read(nativeCloudAuthServiceProvider);
-                      await authService.launchOAuthAuthorization(
-                        provider: CloudProviderType.googleDrive,
-                        clientId:
-                            '978311545620-g9q8h4r329.apps.googleusercontent.com',
-                      );
-                    },
-                    icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                    label: const Text(
-                      'Sign in with Browser (OAuth2 PKCE)',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _mountViaSaf(
-                            providerType: CloudProviderType.googleDrive,
-                            defaultName: 'Google Drive',
-                          );
-                        },
-                        icon: const Icon(Icons.folder_open_rounded, size: 16),
-                        label: const Text('Pick Files via Files App',
-                            style: TextStyle(fontSize: 11.5)),
-                      ),
-                    ),
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed: () async {
-                          final authService =
-                              ref.read(nativeCloudAuthServiceProvider);
-                          final sha1 =
-                              await authService.getAppSha1Fingerprint();
-                          await Clipboard.setData(ClipboardData(
-                            text: 'Package: com.freebeat.freebeat\nSHA-1: $sha1',
-                          ));
-                          PixelHaptics.tick();
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              SnackBar(
-                                content:
-                                    Text('Copied Package & SHA-1: $sha1'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: const Text('Copy SHA-1 Fingerprint',
-                            style: TextStyle(fontSize: 11.5)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           );
         },
