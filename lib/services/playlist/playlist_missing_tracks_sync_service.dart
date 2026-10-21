@@ -87,6 +87,26 @@ class SyncTrackProgress {
   }
 }
 
+enum CloudAuthDecision {
+  saveToLocalStorage,
+  retryWithFreshAuth,
+  cancel,
+}
+
+class CloudAuthPromptRequest {
+  const CloudAuthPromptRequest({
+    required this.account,
+    required this.playlistTitle,
+    required this.playlistId,
+    required this.errorMessage,
+  });
+
+  final CloudAccount account;
+  final String playlistTitle;
+  final String playlistId;
+  final String errorMessage;
+}
+
 class PlaylistMissingTracksSyncState {
   const PlaylistMissingTracksSyncState({
     this.isSyncing = false,
@@ -100,6 +120,8 @@ class PlaylistMissingTracksSyncState {
     this.currentStatusText = '',
     this.trackProgresses = const [],
     this.uploadedTracks = const [],
+    this.pendingAuthPrompt,
+    this.fallbackToLocalStorageApproved = false,
   });
 
   final bool isSyncing;
@@ -113,6 +135,8 @@ class PlaylistMissingTracksSyncState {
   final String currentStatusText;
   final List<SyncTrackProgress> trackProgresses;
   final List<Track> uploadedTracks;
+  final CloudAuthPromptRequest? pendingAuthPrompt;
+  final bool fallbackToLocalStorageApproved;
 
   double get overallProgress =>
       totalCount > 0 ? (completedCount + failedCount) / totalCount : 0.0;
@@ -129,6 +153,8 @@ class PlaylistMissingTracksSyncState {
     String? currentStatusText,
     List<SyncTrackProgress>? trackProgresses,
     List<Track>? uploadedTracks,
+    CloudAuthPromptRequest? Function()? pendingAuthPrompt,
+    bool? fallbackToLocalStorageApproved,
   }) {
     return PlaylistMissingTracksSyncState(
       isSyncing: isSyncing ?? this.isSyncing,
@@ -142,6 +168,8 @@ class PlaylistMissingTracksSyncState {
       currentStatusText: currentStatusText ?? this.currentStatusText,
       trackProgresses: trackProgresses ?? this.trackProgresses,
       uploadedTracks: uploadedTracks ?? this.uploadedTracks,
+      pendingAuthPrompt: pendingAuthPrompt != null ? pendingAuthPrompt() : this.pendingAuthPrompt,
+      fallbackToLocalStorageApproved: fallbackToLocalStorageApproved ?? this.fallbackToLocalStorageApproved,
     );
   }
 }
@@ -165,13 +193,70 @@ class PlaylistMissingTracksSyncNotifier
   final UniversalCloudUploadService _uploader;
 
   bool _isCancelled = false;
+  Completer<CloudAuthDecision>? _authDecisionCompleter;
 
   void cancelSync() {
     _isCancelled = true;
     state = state.copyWith(
       isSyncing: false,
+      pendingAuthPrompt: () => null,
       currentStatusText: 'Sync cancelled by user',
     );
+    if (_authDecisionCompleter != null && !_authDecisionCompleter!.isCompleted) {
+      _authDecisionCompleter!.complete(CloudAuthDecision.cancel);
+    }
+  }
+
+  Future<CloudAuthDecision> _requestAuthDecision({
+    required CloudAccount account,
+    required String playlistTitle,
+    required String playlistId,
+    required String errorMessage,
+  }) async {
+    if (state.fallbackToLocalStorageApproved) {
+      return CloudAuthDecision.saveToLocalStorage;
+    }
+    if (_isCancelled) {
+      return CloudAuthDecision.cancel;
+    }
+
+    _authDecisionCompleter = Completer<CloudAuthDecision>();
+    state = state.copyWith(
+      pendingAuthPrompt: () => CloudAuthPromptRequest(
+        account: account,
+        playlistTitle: playlistTitle,
+        playlistId: playlistId,
+        errorMessage: errorMessage,
+      ),
+      currentStatusText: 'Cloud auth error on ${account.displayName}. Prompting user...',
+    );
+
+    return await _authDecisionCompleter!.future;
+  }
+
+  void confirmAuthFallbackToLocalStorage() {
+    state = state.copyWith(
+      pendingAuthPrompt: () => null,
+      fallbackToLocalStorageApproved: true,
+      currentStatusText: 'Switched to Device Storage. Saving tracks...',
+    );
+    if (_authDecisionCompleter != null && !_authDecisionCompleter!.isCompleted) {
+      _authDecisionCompleter!.complete(CloudAuthDecision.saveToLocalStorage);
+    }
+  }
+
+  void retryAuthWithFreshToken(String newToken) {
+    state = state.copyWith(
+      pendingAuthPrompt: () => null,
+      currentStatusText: 'Cloud credentials updated. Retrying upload...',
+    );
+    if (_authDecisionCompleter != null && !_authDecisionCompleter!.isCompleted) {
+      _authDecisionCompleter!.complete(CloudAuthDecision.retryWithFreshAuth);
+    }
+  }
+
+  void cancelAuthPromptAndSync() {
+    cancelSync();
   }
 
   /// Initiates concurrent resolution, audio tagging, and cloud upload for
@@ -181,6 +266,7 @@ class PlaylistMissingTracksSyncNotifier
     required String playlistId,
     required String playlistTitle,
     required CloudAccount account,
+    bool fallbackToLocalStorageApproved = false,
   }) async {
     if (missingTracks.isEmpty) return;
 
@@ -202,6 +288,28 @@ class PlaylistMissingTracksSyncNotifier
       }
     }
 
+    final isRemote = account.providerType != CloudProviderType.androidSaf &&
+        account.providerType != CloudProviderType.demoCloud;
+    final hasCredentials = (secrets['accessToken'] ?? '').isNotEmpty ||
+        (secrets['password'] ?? '').isNotEmpty ||
+        (secrets['accessKeyId'] ?? '').isNotEmpty ||
+        (secrets['username'] ?? '').isNotEmpty;
+
+    if (isRemote && !hasCredentials && !fallbackToLocalStorageApproved) {
+      final decision = await _requestAuthDecision(
+        account: account,
+        playlistTitle: playlistTitle,
+        playlistId: playlistId,
+        errorMessage: 'Missing login credentials for ${account.displayName}',
+      );
+      if (decision == CloudAuthDecision.cancel) {
+        cancelSync();
+        return;
+      } else if (decision == CloudAuthDecision.saveToLocalStorage) {
+        fallbackToLocalStorageApproved = true;
+      }
+    }
+
     final initialProgresses = missingTracks
         .map((item) => SyncTrackProgress(item: item))
         .toList();
@@ -218,6 +326,7 @@ class PlaylistMissingTracksSyncNotifier
       currentStatusText: 'Starting cloud sync to ${account.displayName}...',
       trackProgresses: initialProgresses,
       uploadedTracks: [],
+      fallbackToLocalStorageApproved: fallbackToLocalStorageApproved,
     );
 
     await PixelHaptics.tick();
@@ -369,6 +478,39 @@ class PlaylistMissingTracksSyncNotifier
           },
         );
       } catch (cloudErr) {
+        final isAuthErr = cloudErr is CloudUploadException &&
+            (cloudErr.statusCode == 401 ||
+                cloudErr.statusCode == 403 ||
+                cloudErr.message.toLowerCase().contains('token') ||
+                cloudErr.message.toLowerCase().contains('auth') ||
+                cloudErr.message.toLowerCase().contains('credential'));
+
+        if (isAuthErr && !state.fallbackToLocalStorageApproved) {
+          final decision = await _requestAuthDecision(
+            account: account,
+            playlistTitle: playlistName,
+            playlistId: playlistId,
+            errorMessage: cloudErr.toString(),
+          );
+
+          if (decision == CloudAuthDecision.cancel) {
+            _isCancelled = true;
+            await preparedAudio.purge();
+            throw Exception('Sync cancelled by user upon cloud auth prompt');
+          } else if (decision == CloudAuthDecision.retryWithFreshAuth) {
+            final freshSecrets = await _ref.read(credentialStoreProvider).readSecrets(account.id);
+            secrets.addAll(freshSecrets);
+            return await _processSingleTrack(
+              index: index,
+              item: item,
+              playlistId: playlistId,
+              playlistName: playlistName,
+              account: account,
+              secrets: secrets,
+            );
+          }
+        }
+
         debugPrint(
           'Cloud upload failed for "${item.displayName}" ($cloudErr). '
           'Gracefully saving to on-device Music folder for playlist "$playlistName"',

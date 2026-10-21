@@ -25,6 +25,12 @@ Future<void> showPlaylistImportModal(BuildContext context, {Playlist? targetPlay
   );
 }
 
+enum _CloudAuthChoice {
+  signIn,
+  deviceStorage,
+  cancel,
+}
+
 class _PlaylistImportSheet extends ConsumerStatefulWidget {
   const _PlaylistImportSheet({this.targetPlaylist});
   final Playlist? targetPlaylist;
@@ -299,12 +305,57 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             (remoteAccounts.isNotEmpty ? remoteAccounts.first : _defaultLocalStorageAccount);
       }
 
+      bool fallbackApproved = false;
+      final isRemote = targetAccount.providerType != CloudProviderType.androidSaf &&
+          targetAccount.providerType != CloudProviderType.demoCloud;
+
+      if (isRemote) {
+        final credStore = ref.read(credentialStoreProvider);
+        var secrets = await credStore.readSecrets(targetAccount.id);
+        var token = secrets['accessToken'] ?? '';
+
+        if (token.isEmpty && targetAccount.providerType == CloudProviderType.googleDrive) {
+          try {
+            final authService = ref.read(nativeCloudAuthServiceProvider);
+            final fresh = await authService.getFreshGoogleAccessToken();
+            if (fresh != null && fresh.isNotEmpty) {
+              token = fresh;
+              secrets = {'accessToken': fresh};
+              await credStore.saveSecrets(targetAccount.id, secrets);
+            }
+          } catch (_) {}
+        }
+
+        final hasCredentials = token.isNotEmpty ||
+            (secrets['password'] ?? '').isNotEmpty ||
+            (secrets['accessKeyId'] ?? '').isNotEmpty;
+
+        if (!hasCredentials) {
+          // PROMPT THE USER BEFORE DOWNLOADING TO LOCAL STORAGE!
+          if (!mounted) return;
+          final choice = await _showCloudAuthRequiredDialog(context, targetAccount);
+          if (choice == _CloudAuthChoice.cancel || choice == null) {
+            return;
+          } else if (choice == _CloudAuthChoice.signIn) {
+            await _connectGoogleDrive();
+            final updatedSecrets = await credStore.readSecrets(targetAccount.id);
+            if ((updatedSecrets['accessToken'] ?? '').isEmpty) {
+              return;
+            }
+          } else if (choice == _CloudAuthChoice.deviceStorage) {
+            targetAccount = _defaultLocalStorageAccount;
+            fallbackApproved = true;
+          }
+        }
+      }
+
       unawaited(
         ref.read(playlistMissingTracksSyncProvider.notifier).startSync(
               missingTracks: missing,
               playlistId: target.id,
               playlistTitle: target.title,
               account: targetAccount,
+              fallbackToLocalStorageApproved: fallbackApproved,
             ),
       );
     }
@@ -339,6 +390,91 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         );
       }
     }
+  }
+
+  Future<_CloudAuthChoice?> _showCloudAuthRequiredDialog(
+    BuildContext context,
+    CloudAccount account, {
+    String? reason,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return showDialog<_CloudAuthChoice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cs.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        icon: CircleAvatar(
+          radius: 24,
+          backgroundColor: cs.errorContainer,
+          child: Icon(Icons.cloud_off_rounded, color: cs.error, size: 28),
+        ),
+        title: const Text(
+          'Cloud Authentication Required',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              reason ??
+                  'FreeBeat cannot upload to ${account.displayName} because you are not currently signed in or your session has expired.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: cs.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Would you like to sign in to ${account.displayName}, or download tracks to your device\'s Music folder?',
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () {
+              PixelHaptics.tick();
+              Navigator.of(ctx).pop(_CloudAuthChoice.cancel);
+            },
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () {
+              PixelHaptics.tick();
+              Navigator.of(ctx).pop(_CloudAuthChoice.deviceStorage);
+            },
+            icon: const Icon(Icons.phone_android_rounded, size: 16),
+            label: const Text('Save to Device Storage'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              PixelHaptics.tick();
+              Navigator.of(ctx).pop(_CloudAuthChoice.signIn);
+            },
+            icon: Icon(account.providerType.icon, size: 16),
+            label: Text('Sign In to ${account.displayName}'),
+          ),
+        ],
+      ),
+    );
   }
 
 

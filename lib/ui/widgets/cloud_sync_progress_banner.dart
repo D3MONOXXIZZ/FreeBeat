@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/models/cloud_account.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
+import '../../state/app_providers.dart';
 
 /// Expressive Material 3 banner that displays live progress when missing
 /// playlist tracks are being resolved, downloaded, and uploaded to the user's cloud.
@@ -25,6 +27,109 @@ class CloudSyncProgressBanner extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
+    final authPrompt = syncState.pendingAuthPrompt;
+
+    if (authPrompt != null) {
+      return Padding(
+        padding: margin,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: cs.errorContainer.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: cs.error.withValues(alpha: 0.5),
+              width: 1.4,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: cs.error.withValues(alpha: 0.2),
+                    child: Icon(Icons.cloud_off_rounded, size: 16, color: cs.error),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cloud Auth Error • ${authPrompt.account.displayName}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: cs.error,
+                          ),
+                        ),
+                        Text(
+                          'Session expired or not signed in. Download to local storage or sign in?',
+                          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                    tooltip: 'Cancel Sync',
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      ref.read(playlistMissingTracksSyncProvider.notifier).cancelAuthPromptAndSync();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        PixelHaptics.tick();
+                        ref.read(playlistMissingTracksSyncProvider.notifier).confirmAuthFallbackToLocalStorage();
+                      },
+                      icon: const Icon(Icons.phone_android_rounded, size: 15),
+                      label: const Text('Save to Device', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _handleBannerSignIn(context, ref, authPrompt),
+                      icon: Icon(authPrompt.account.providerType.icon, size: 15),
+                      label: Text('Sign In', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final account = syncState.activeCloudAccount;
     final accentColor = account?.providerType.accentColor ?? cs.primary;
     final progress = syncState.overallProgress.clamp(0.0, 1.0);
@@ -213,5 +318,37 @@ class CloudSyncProgressBanner extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _handleBannerSignIn(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAuthPromptRequest prompt,
+  ) async {
+    PixelHaptics.tick();
+    if (prompt.account.providerType == CloudProviderType.googleDrive) {
+      try {
+        final authService = ref.read(nativeCloudAuthServiceProvider);
+        final result = await authService.signInWithGoogleDrive();
+        if (result.isSuccess && result.accessToken != null && result.accessToken!.isNotEmpty) {
+          final credStore = ref.read(credentialStoreProvider);
+          await credStore.saveSecrets(prompt.account.id, {'accessToken': result.accessToken!});
+          ref.read(playlistMissingTracksSyncProvider.notifier).retryAuthWithFreshToken(result.accessToken!);
+          await PixelHaptics.hifiConfirm();
+          return;
+        }
+      } catch (e) {
+        debugPrint('Google Drive sign-in error from banner: $e');
+      }
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign-in cancelled or failed. You can tap "Save to Device" instead.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
