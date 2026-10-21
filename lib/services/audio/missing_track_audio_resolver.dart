@@ -211,22 +211,25 @@ class TrackMatchScorer {
     // 2. Artist Matching
     final targetArtistTokens = tokenize(targetArtist);
     final candArtistTokens = tokenize(candidateArtist);
+    final candTitleTokens = tokenize(candidateTitle);
 
     double artistScore = 0.0;
     if (lowerCandArtist.contains(lowerTargetArtist) ||
         lowerTargetArtist.contains(lowerCandArtist)) {
       artistScore = 1.0;
     } else if (targetArtistTokens.isNotEmpty) {
-      final intersection = targetArtistTokens.intersection(candArtistTokens);
+      // In video/streaming sources, the artist or producer often appears in the video title
+      final combinedCandTokens = candArtistTokens.union(candTitleTokens);
+      final intersection = targetArtistTokens.intersection(combinedCandTokens);
       if (intersection.isNotEmpty) {
         final ratio = intersection.length /
-            math.min(targetArtistTokens.length, candArtistTokens.length);
+            math.min(targetArtistTokens.length, combinedCandTokens.length);
         artistScore = ratio.clamp(0.0, 1.0);
       }
     }
 
     // If target has an artist and candidate artist has 0 or negligible overlap, disqualify
-    if (targetArtistTokens.isNotEmpty && artistScore < 0.3) {
+    if (targetArtistTokens.isNotEmpty && artistScore < 0.25) {
       return TrackMatchEvaluation(
         score: -1.0,
         isDisqualified: true,
@@ -238,13 +241,15 @@ class TrackMatchScorer {
 
     // 3. Title Matching
     final targetTitleTokens = tokenize(targetTitle);
-    final candTitleTokens = tokenize(candidateTitle);
 
     double titleScore = 0.0;
     final cleanTgt = cleanString(targetTitle);
     final cleanCand = cleanString(candidateTitle);
 
-    if (cleanCand == cleanTgt || cleanCand.startsWith(cleanTgt)) {
+    if (cleanCand == cleanTgt ||
+        cleanCand.startsWith(cleanTgt) ||
+        cleanCand.contains(cleanTgt) ||
+        cleanTgt.contains(cleanCand)) {
       titleScore = 1.0;
     } else if (targetTitleTokens.isNotEmpty) {
       final intersection = targetTitleTokens.intersection(candTitleTokens);
@@ -448,15 +453,20 @@ class MissingTrackAudioResolver {
   }) async {
     final cleanTitle = _sanitizeQuery(title);
     final cleanArtist = _sanitizeQuery(artist);
+    final primaryArtist = cleanArtist.split(RegExp(r'[,&;]')).first.trim();
 
-    // Try both query orders to handle search engine token prioritization
+    // Try primary artist and full queries to maximize search relevancy
     final queries = [
-      if (cleanArtist.isNotEmpty && cleanTitle.isNotEmpty) ...[
-        '$cleanArtist $cleanTitle',
+      if (primaryArtist.isNotEmpty && cleanTitle.isNotEmpty) ...[
+        '$cleanTitle $primaryArtist',
+        '$primaryArtist $cleanTitle',
+      ],
+      if (cleanArtist.isNotEmpty && cleanArtist != primaryArtist && cleanTitle.isNotEmpty) ...[
         '$cleanTitle $cleanArtist',
-      ] else
-        cleanTitle,
-      if (cleanTitle != title) cleanTitle,
+        '$cleanArtist $cleanTitle',
+      ],
+      cleanTitle,
+      if (cleanTitle != title) title,
     ];
 
     final candidates = <AudioStreamCandidate>[];
@@ -655,9 +665,18 @@ class MissingTrackAudioResolver {
     int? expectedDurationMs,
   }) async {
     final client = ytClient;
+    final primaryArtist = cleanArtist.split(RegExp(r'[,&;]')).first.trim();
     final queries = [
-      if (cleanArtist.isNotEmpty) '$cleanArtist - $cleanTitle',
-      '$cleanTitle $cleanArtist audio',
+      if (primaryArtist.isNotEmpty && cleanTitle.isNotEmpty) ...[
+        '$cleanTitle $primaryArtist audio',
+        '$cleanTitle $primaryArtist',
+        '$primaryArtist - $cleanTitle',
+      ],
+      if (cleanArtist.isNotEmpty && cleanArtist != primaryArtist) ...[
+        '$cleanTitle $cleanArtist audio',
+        '$cleanTitle $cleanArtist',
+      ],
+      '$cleanTitle audio',
     ];
 
     for (final query in queries) {
