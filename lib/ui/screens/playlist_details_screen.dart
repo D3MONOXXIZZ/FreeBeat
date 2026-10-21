@@ -1024,15 +1024,7 @@ class _PlaylistDetailsScreenState
                   return SwipeToQueueWrapper(
                     key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
                     track: track,
-                    enableSecondaryAction: !livePlaylist.isSmart,
-                    secondaryActionTitle: 'Remove',
-                    secondaryActionIcon: Icons.delete_outline_rounded,
-                    dismissOnSecondaryAction: true,
-                    onSecondaryAction: () {
-                      ref
-                          .read(playlistsProvider.notifier)
-                          .removeTrackFromPlaylist(livePlaylist.id, track.id);
-                    },
+                    enableSecondaryAction: false,
                     child: InkWell(
                       onTap: () {
                         PixelHaptics.tick();

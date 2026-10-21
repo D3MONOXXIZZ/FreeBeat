@@ -179,7 +179,7 @@ void main() {
     );
 
     testWidgets(
-      'Swipe gestures in PlaylistDetailsScreen: right adds to queue and left deletes',
+      'Swipe gestures in PlaylistDetailsScreen: right adds to queue and swiping left does NOT remove',
       (tester) async {
         tester.view.physicalSize = const Size(1080, 2400);
         tester.view.devicePixelRatio = 1.0;
@@ -230,12 +230,12 @@ void main() {
         expect(find.text('Added "Comfortably Numb" to queue'), findsOneWidget);
         expect(find.text('Comfortably Numb'), findsOneWidget);
 
-        // Swipe left on track 2 to remove from playlist
+        // Swipe left on track 2: should NOT remove from playlist
         await tester.drag(find.text('Wish You Were Here'), const Offset(-600, 0));
         await tester.pumpAndSettle();
 
-        // Track 2 should be dismissed/removed from playlist
-        expect(find.text('Wish You Were Here'), findsNothing);
+        // Track 2 should safely remain in playlist
+        expect(find.text('Wish You Were Here'), findsOneWidget);
       },
     );
 
