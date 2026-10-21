@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+// ignore: unused_import
 import 'dart:math' as math;
 import 'package:dart_des/dart_des.dart';
 import 'package:flutter/foundation.dart';
@@ -86,7 +87,7 @@ class TrackMatchEvaluation {
   final double titleMatchScore;
   final int? durationDiffMs;
 
-  bool get isMatch => !isDisqualified && score >= 0.65;
+  bool get isMatch => !isDisqualified && score >= 0.75;
 
   @override
   String toString() =>
@@ -133,7 +134,18 @@ class TrackMatchScorer {
     '8d audio',
     '10 hours',
     '1 hour',
+    'sped up',
+    'speed up',
+    'tiktok version',
+    'teaser',
+    'trailer',
+    'snippet',
   };
+
+  static String extractPrimaryArtist(String fullArtist) {
+    final parts = fullArtist.split(RegExp(r'[,&;/]|\bfeat\.?\b|\bft\.?\b|\bwith\b', caseSensitive: false));
+    return parts.isNotEmpty ? parts.first.trim() : fullArtist.trim();
+  }
 
   static String cleanString(String s) {
     return s
@@ -208,28 +220,72 @@ class TrackMatchScorer {
       );
     }
 
-    // 2. Artist Matching
+    // Check generic "remix"
+    if (!lowerTargetTitle.contains('remix') && lowerCandTitle.contains('remix')) {
+      return const TrackMatchEvaluation(
+        score: -1.0,
+        isDisqualified: true,
+        reason: 'Contains "remix"',
+        artistMatchScore: 0,
+        titleMatchScore: 0,
+      );
+    }
+
+    // Check generic "live"
+    if (!lowerTargetTitle.contains('live') &&
+        (lowerCandTitle.contains('live at') ||
+            lowerCandTitle.contains('live from') ||
+            lowerCandTitle.contains('live performance') ||
+            lowerCandTitle.contains('live in'))) {
+      return const TrackMatchEvaluation(
+        score: -1.0,
+        isDisqualified: true,
+        reason: 'Contains "live performance"',
+        artistMatchScore: 0,
+        titleMatchScore: 0,
+      );
+    }
+
+    // 2. Artist Matching & Primary Artist Enforcement
+    final primaryTargetArtist = extractPrimaryArtist(targetArtist);
+    final primaryArtistTokens = tokenize(primaryTargetArtist);
     final targetArtistTokens = tokenize(targetArtist);
     final candArtistTokens = tokenize(candidateArtist);
     final candTitleTokens = tokenize(candidateTitle);
+    final combinedCandTokens = candArtistTokens.union(candTitleTokens);
 
-    double artistScore = 0.0;
-    if (lowerCandArtist.contains(lowerTargetArtist) ||
-        lowerTargetArtist.contains(lowerCandArtist)) {
-      artistScore = 1.0;
-    } else if (targetArtistTokens.isNotEmpty) {
-      // In video/streaming sources, the artist or producer often appears in the video title
-      final combinedCandTokens = candArtistTokens.union(candTitleTokens);
-      final intersection = targetArtistTokens.intersection(combinedCandTokens);
-      if (intersection.isNotEmpty) {
-        final ratio = intersection.length /
-            math.min(targetArtistTokens.length, combinedCandTokens.length);
-        artistScore = ratio.clamp(0.0, 1.0);
+    final cleanTargetArtist = cleanString(targetArtist);
+    final cleanCandArtist = cleanString(candidateArtist);
+    final cleanPrimaryArtist = cleanString(primaryTargetArtist);
+
+    // Primary artist tokens MUST appear in candidate artist or candidate video title/channel
+    if (primaryArtistTokens.isNotEmpty) {
+      final primaryOverlap = primaryArtistTokens.intersection(combinedCandTokens);
+      if (primaryOverlap.isEmpty) {
+        if (cleanCandArtist != cleanTargetArtist && cleanCandArtist != cleanPrimaryArtist) {
+          return TrackMatchEvaluation(
+            score: -1.0,
+            isDisqualified: true,
+            reason: 'Primary artist "$primaryTargetArtist" missing from candidate "$candidateArtist - $candidateTitle"',
+            artistMatchScore: 0,
+            titleMatchScore: 0,
+          );
+        }
       }
     }
 
-    // If target has an artist and candidate artist has 0 or negligible overlap, disqualify
-    if (targetArtistTokens.isNotEmpty && artistScore < 0.25) {
+    double artistScore = 0.0;
+    if (cleanCandArtist == cleanTargetArtist || cleanCandArtist == cleanPrimaryArtist) {
+      artistScore = 1.0;
+    } else if (targetArtistTokens.isNotEmpty) {
+      final intersection = targetArtistTokens.intersection(combinedCandTokens);
+      if (intersection.isNotEmpty) {
+        artistScore = (intersection.length / targetArtistTokens.length).clamp(0.0, 1.0);
+      }
+    }
+
+    // If target has an artist and candidate artist has < 0.40 overlap, disqualify
+    if (targetArtistTokens.isNotEmpty && artistScore < 0.40) {
       return TrackMatchEvaluation(
         score: -1.0,
         isDisqualified: true,
@@ -238,25 +294,44 @@ class TrackMatchScorer {
         titleMatchScore: 0,
       );
     }
-
-    // 3. Title Matching
+    // 3. Title Matching (Strict, with word multiplicity and coverage check)
     final targetTitleTokens = tokenize(targetTitle);
-
-    double titleScore = 0.0;
     final cleanTgt = cleanString(targetTitle);
     final cleanCand = cleanString(candidateTitle);
+    final targetWords = cleanTgt.split(' ').where((w) => w.isNotEmpty).toList();
+    final candWords = cleanCand.split(' ').where((w) => w.isNotEmpty).toList();
 
-    if (cleanCand == cleanTgt ||
-        cleanCand.startsWith(cleanTgt) ||
-        cleanCand.contains(cleanTgt) ||
-        cleanTgt.contains(cleanCand)) {
+    double titleScore = 0.0;
+    if (cleanCand == cleanTgt) {
       titleScore = 1.0;
-    } else if (targetTitleTokens.isNotEmpty) {
-      final intersection = targetTitleTokens.intersection(candTitleTokens);
-      titleScore = (intersection.length / targetTitleTokens.length).clamp(0.0, 1.0);
+    } else if (cleanCand.startsWith(cleanTgt)) {
+      titleScore = 0.95;
+    } else if (targetWords.isNotEmpty) {
+      // Check word coverage with multiplicity
+      var matchedCount = 0;
+      final candPool = List<String>.from(candWords);
+      for (final w in targetWords) {
+        final idx = candPool.indexOf(w);
+        if (idx != -1) {
+          matchedCount++;
+          candPool.removeAt(idx);
+        }
+      }
+      final wordRatio = matchedCount / targetWords.length;
+
+      double tokenRatio = 0.0;
+      if (targetTitleTokens.isNotEmpty) {
+        final intersection = targetTitleTokens.intersection(candTitleTokens);
+        tokenRatio = intersection.length / targetTitleTokens.length;
+        if (targetTitleTokens.length <= 2 && intersection.length < targetTitleTokens.length) {
+          tokenRatio = 0.0;
+        }
+      }
+
+      titleScore = math.min(wordRatio, tokenRatio > 0 ? tokenRatio : wordRatio).clamp(0.0, 1.0);
     }
 
-    if (titleScore < 0.5) {
+    if (titleScore < 0.70) {
       return TrackMatchEvaluation(
         score: -1.0,
         isDisqualified: true,
@@ -266,7 +341,7 @@ class TrackMatchScorer {
       );
     }
 
-    // 4. Duration Check
+    // 4. Duration Check (Tightened to 40s)
     int? diffMs;
     double durationBonus = 0.0;
     if (targetDurationMs != null &&
@@ -274,8 +349,7 @@ class TrackMatchScorer {
         candidateDurationMs != null &&
         candidateDurationMs > 0) {
       diffMs = (candidateDurationMs - targetDurationMs).abs();
-      if (diffMs > 65000) {
-        // Disqualify if duration differs by more than 65 seconds
+      if (diffMs > 40000) {
         return TrackMatchEvaluation(
           score: -1.0,
           isDisqualified: true,
@@ -284,12 +358,12 @@ class TrackMatchScorer {
           titleMatchScore: titleScore,
           durationDiffMs: diffMs,
         );
-      } else if (diffMs <= 6000) {
-        durationBonus = 0.25;
+      } else if (diffMs <= 5000) {
+        durationBonus = 0.20;
       } else if (diffMs <= 15000) {
-        durationBonus = 0.15;
-      } else if (diffMs <= 30000) {
-        durationBonus = 0.05;
+        durationBonus = 0.10;
+      } else if (diffMs > 25000) {
+        durationBonus = -0.10;
       }
     }
 

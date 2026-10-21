@@ -48,8 +48,8 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   static const CloudAccount _defaultLocalStorageAccount = CloudAccount(
     id: 'device_storage_import',
     providerType: CloudProviderType.androidSaf,
-    displayName: 'Device Storage (Offline)',
-    endpointOrFolder: '/imported_music/',
+    displayName: 'Device Storage (FreeBeat Music)',
+    endpointOrFolder: '/FreeBeat Music/',
     usernameOrEmail: 'Local Storage',
   );
 
@@ -272,7 +272,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         SnackBar(
           content: Text(
             syncMissing && missing.isNotEmpty
-                ? 'Created "$title" • Downloading & syncing ${missing.length} missing songs in batches of 10...'
+                ? 'Created "$title" • Downloading & syncing ${missing.length} missing songs in parallel...'
                 : 'Created playlist "$title" with ${_result!.matchedCount} tracks!',
           ),
           behavior: SnackBarBehavior.floating,

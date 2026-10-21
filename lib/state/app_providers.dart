@@ -324,19 +324,22 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
             } else {
               try {
                 final appDir = await getApplicationDocumentsDirectory();
-                final musicDir = Directory(p.join(appDir.path, 'imported_music'));
-                if (musicDir.existsSync()) {
-                  final baseName = p.basename(clean.streamUrl);
-                  final match = musicDir.listSync().whereType<File>().firstWhere(
-                    (f) => p.basename(f.path) == baseName || f.path.contains(clean.id),
-                    orElse: () => File(''),
-                  );
-                  if (match.path.isNotEmpty && match.existsSync()) {
-                    clean = clean.copyWith(
-                      streamUrl: match.path,
-                      localCachePath: match.path,
-                      isPinnedOffline: true,
+                for (final folder in ['FreeBeat Music', 'imported_music']) {
+                  final musicDir = Directory(p.join(appDir.path, folder));
+                  if (musicDir.existsSync()) {
+                    final baseName = p.basename(clean.streamUrl);
+                    final match = musicDir.listSync(recursive: true).whereType<File>().firstWhere(
+                      (f) => p.basename(f.path) == baseName || f.path.contains(clean.id),
+                      orElse: () => File(''),
                     );
+                    if (match.path.isNotEmpty && match.existsSync()) {
+                      clean = clean.copyWith(
+                        streamUrl: match.path,
+                        localCachePath: match.path,
+                        isPinnedOffline: false,
+                      );
+                      break;
+                    }
                   }
                 }
               } catch (_) {}
@@ -1661,19 +1664,21 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         // Check imported_music directory for filename / id match
         try {
           final appDir = await getApplicationDocumentsDirectory();
-          final musicDir = Directory(p.join(appDir.path, 'imported_music'));
-          if (musicDir.existsSync()) {
-            final fileName = p.basename(track.streamUrl);
-            final match = musicDir.listSync().whereType<File>().firstWhere(
-              (f) => p.basename(f.path) == fileName || f.path.contains(track.id),
-              orElse: () => File(''),
-            );
-            if (match.path.isNotEmpty && match.existsSync()) {
-              await _audioPlayer!.setFilePath(match.path);
-              await _audioPlayer!.setVolume(1.0);
-              await _audioPlayer!.play();
-              _syncForegroundNotification(track: track, isPlaying: true);
-              return;
+          for (final folder in ['FreeBeat Music', 'imported_music']) {
+            final musicDir = Directory(p.join(appDir.path, folder));
+            if (musicDir.existsSync()) {
+              final fileName = p.basename(track.streamUrl);
+              final match = musicDir.listSync(recursive: true).whereType<File>().firstWhere(
+                (f) => p.basename(f.path) == fileName || f.path.contains(track.id),
+                orElse: () => File(''),
+              );
+              if (match.path.isNotEmpty && match.existsSync()) {
+                await _audioPlayer!.setFilePath(match.path);
+                await _audioPlayer!.setVolume(1.0);
+                await _audioPlayer!.play();
+                _syncForegroundNotification(track: track, isPlaying: true);
+                return;
+              }
             }
           }
         } catch (_) {}
@@ -1693,18 +1698,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           debugPrint('Content URI direct playback failed: $e. Checking persistent cache fallback...');
           try {
             final appDir = await getApplicationDocumentsDirectory();
-            final musicDir = Directory(p.join(appDir.path, 'imported_music'));
-            if (musicDir.existsSync()) {
-              final match = musicDir.listSync().whereType<File>().firstWhere(
-                (f) => f.path.contains(track.id) || f.path.contains(track.title),
-                orElse: () => File(''),
-              );
-              if (match.path.isNotEmpty && match.existsSync()) {
-                await _audioPlayer!.setFilePath(match.path);
-                await _audioPlayer!.setVolume(1.0);
-                await _audioPlayer!.play();
-                _syncForegroundNotification(track: track, isPlaying: true);
-                return;
+            for (final folder in ['FreeBeat Music', 'imported_music']) {
+              final musicDir = Directory(p.join(appDir.path, folder));
+              if (musicDir.existsSync()) {
+                final match = musicDir.listSync(recursive: true).whereType<File>().firstWhere(
+                  (f) => f.path.contains(track.id) || f.path.contains(track.title),
+                  orElse: () => File(''),
+                );
+                if (match.path.isNotEmpty && match.existsSync()) {
+                  await _audioPlayer!.setFilePath(match.path);
+                  await _audioPlayer!.setVolume(1.0);
+                  await _audioPlayer!.play();
+                  _syncForegroundNotification(track: track, isPlaying: true);
+                  return;
+                }
               }
             }
           } catch (_) {}

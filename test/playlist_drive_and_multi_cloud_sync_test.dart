@@ -251,6 +251,66 @@ void main() {
         candidateDurationMs: 248000,
       );
       expect(collabMatch.isMatch, isTrue);
+
+      // Remix rejection
+      final remixMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'City to City',
+        targetArtist: 'JANI',
+        candidateTitle: 'City to City (Club Remix)',
+        candidateArtist: 'JANI',
+        targetDurationMs: 205000,
+        candidateDurationMs: 205000,
+      );
+      expect(remixMatch.isMatch, isFalse);
+      expect(remixMatch.isDisqualified, isTrue);
+
+      // Live performance rejection
+      final liveMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'On & On',
+        targetArtist: 'Shamoon Ismail',
+        candidateTitle: 'On & On (Live in Concert)',
+        candidateArtist: 'Shamoon Ismail',
+        targetDurationMs: 190000,
+        candidateDurationMs: 190000,
+      );
+      expect(liveMatch.isMatch, isFalse);
+      expect(liveMatch.isDisqualified, isTrue);
+
+      // Primary artist enforcement rejection
+      final missingPrimaryMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'Na Milay',
+        targetArtist: 'HAVI, Afifa Moin, Arsalan Hasan, Haider Abbas',
+        candidateTitle: 'Na Milay',
+        candidateArtist: 'Arsalan Hasan',
+        targetDurationMs: 285000,
+        candidateDurationMs: 285000,
+      );
+      expect(missingPrimaryMatch.isMatch, isFalse);
+      expect(missingPrimaryMatch.isDisqualified, isTrue);
+
+      // Partial title / substring rejection
+      final partialTitleMatch = TrackMatchScorer.evaluate(
+        targetTitle: 'City to City',
+        targetArtist: 'JANI',
+        candidateTitle: 'City',
+        candidateArtist: 'JANI',
+        targetDurationMs: 205000,
+        candidateDurationMs: 205000,
+      );
+      expect(partialTitleMatch.isMatch, isFalse);
+      expect(partialTitleMatch.isDisqualified, isTrue);
+
+      // Duration tolerance (> 40s) rejection
+      final durationMismatched = TrackMatchScorer.evaluate(
+        targetTitle: 'Faasle',
+        targetArtist: 'Kaavish',
+        candidateTitle: 'Faasle',
+        candidateArtist: 'Kaavish',
+        targetDurationMs: 311000,
+        candidateDurationMs: 260000, // 51s difference
+      );
+      expect(durationMismatched.isMatch, isFalse);
+      expect(durationMismatched.isDisqualified, isTrue);
     });
 
     test('JioSaavn engine bypasses cover band at index 0 and selects genuine artist at index 1', () async {
@@ -639,7 +699,7 @@ void main() {
       );
 
       expect(track.providerType, equals(CloudProviderType.androidSaf));
-      expect(track.isPinnedOffline, isTrue);
+      expect(track.isPinnedOffline, isFalse);
       expect(File(track.localCachePath!).existsSync(), isTrue);
       // Clean up destination
       File(track.localCachePath!).deleteSync();
@@ -675,7 +735,7 @@ void main() {
 
       expect(track, isNotNull);
       expect(track.title, equals('Missing Token Song'));
-      expect(track.isPinnedOffline, isTrue);
+      expect(track.isPinnedOffline, isFalse);
       expect(File(track.localCachePath!).existsSync(), isTrue);
       File(track.localCachePath!).deleteSync();
     });

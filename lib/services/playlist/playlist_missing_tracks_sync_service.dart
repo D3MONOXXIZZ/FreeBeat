@@ -222,43 +222,44 @@ class PlaylistMissingTracksSyncNotifier
 
     await PixelHaptics.tick();
 
-    // Process queue in batches of 10 tracks
-    const batchSize = 10;
-    final totalBatches = (missingTracks.length / batchSize).ceil();
+    // Continuous sliding-window worker pool (concurrency: 3)
+    // Eliminates blocking batch barriers and stalls while keeping upstream bandwidth smooth.
+    const maxConcurrency = 3;
+    var nextTrackIndex = 0;
+    final activeFutures = <Future<void>>{};
 
-    for (var i = 0; i < missingTracks.length && !_isCancelled; i += batchSize) {
-      final batchIndex = (i ~/ batchSize) + 1;
-      final currentBatchEnd =
-          (i + batchSize) > missingTracks.length ? missingTracks.length : (i + batchSize);
+    while ((nextTrackIndex < missingTracks.length || activeFutures.isNotEmpty) && !_isCancelled) {
+      while (activeFutures.length < maxConcurrency && nextTrackIndex < missingTracks.length && !_isCancelled) {
+        final idx = nextTrackIndex++;
+        final trackItem = missingTracks[idx];
 
-      state = state.copyWith(
-        currentStatusText:
-            'Syncing batch $batchIndex of $totalBatches (tracks ${i + 1}–$currentBatchEnd)...',
-      );
+        state = state.copyWith(
+          currentStatusText: 'Processing track ${idx + 1} of ${missingTracks.length}: "${trackItem.displayName}"...',
+        );
 
-      final batch = <Future<Track?>>[];
-      for (var c = 0; c < batchSize && (i + c) < missingTracks.length && !_isCancelled; c++) {
-        final idx = i + c;
-        batch.add(_processSingleTrack(
-          index: idx,
-          item: missingTracks[idx],
-          playlistId: playlistId,
-          playlistName: playlistTitle,
-          account: account,
-          secrets: secrets,
-        ));
+        late Future<void> workerFuture;
+        workerFuture = (() async {
+          try {
+            await _processSingleTrack(
+              index: idx,
+              item: trackItem,
+              playlistId: playlistId,
+              playlistName: playlistTitle,
+              account: account,
+              secrets: secrets,
+            ).timeout(const Duration(seconds: 45));
+          } catch (e) {
+            debugPrint('Worker timeout or error on track $idx: $e');
+          } finally {
+            activeFutures.remove(workerFuture);
+          }
+        })();
+
+        activeFutures.add(workerFuture);
       }
-      if (batch.isNotEmpty) {
-        final batchResults = await Future.wait(batch);
-        final newlyUploaded = batchResults.whereType<Track>().toList();
-        if (newlyUploaded.isNotEmpty) {
-          // Double-check indexing and playlist linkage to guarantee consistency
-          await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks(newlyUploaded);
-          await _ref.read(playlistsProvider.notifier).addTracksToPlaylist(
-                playlistId,
-                newlyUploaded.map((t) => t.id).toList(),
-              );
-        }
+
+      if (activeFutures.isNotEmpty) {
+        await Future.any(activeFutures);
       }
     }
 
@@ -342,6 +343,19 @@ class PlaylistMissingTracksSyncNotifier
         playlistName: playlistName,
         onProgress: (frac) {
           _updateTrackProgress(index, (p) => p.copyWith(progressFraction: 0.5 + (frac * 0.5)));
+        },
+        onTokenExpired: () async {
+          try {
+            final authService = _ref.read(nativeCloudAuthServiceProvider);
+            final freshToken = await authService.getFreshGoogleAccessToken();
+            if (freshToken != null && freshToken.isNotEmpty) {
+              secrets['accessToken'] = freshToken;
+              final credStore = _ref.read(credentialStoreProvider);
+              await credStore.saveSecrets(account.id, secrets);
+              return freshToken;
+            }
+          } catch (_) {}
+          return null;
         },
       );
 

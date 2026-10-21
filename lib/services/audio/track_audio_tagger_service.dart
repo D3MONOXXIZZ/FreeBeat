@@ -98,11 +98,11 @@ class TrackAudioTaggerService {
         byteStream = candidate.getByteStream();
       } else {
         final request = http.Request('GET', Uri.parse(candidate.streamUrl));
-        final response = await _http.send(request);
+        final response = await _http.send(request).timeout(const Duration(seconds: 15));
         byteStream = response.stream;
       }
 
-      await for (final chunk in byteStream) {
+      await for (final chunk in byteStream.timeout(const Duration(seconds: 15))) {
         sink.add(chunk);
         receivedBytes += chunk.length;
         if (onProgress != null && totalExpectedBytes > 0) {
@@ -173,7 +173,7 @@ class TrackAudioTaggerService {
         streamUrl: '',
       );
       lyrics = await _metadataService.fetchSyncedLyricsForTrack(dummyTrack)
-          .timeout(const Duration(milliseconds: 2500));
+          .timeout(const Duration(milliseconds: 600));
     } catch (_) {}
 
     return PreparedTrackAudio(

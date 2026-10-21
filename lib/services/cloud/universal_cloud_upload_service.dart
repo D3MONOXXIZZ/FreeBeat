@@ -28,6 +28,7 @@ class UniversalCloudUploadService {
       : _http = httpClient ?? http.Client();
 
   final http.Client _http;
+  final Map<String, String> _folderIdCache = {};
 
   /// Uploads a prepared scratch audio file to the target cloud account inside
   /// `FreeBeat Music/{playlistName}/` and returns a fully initialized [Track] model.
@@ -39,6 +40,7 @@ class UniversalCloudUploadService {
     required Map<String, String> secrets,
     required String playlistName,
     void Function(double progress)? onProgress,
+    Future<String?> Function()? onTokenExpired,
   }) async {
     final cleanPlaylist = _sanitizeFolder(playlistName);
     Track? uploadedTrack;
@@ -67,6 +69,7 @@ class UniversalCloudUploadService {
               secrets: secrets,
               playlistName: cleanPlaylist,
               onProgress: onProgress,
+              onTokenExpired: onTokenExpired,
             );
             break;
 
@@ -159,13 +162,14 @@ class UniversalCloudUploadService {
     required Map<String, String> secrets,
     required String playlistName,
     void Function(double progress)? onProgress,
+    Future<String?> Function()? onTokenExpired,
   }) async {
     final token = secrets['accessToken'] ?? '';
     if (token.isEmpty) {
       throw CloudUploadException('Missing Google Drive access token', provider: account.providerType);
     }
 
-    // 1. Resolve or create parent folder "FreeBeat Music/{playlistName}"
+    // 1. Resolve or create parent folder "FreeBeat Music/{playlistName}" with memory cache
     final parentFolderId = await _getOrCreateGoogleDriveFolder(
       token: token,
       folderName: playlistName,
@@ -198,7 +202,22 @@ class UniversalCloudUploadService {
         'Content-Length': '${bodyBytes.length}',
       },
       body: bodyBytes,
-    );
+    ).timeout(const Duration(seconds: 40));
+
+    if (resp.statusCode == 401 && onTokenExpired != null) {
+      final freshToken = await onTokenExpired();
+      if (freshToken != null && freshToken.isNotEmpty) {
+        secrets['accessToken'] = freshToken;
+        _folderIdCache.clear();
+        return _uploadToGoogleDrive(
+          preparedAudio: preparedAudio,
+          account: account,
+          secrets: secrets,
+          playlistName: playlistName,
+          onProgress: onProgress,
+        );
+      }
+    }
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       throw CloudUploadException(
@@ -229,6 +248,7 @@ class UniversalCloudUploadService {
       artworkUrl: preparedAudio.artworkUrl,
       dominantColorValue: preparedAudio.dominantColorValue,
       syncedLyrics: preparedAudio.syncedLyrics,
+      isPinnedOffline: false,
     );
   }
 
@@ -237,17 +257,32 @@ class UniversalCloudUploadService {
     required String folderName,
     required String parentFolderName,
   }) async {
+    final subCacheKey = '$token:$parentFolderName/$folderName';
+    if (_folderIdCache.containsKey(subCacheKey)) {
+      return _folderIdCache[subCacheKey]!;
+    }
+
     try {
       // Find or create root container "FreeBeat Music"
-      String rootId = await _findDriveFolder(token, parentFolderName, null);
+      final rootCacheKey = '$token:$parentFolderName';
+      String rootId = _folderIdCache[rootCacheKey] ?? '';
       if (rootId.isEmpty) {
-        rootId = await _createDriveFolder(token, parentFolderName, null);
+        rootId = await _findDriveFolder(token, parentFolderName, null);
+        if (rootId.isEmpty) {
+          rootId = await _createDriveFolder(token, parentFolderName, null);
+        }
+        if (rootId.isNotEmpty) {
+          _folderIdCache[rootCacheKey] = rootId;
+        }
       }
 
       // Find or create playlist subfolder under root container
-      String subId = await _findDriveFolder(token, folderName, rootId);
+      String subId = await _findDriveFolder(token, folderName, rootId.isNotEmpty ? rootId : null);
       if (subId.isEmpty) {
-        subId = await _createDriveFolder(token, folderName, rootId);
+        subId = await _createDriveFolder(token, folderName, rootId.isNotEmpty ? rootId : null);
+      }
+      if (subId.isNotEmpty) {
+        _folderIdCache[subCacheKey] = subId;
       }
       return subId;
     } catch (_) {
@@ -261,7 +296,7 @@ class UniversalCloudUploadService {
       'q': "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and trashed = false$parentClause",
       'fields': 'files(id, name)',
     });
-    final resp = await _http.get(uri, headers: {'Authorization': 'Bearer $token'});
+    final resp = await _http.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
     if (resp.statusCode == 200) {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final files = data['files'] as List<dynamic>? ?? [];
@@ -285,7 +320,7 @@ class UniversalCloudUploadService {
         'mimeType': 'application/vnd.google-apps.folder',
         if (parentId != null) 'parents': [parentId],
       }),
-    );
+    ).timeout(const Duration(seconds: 15));
     if (resp.statusCode == 200 || resp.statusCode == 201) {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       return data['id'] as String;
@@ -321,7 +356,7 @@ class UniversalCloudUploadService {
         'Content-Type': _getMimeType(preparedAudio.format),
       },
       body: fileBytes,
-    );
+    ).timeout(const Duration(seconds: 40));
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       throw CloudUploadException(
@@ -391,7 +426,7 @@ class UniversalCloudUploadService {
         'Content-Type': 'application/octet-stream',
       },
       body: fileBytes,
-    );
+    ).timeout(const Duration(seconds: 40));
 
     if (resp.statusCode != 200) {
       throw CloudUploadException(
@@ -465,7 +500,7 @@ class UniversalCloudUploadService {
         'Content-Type': 'multipart/form-data; boundary=$boundary',
       },
       body: bodyBytes,
-    );
+    ).timeout(const Duration(seconds: 40));
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       throw CloudUploadException(
@@ -602,7 +637,7 @@ class UniversalCloudUploadService {
         'Content-Type': _getMimeType(preparedAudio.format),
       },
       body: fileBytes,
-    );
+    ).timeout(const Duration(seconds: 40));
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       throw CloudUploadException(
@@ -714,14 +749,26 @@ class UniversalCloudUploadService {
     void Function(double progress)? onProgress,
   }) async {
     final appDocDir = await getApplicationDocumentsDirectory();
-    final localMusicDir = Directory(p.join(appDocDir.path, 'imported_music', playlistName));
+    Directory localMusicDir;
+    if (account.endpointOrFolder.isNotEmpty &&
+        !account.endpointOrFolder.startsWith('/') &&
+        Directory(account.endpointOrFolder).existsSync()) {
+      localMusicDir = Directory(p.join(account.endpointOrFolder, playlistName));
+    } else {
+      localMusicDir = Directory(p.join(appDocDir.path, 'FreeBeat Music', playlistName));
+    }
+
     if (!await localMusicDir.exists()) {
       await localMusicDir.create(recursive: true);
     }
 
     final destFile = File(p.join(localMusicDir.path, preparedAudio.filename));
-    await preparedAudio.file.copy(destFile.path);
-    await preparedAudio.purge();
+    try {
+      await preparedAudio.file.rename(destFile.path);
+    } catch (_) {
+      await preparedAudio.file.copy(destFile.path);
+      await preparedAudio.purge();
+    }
 
     onProgress?.call(1.0);
 
@@ -743,7 +790,7 @@ class UniversalCloudUploadService {
       artworkUrl: preparedAudio.artworkUrl,
       dominantColorValue: preparedAudio.dominantColorValue,
       syncedLyrics: preparedAudio.syncedLyrics,
-      isPinnedOffline: true,
+      isPinnedOffline: false,
       localCachePath: destFile.path,
     );
   }
