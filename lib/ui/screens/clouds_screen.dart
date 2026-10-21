@@ -318,30 +318,54 @@ class CloudsScreen extends ConsumerWidget {
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () =>
-                                            _importFolderForAccount(
-                                          context,
-                                          ref,
-                                          accounts[i],
-                                        ),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 10),
-                                          shape: const StadiumBorder(),
-                                        ),
-                                        icon: const Icon(
-                                            Icons.folder_shared_rounded,
-                                            size: 16),
-                                        label: const Text(
-                                          'Import Folder',
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
+                                      child: accounts[i].providerType == CloudProviderType.googleDrive
+                                          ? OutlinedButton.icon(
+                                              onPressed: () => _manageGoogleDriveFolder(
+                                                context,
+                                                ref,
+                                                accounts[i],
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                padding: const EdgeInsets.symmetric(
+                                                    vertical: 10),
+                                                shape: const StadiumBorder(),
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.folder_special_rounded,
+                                                  size: 16),
+                                              label: const Text(
+                                                'Allowed Folder',
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            )
+                                          : OutlinedButton.icon(
+                                              onPressed: () =>
+                                                  _importFolderForAccount(
+                                                context,
+                                                ref,
+                                                accounts[i],
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                padding: const EdgeInsets.symmetric(
+                                                    vertical: 10),
+                                                shape: const StadiumBorder(),
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.folder_shared_rounded,
+                                                  size: 16),
+                                              label: const Text(
+                                                'Import Folder',
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
                                     ),
                                   ],
                                 ),
@@ -600,8 +624,10 @@ class CloudsScreen extends ConsumerWidget {
             'Missing Google Drive access token. Please re-authenticate or connect via Android Files app.',
           );
         }
+        await ref.read(tracksCatalogProvider.notifier).purgeNonAudioTracks();
         final connector = GoogleDriveConnector();
         final tracks = await connector.scanLibrary(account, secrets);
+        await ref.read(tracksCatalogProvider.notifier).removeTracksForAccount(account.id);
         if (tracks.isNotEmpty) {
           await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
         }
@@ -659,6 +685,35 @@ class CloudsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _manageGoogleDriveFolder(
+    BuildContext context,
+    WidgetRef ref,
+    CloudAccount account,
+  ) async {
+    final credStore = ref.read(credentialStoreProvider);
+    final secrets = await credStore.readSecrets(account.id);
+    final token = secrets['accessToken'] ?? '';
+    if (token.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please sign in or re-authenticate Google Drive.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    if (context.mounted) {
+      await showGoogleDriveFolderPickerModal(
+        context: context,
+        ref: ref,
+        account: account,
+        accessToken: token,
+      );
+    }
   }
 
   void _showAddCloudWizard(BuildContext context, WidgetRef ref) {
@@ -802,14 +857,8 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
       final secrets = {'accessToken': result.accessToken ?? ''};
       await ref.read(cloudAccountsProvider.notifier).addAccount(account, secrets);
 
-      // Automatically scan Google Drive for audio files if token is provided
-      if (secrets['accessToken']!.isNotEmpty) {
-        final connector = GoogleDriveConnector();
-        final tracks = await connector.scanLibrary(account, secrets);
-        if (tracks.isNotEmpty) {
-          await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
-        }
-      }
+      // Immediately purge any non-audio files (PDFs, docs) from library catalog
+      await ref.read(tracksCatalogProvider.notifier).purgeNonAudioTracks();
 
       await PixelHaptics.hifiConfirm();
 
@@ -817,12 +866,22 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
         if (Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connected to ${result.displayName ?? result.email}!'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Let user choose allowed folder
+        if (secrets['accessToken']!.isNotEmpty) {
+          showGoogleDriveFolderPickerModal(
+            context: context,
+            ref: ref,
+            account: account,
+            accessToken: secrets['accessToken']!,
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connected to ${result.displayName ?? result.email}!'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } else if (result.isDeveloperConfigError) {
       if (mounted) {
@@ -851,13 +910,13 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
+        builder: (modalCtx, setModalState) {
           return Padding(
             padding: EdgeInsets.only(
               left: 24,
               right: 24,
               top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+              bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 32,
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -1048,15 +1107,16 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
                                   );
 
                                   if (ctx.mounted) Navigator.pop(ctx);
-                                  if (context.mounted) {
+                                  await ref.read(tracksCatalogProvider.notifier).purgeNonAudioTracks();
+                                  if (mounted) {
                                     if (Navigator.of(context).canPop()) {
                                       Navigator.of(context).pop();
                                     }
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('$label connected successfully with valid token!'),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
+                                    showGoogleDriveFolderPickerModal(
+                                      context: context,
+                                      ref: ref,
+                                      account: authResult.account!,
+                                      accessToken: token,
                                     );
                                   }
                                 }
@@ -1880,6 +1940,402 @@ class _AddCloudWizardSheetState extends ConsumerState<_AddCloudWizardSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Modal bottom sheet allowing users to restrict Google Drive access to a specific folder.
+Future<void> showGoogleDriveFolderPickerModal({
+  required BuildContext context,
+  required WidgetRef ref,
+  required CloudAccount account,
+  required String accessToken,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+  final connector = GoogleDriveConnector();
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: cs.surfaceContainerHigh,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheetCtx) {
+      var isLoadingFolders = false;
+      List<Map<String, String>>? availableFolders;
+
+      return StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Row(
+                      children: [
+                        Icon(Icons.security_rounded,
+                            color: Color(0xFF4285F4), size: 24),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Google Drive Folder Access',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Choose which folder FreeBeat is allowed to access. FreeBeat will strictly stay inside this folder and will NEVER read your personal documents, PDFs, or photos.',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                          height: 1.35),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Option 1: FreeBeat Music folder (Recommended)
+                    _FolderOptionTile(
+                      icon: Icons.create_new_folder_rounded,
+                      iconColor: cs.primary,
+                      title: 'FreeBeat Music Folder (Recommended)',
+                      subtitle:
+                          'A dedicated folder in your Drive. FreeBeat only accesses this folder for playlist imports and music.',
+                      badge: 'Private & Isolated',
+                      badgeColor: Colors.green,
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await _applyGoogleDriveFolderChoice(
+                          context,
+                          ref,
+                          account,
+                          accessToken,
+                          folderName: 'FreeBeat Music',
+                          folderId: '',
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // Option 2: Browse existing folders in Drive
+                    if (availableFolders == null && !isLoadingFolders)
+                      _FolderOptionTile(
+                        icon: Icons.folder_open_rounded,
+                        iconColor: const Color(0xFF4285F4),
+                        title: 'Choose a Specific Music Folder',
+                        subtitle:
+                            'Select an existing folder from your Drive (e.g. "Music", "Audio").',
+                        onTap: () async {
+                          setSheetState(() => isLoadingFolders = true);
+                          try {
+                            final folders =
+                                await connector.listFolders(accessToken);
+                            setSheetState(() {
+                              availableFolders = folders;
+                              isLoadingFolders = false;
+                            });
+                          } catch (_) {
+                            setSheetState(() {
+                              availableFolders = [];
+                              isLoadingFolders = false;
+                            });
+                          }
+                        },
+                      )
+                    else if (isLoadingFolders)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: cs.primary),
+                              ),
+                              const SizedBox(width: 12),
+                              Text('Loading your Google Drive folders...',
+                                  style: TextStyle(
+                                      fontSize: 13, color: cs.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (availableFolders != null) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4, bottom: 6),
+                        child: Text(
+                          'Select your music folder:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: cs.primary),
+                        ),
+                      ),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 200),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: cs.outlineVariant.withValues(alpha: 0.5)),
+                        ),
+                        child: availableFolders!.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  'No existing folders found in Drive root.',
+                                  style: TextStyle(
+                                      fontSize: 13, color: cs.onSurfaceVariant),
+                                ),
+                              )
+                            : ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: availableFolders!.length,
+                                separatorBuilder: (_, __) =>
+                                    Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.2)),
+                                itemBuilder: (c, idx) {
+                                  final f = availableFolders![idx];
+                                  final name = f['name'] ?? 'Folder';
+                                  final id = f['id'] ?? '';
+                                  return ListTile(
+                                    dense: true,
+                                    leading: const Icon(Icons.folder_rounded,
+                                        color: Color(0xFF4285F4), size: 20),
+                                    title: Text(name,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600)),
+                                    onTap: () async {
+                                      Navigator.pop(ctx);
+                                      await _applyGoogleDriveFolderChoice(
+                                        context,
+                                        ref,
+                                        account,
+                                        accessToken,
+                                        folderName: name,
+                                        folderId: id,
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 10),
+
+                    // Option 3: Uploads Only
+                    _FolderOptionTile(
+                      icon: Icons.cloud_upload_outlined,
+                      iconColor: cs.secondary,
+                      title: 'Playlist Uploads Only',
+                      subtitle:
+                          'Only upload imported playlists. Never scan or index existing files from your Drive.',
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await _applyGoogleDriveFolderChoice(
+                          context,
+                          ref,
+                          account,
+                          accessToken,
+                          folderName: 'Uploads Only',
+                          folderId: 'none',
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<void> _applyGoogleDriveFolderChoice(
+  BuildContext context,
+  WidgetRef ref,
+  CloudAccount account,
+  String accessToken, {
+  required String folderName,
+  required String folderId,
+}) async {
+  final connector = GoogleDriveConnector();
+  String finalFolderId = folderId;
+
+  if (finalFolderId.isEmpty && folderName == 'FreeBeat Music') {
+    finalFolderId = await connector.getOrCreateFolder(accessToken, 'FreeBeat Music');
+  }
+
+  final updatedAccount = account.copyWith(
+    endpointOrFolder: 'Google Drive • $folderName',
+  );
+
+  final updatedSecrets = {
+    'accessToken': accessToken,
+    'folderName': folderName,
+    'folderId': finalFolderId,
+  };
+
+  await ref.read(cloudAccountsProvider.notifier).addAccount(updatedAccount, updatedSecrets);
+
+  // Clean up any non-audio tracks (PDFs, docs) from library catalog
+  await ref.read(tracksCatalogProvider.notifier).purgeNonAudioTracks();
+
+  // Clean up previous tracks for this account
+  await ref.read(tracksCatalogProvider.notifier).removeTracksForAccount(account.id);
+
+  // Rescan library with the newly scoped folder
+  if (folderName != 'Uploads Only' && finalFolderId != 'none') {
+    final tracks = await connector.scanLibrary(updatedAccount, updatedSecrets);
+    if (tracks.isNotEmpty) {
+      await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(tracks);
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Google Drive restricted to "$folderName" (${tracks.length} audio tracks indexed)'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  } else {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google Drive set to Uploads Only mode (0 cloud files indexed).'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}
+
+class _FolderOptionTile extends StatelessWidget {
+  const _FolderOptionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+    this.badgeColor,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final String? badge;
+  final Color? badgeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () {
+          PixelHaptics.tick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (badgeColor ?? cs.primary)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              badge!,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: badgeColor ?? cs.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.5), size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -79,6 +79,142 @@ class GoogleDriveConnector implements CloudProviderConnector {
   GoogleDriveConnector({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
 
+  static const Set<String> supportedAudioExtensions = {
+    'mp3', 'flac', 'm4a', 'wav', 'ogg', 'opus', 'aac',
+    'alac', 'aiff', 'aif', 'wma', 'asf', 'ape', 'dsd', 'dsf', 'dff', 'mka'
+  };
+
+  static const Set<String> blockedNonAudioExtensions = {
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf',
+    'csv', 'json', 'xml', 'html', 'htm', 'zip', 'rar', 'tar', 'gz', '7z',
+    'apk', 'exe', 'dmg', 'iso', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
+    'bmp', 'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv'
+  };
+
+  /// Strictly determines if a file is audio and blocks PDFs, documents, images, and archives.
+  static bool isAudioFile(String filename, String? mimeType) {
+    final lowerName = filename.toLowerCase().trim();
+    final dotIndex = lowerName.lastIndexOf('.');
+    final ext = dotIndex != -1 ? lowerName.substring(dotIndex + 1) : '';
+
+    if (blockedNonAudioExtensions.contains(ext)) {
+      return false;
+    }
+    if (supportedAudioExtensions.contains(ext)) {
+      return true;
+    }
+    if (mimeType != null && mimeType.startsWith('audio/')) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Lists Google Drive folders under root or an optional parent folder.
+  Future<List<Map<String, String>>> listFolders(
+    String token, {
+    String? parentFolderId,
+  }) async {
+    if (token.isEmpty) return [];
+    try {
+      final parentClause = parentFolderId != null && parentFolderId.isNotEmpty
+          ? "'$parentFolderId' in parents and "
+          : '';
+      final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+        'q': "${parentClause}mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        'fields': 'files(id,name)',
+        'pageSize': '100',
+        'orderBy': 'name',
+      });
+      final resp = await _client.get(
+        uri,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (resp.statusCode != 200) return [];
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final files = data['files'] as List<dynamic>? ?? [];
+      return files
+          .map((f) => {
+                'id': (f['id'] as String?) ?? '',
+                'name': (f['name'] as String?) ?? 'Folder',
+              })
+          .where((f) => f['id']!.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Finds or creates a Google Drive folder by name.
+  Future<String> getOrCreateFolder(
+    String token,
+    String folderName, {
+    String? parentFolderId,
+  }) async {
+    if (token.isEmpty) return '';
+    try {
+      final parentClause = parentFolderId != null && parentFolderId.isNotEmpty
+          ? " and '$parentFolderId' in parents"
+          : '';
+      final searchUri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+        'q': "name = '$folderName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false$parentClause",
+        'fields': 'files(id,name)',
+      });
+      final searchResp = await _client.get(
+        searchUri,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (searchResp.statusCode == 200) {
+        final data = jsonDecode(searchResp.body) as Map<String, dynamic>;
+        final files = data['files'] as List<dynamic>? ?? [];
+        if (files.isNotEmpty) {
+          return files.first['id'] as String;
+        }
+      }
+
+      // Create folder if not found
+      final createUri = Uri.parse('https://www.googleapis.com/drive/v3/files');
+      final body = jsonEncode({
+        'name': folderName,
+        'mimeType': 'application/vnd.google-apps.folder',
+        if (parentFolderId != null && parentFolderId.isNotEmpty)
+          'parents': [parentFolderId],
+      });
+      final createResp = await _client.post(
+        createUri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+      if (createResp.statusCode == 200 || createResp.statusCode == 201) {
+        final data = jsonDecode(createResp.body) as Map<String, dynamic>;
+        return (data['id'] as String?) ?? '';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchFilesInParent(String token, String parentId) async {
+    try {
+      final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+        'q': "'$parentId' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false",
+        'fields': 'files(id,name,mimeType,size)',
+        'pageSize': '500',
+      });
+      final resp = await _client.get(
+        uri,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (resp.statusCode != 200) return [];
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final files = data['files'] as List<dynamic>? ?? [];
+      return files.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
   @override
   CloudProviderType get type => CloudProviderType.googleDrive;
 
@@ -109,21 +245,68 @@ class GoogleDriveConnector implements CloudProviderConnector {
   ) async {
     final token = secrets['accessToken'] ?? '';
     if (token.isEmpty) return [];
+
+    final folderId = secrets['folderId'] ?? '';
+    final folderName = secrets['folderName'] ?? '';
+
+    // If configured as Upload-Only, skip scanning entirely
+    if (folderId == 'none' ||
+        folderName == 'Uploads Only' ||
+        account.endpointOrFolder.contains('Uploads Only')) {
+      return [];
+    }
+
     try {
-      final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
-        'q': "(mimeType contains 'audio/' or name contains '.mp3' or name contains '.flac' or name contains '.m4a' or name contains '.wav' or name contains '.ogg' or name contains '.opus' or name contains '.aac' or name contains '.wma' or name contains '.asf' or name contains '.alac' or name contains '.aiff' or name contains '.ape' or name contains '.dsf') and trashed = false",
-        'fields': 'files(id,name,mimeType,size)',
-        'pageSize': '500',
-      });
-      final resp = await _client.get(
-        uri,
-        headers: {'Authorization': 'Bearer $token'},
-      );
-      if (resp.statusCode != 200) return [];
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      final files = data['files'] as List<dynamic>? ?? [];
-      return files.map((raw) {
-        final f = raw as Map<String, dynamic>;
+      String targetFolderId = folderId;
+      if (targetFolderId.isEmpty &&
+          (account.endpointOrFolder.contains('FreeBeat Music') ||
+           folderName.contains('FreeBeat Music'))) {
+        targetFolderId = await getOrCreateFolder(token, 'FreeBeat Music');
+      }
+
+      final rawFiles = <Map<String, dynamic>>[];
+
+      if (targetFolderId.isNotEmpty) {
+        // Fetch files inside the designated folder
+        final filesInRoot = await _fetchFilesInParent(token, targetFolderId);
+        rawFiles.addAll(filesInRoot);
+
+        // Fetch files inside child playlist folders within this designated folder
+        final subfolders = await listFolders(token, parentFolderId: targetFolderId);
+        for (final sub in subfolders) {
+          final subId = sub['id'];
+          if (subId != null && subId.isNotEmpty) {
+            final filesInSub = await _fetchFilesInParent(token, subId);
+            rawFiles.addAll(filesInSub);
+          }
+        }
+      } else {
+        // Fallback query for whole drive search: strictly audio files
+        final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+          'q': "(mimeType contains 'audio/' or name contains '.mp3' or name contains '.flac') and trashed = false",
+          'fields': 'files(id,name,mimeType,size)',
+          'pageSize': '500',
+        });
+        final resp = await _client.get(
+          uri,
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final files = data['files'] as List<dynamic>? ?? [];
+          rawFiles.addAll(files.cast<Map<String, dynamic>>());
+        }
+      }
+
+      // Filter: strictly reject PDFs, documents, images, and non-audio files
+      final audioFiles = rawFiles.where((f) {
+        final name = (f['name'] as String?) ?? '';
+        final mime = f['mimeType'] as String?;
+        return isAudioFile(name, mime);
+      }).toList();
+
+      return audioFiles.map((raw) {
+        final f = raw;
         final id = f['id'] as String;
         final name = f['name'] as String? ?? 'Drive Track.flac';
         final parsed = RangeTagParser.parseFromFilename(name);

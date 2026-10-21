@@ -271,6 +271,8 @@ class LibraryDatabase {
     }
   }
 
+  Future<void> removeTracks(List<String> trackIds) => deleteTracks(trackIds);
+
   // ───────────────────────────────────────────────────────────────────────────
   // Phase 3: Custom Audiophile DSP Presets & Hardware Device Routing Profiles
   // ───────────────────────────────────────────────────────────────────────────

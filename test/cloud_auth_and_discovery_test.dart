@@ -106,6 +106,56 @@ void main() {
       expect(tracks.first.artist, 'Artist');
       expect(tracks.first.codec, 'FLAC');
     });
+
+    test('GoogleDriveConnector blocks PDFs, Docs, and non-audio files', () async {
+      expect(GoogleDriveConnector.isAudioFile('document.pdf', 'application/pdf'), isFalse);
+      expect(GoogleDriveConnector.isAudioFile('notes.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), isFalse);
+      expect(GoogleDriveConnector.isAudioFile('sheet.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), isFalse);
+      expect(GoogleDriveConnector.isAudioFile('image.png', 'image/png'), isFalse);
+      expect(GoogleDriveConnector.isAudioFile('song.mp3', 'audio/mpeg'), isTrue);
+      expect(GoogleDriveConnector.isAudioFile('track.flac', 'audio/flac'), isTrue);
+      expect(GoogleDriveConnector.isAudioFile('audio.m4a', 'audio/mp4'), isTrue);
+    });
+
+    test('GoogleDriveConnector strictly scopes queries to folderId when folder is selected', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.host == 'www.googleapis.com' && request.url.path == '/drive/v3/files') {
+          final q = request.url.queryParameters['q'] ?? '';
+          if (q.contains("'folder_music_123' in parents")) {
+            return http.Response(
+              '{"files": ['
+              '{"id": "doc1", "name": "Resume.pdf", "mimeType": "application/pdf"},'
+              '{"id": "f1", "name": "Artist - RealTrack.mp3", "mimeType": "audio/mpeg", "size": "8000000"}'
+              ']}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return http.Response('{"files": []}', 200, headers: {'content-type': 'application/json'});
+          }
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final connector = GoogleDriveConnector(client: mockClient);
+      const account = CloudAccount(
+        id: 'acc_scoped',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'My Drive',
+        endpointOrFolder: 'Google Drive • Music Folder',
+      );
+      final tracks = await connector.scanLibrary(account, {
+        'accessToken': 'test_token',
+        'folderId': 'folder_music_123',
+        'folderName': 'Music Folder',
+      });
+
+      // Resume.pdf must be rejected, only RealTrack.mp3 must be returned
+      expect(tracks.length, 1);
+      expect(tracks.first.title, 'RealTrack');
+      expect(tracks.first.artist, 'Artist');
+    });
   });
 
   group('Local Media Server Wi-Fi Auto-Discovery', () {

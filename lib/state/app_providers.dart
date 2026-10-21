@@ -153,12 +153,13 @@ class SystemBrightnessNotifier extends StateNotifier<Brightness> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
-  CloudAccountsNotifier(this._db, this._credStore) : super(const []) {
+  CloudAccountsNotifier(this._db, this._credStore, [this._ref]) : super(const []) {
     _loadFromDb();
   }
 
   final LibraryDatabase _db;
   final SecureCredentialStore _credStore;
+  final Ref? _ref;
   static const String _prefsKey = 'freebeat_persisted_cloud_accounts';
 
   Future<void> _loadFromDb() async {
@@ -233,6 +234,9 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
     await _credStore.deleteSecrets(accountId);
     await _db.removeAccount(accountId);
     state = state.where((a) => a.id != accountId).toList();
+    if (_ref != null) {
+      await _ref.read(tracksCatalogProvider.notifier).removeTracksForAccount(accountId);
+    }
     await _saveToPrefs();
     await PixelHaptics.tick();
   }
@@ -243,6 +247,7 @@ final cloudAccountsProvider =
   return CloudAccountsNotifier(
     ref.watch(libraryDatabaseProvider),
     ref.watch(credentialStoreProvider),
+    ref,
   );
 });
 
@@ -256,12 +261,60 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
   final LibraryDatabase? _db;
   final Ref? _ref;
 
+  static final RegExp _nonAudioExtensionRegex = RegExp(
+    r'\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|rtf|csv|json|xml|html|htm|zip|rar|tar|gz|7z|apk|exe|dmg|iso|jpg|jpeg|png|gif|webp|svg|bmp|mp4|mkv|avi|mov|wmv|flv)$',
+    caseSensitive: false,
+  );
+
+  static final RegExp _audioExtensionRegex = RegExp(
+    r'\.(mp3|flac|m4a|wav|ogg|opus|aac|alac|aiff|aif|wma|asf|ape|dsd|dsf|dff|mka)$',
+    caseSensitive: false,
+  );
+
+  /// Validates whether a track represents authentic, playable audio and rejects documents, images, and non-audio files.
+  static bool isValidAudioTrack(Track track) {
+    final title = track.title.toLowerCase().trim();
+    final url = track.streamUrl.toLowerCase().trim();
+    final path = track.remotePathOrId.toLowerCase().trim();
+
+    // Explicitly reject non-audio documents, images, and archives
+    if (_nonAudioExtensionRegex.hasMatch(title) ||
+        _nonAudioExtensionRegex.hasMatch(url) ||
+        _nonAudioExtensionRegex.hasMatch(path)) {
+      return false;
+    }
+
+    // If it has a recognized audio extension, accept
+    if (_audioExtensionRegex.hasMatch(title) ||
+        _audioExtensionRegex.hasMatch(url) ||
+        _audioExtensionRegex.hasMatch(path)) {
+      return true;
+    }
+
+    // For stream URLs with no extensions (e.g. JioSaavn / iTunes / Google Drive alt=media):
+    // Accept if the codec is a known valid audio codec
+    final codec = track.codec.toUpperCase();
+    const validCodecs = {
+      'MP3', 'FLAC', 'AAC', 'M4A', 'OGG', 'OPUS', 'WAV', 'ALAC', 'AIFF', 'WMA', 'APE', 'DSD'
+    };
+    if (validCodecs.contains(codec)) {
+      return true;
+    }
+
+    return false;
+  }
+
   Future<void> _loadFromDb() async {
     if (_db == null) return;
     final loaded = await _db.loadTracks();
     if (loaded.isNotEmpty) {
+      final nonAudioIds = <String>[];
       final sanitized = <Track>[];
       for (final t in loaded) {
+        if (!isValidAudioTrack(t)) {
+          nonAudioIds.add(t.id);
+          continue;
+        }
         var clean = t;
         if (clean.dominantColorValue == 0xFF3DDC84 ||
             clean.dominantColorValue == 0xFF1DB954) {
@@ -367,6 +420,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
         sanitized.add(clean);
       }
 
+      if (nonAudioIds.isNotEmpty) {
+        await _db.removeTracks(nonAudioIds);
+      }
+
       state = sanitized;
       if (_ref != null) {
         final playback = _ref.read(playbackProvider);
@@ -425,12 +482,13 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
   }
 
   Future<void> addIndexedTracks(List<Track> newTracks) async {
-    if (newTracks.isEmpty) return;
+    final validTracks = newTracks.where(isValidAudioTrack).toList();
+    if (validTracks.isEmpty) return;
     if (_db != null) {
-      await _db.upsertTracks(newTracks);
+      await _db.upsertTracks(validTracks);
     }
     final map = {for (final t in state) t.id: t};
-    for (final t in newTracks) {
+    for (final t in validTracks) {
       map[t.id] = t;
     }
     state = map.values.toList();
@@ -441,7 +499,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       }
       final importProgress = _ref.read(importProgressProvider);
       if (!importProgress.isImporting) {
-        _enrichMissingArtwork(newTracks);
+        _enrichMissingArtwork(validTracks);
       }
     }
   }
@@ -561,6 +619,42 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
           .read(playlistsProvider.notifier)
           .removeTracksFromAllPlaylists(trackIds);
       await _ref.read(playbackProvider.notifier).handleTracksRemoved(trackIds);
+    }
+  }
+
+  /// Scans current catalog in memory and SQLite, permanently purging any non-audio files (PDFs, docs, images).
+  Future<int> purgeNonAudioTracks() async {
+    final nonAudio = state.where((t) => !isValidAudioTrack(t)).toList();
+    if (nonAudio.isEmpty) return 0;
+    final idsToRemove = nonAudio.map((t) => t.id).toList();
+    if (_db != null) {
+      await _db.removeTracks(idsToRemove);
+    }
+    state = state.where(isValidAudioTrack).toList();
+    if (_ref != null) {
+      final playback = _ref.read(playbackProvider);
+      if (playback.queue.isNotEmpty) {
+        final cleanQueue = playback.queue.where(isValidAudioTrack).toList();
+        _ref.read(playbackProvider.notifier).setQueue(cleanQueue);
+      }
+    }
+    return idsToRemove.length;
+  }
+
+  /// Removes all indexed tracks belonging to a specific cloud account.
+  Future<void> removeTracksForAccount(String accountId) async {
+    final toRemove = state.where((t) => t.accountId == accountId).map((t) => t.id).toList();
+    if (toRemove.isEmpty) return;
+    if (_db != null) {
+      await _db.removeTracks(toRemove);
+    }
+    state = state.where((t) => t.accountId != accountId).toList();
+    if (_ref != null) {
+      final playback = _ref.read(playbackProvider);
+      if (playback.queue.isNotEmpty) {
+        final cleanQueue = playback.queue.where((t) => t.accountId != accountId).toList();
+        _ref.read(playbackProvider.notifier).setQueue(cleanQueue);
+      }
     }
   }
 
