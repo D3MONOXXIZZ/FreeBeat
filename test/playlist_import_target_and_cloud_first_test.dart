@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/core/models/track.dart';
 import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
 import 'package:freebeat/services/audio/track_audio_tagger_service.dart';
+import 'package:freebeat/services/playlist/playlist_import_service.dart';
+import 'package:freebeat/services/playlist/playlist_missing_tracks_sync_service.dart';
+import 'package:freebeat/services/playlist/playlist_sync_service.dart';
 import 'package:freebeat/core/storage/secure_credential_store.dart';
 import 'package:freebeat/providers/implementations/network_and_saf_connectors.dart';
 import 'package:freebeat/services/cloud/universal_cloud_upload_service.dart';
@@ -225,6 +231,171 @@ void main() {
       // Action buttons reflect adding to existing playlist
       expect(find.text('Add Matched'), findsOneWidget);
       expect(find.text('Sync & Add Missing'), findsOneWidget);
+    });
+  });
+
+  group('PlaylistSyncService & Continuous Remote Sync', () {
+    test('Diffs remote Spotify tracks and only adds new tracks', () async {
+      final mockClient = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.contains('open.spotify.com/oembed')) {
+          return http.Response(
+            jsonEncode({
+              'title': 'Indie Summer 2026',
+              'thumbnail_url': 'https://image.spotify.com/art.jpg',
+            }),
+            200,
+          );
+        } else if (url.contains('open.spotify.com/embed/playlist/mockSyncPlaylist123')) {
+          final nextData = {
+            'props': {
+              'pageProps': {
+                'state': {
+                  'data': {
+                    'entity': {
+                      'name': 'Indie Summer 2026',
+                      'trackList': [
+                        {
+                          'title': 'Existing Song',
+                          'subtitle': 'Artist One',
+                          'duration': 180000,
+                        },
+                        {
+                          'title': 'Brand New Song',
+                          'subtitle': 'Artist Two',
+                          'duration': 210000,
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          };
+          final html = '''
+<!DOCTYPE html>
+<html>
+<head>
+<script id="__NEXT_DATA__" type="application/json">${jsonEncode(nextData)}</script>
+</head>
+<body></body>
+</html>
+''';
+          return http.Response(html, 200);
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final syncService = PlaylistSyncService(
+        importService: PlaylistImportService(httpClient: mockClient),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          cloudStreamProxyProvider.overrideWithValue(_FakeCloudStreamProxy()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Existing track in library and in playlist
+      const existingTrack = Track(
+        id: 'track_existing_1',
+        accountId: 'acc_1',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: 'file_1',
+        title: 'Existing Song',
+        artist: 'Artist One',
+        album: 'Album One',
+        durationMs: 180000,
+        streamUrl: 'https://stream.mock/1',
+      );
+
+      // New track already in library but NOT in this playlist
+      const newLibraryTrack = Track(
+        id: 'track_new_2',
+        accountId: 'acc_1',
+        providerType: CloudProviderType.googleDrive,
+        remotePathOrId: 'file_2',
+        title: 'Brand New Song',
+        artist: 'Artist Two',
+        album: 'Album Two',
+        durationMs: 210000,
+        streamUrl: 'https://stream.mock/2',
+      );
+
+      await container.read(tracksCatalogProvider.notifier).addIndexedTracks([existingTrack, newLibraryTrack]);
+
+      final initialPlaylist = await container.read(playlistsProvider.notifier).createPlaylist(
+        'Indie Summer 2026',
+        description: 'Synced playlist',
+        initialTrackIds: [existingTrack.id],
+        syncSourceUrl: 'https://open.spotify.com/playlist/mockSyncPlaylist123',
+      );
+
+      final outcome = await syncService.syncPlaylist(
+        playlist: initialPlaylist,
+        sourceUrl: 'https://open.spotify.com/playlist/mockSyncPlaylist123',
+        allLibraryTracks: [existingTrack, newLibraryTrack],
+        playlistsNotifier: container.read(playlistsProvider.notifier),
+        missingTracksNotifier: container.read(playlistMissingTracksSyncProvider.notifier),
+        cloudAccounts: [],
+      );
+
+      expect(outcome.isSuccess, isTrue);
+      expect(outcome.totalFoundInSource, equals(2));
+      expect(outcome.newMatchedTracksCount, equals(1)); // Only 'Brand New Song' was newly added
+      expect(outcome.newMissingTracksCount, equals(0));
+
+      final updatedPlaylists = container.read(playlistsProvider);
+      final updated = updatedPlaylists.firstWhere((p) => p.id == initialPlaylist.id);
+      expect(updated.trackIds, contains(newLibraryTrack.id));
+      expect(updated.trackIds.length, equals(2));
+      expect(updated.lastSyncedAt, isNotNull);
+
+      // Second sync should report 0 new tracks
+      final secondOutcome = await syncService.syncPlaylist(
+        playlist: updated,
+        sourceUrl: 'https://open.spotify.com/playlist/mockSyncPlaylist123',
+        allLibraryTracks: [existingTrack, newLibraryTrack],
+        playlistsNotifier: container.read(playlistsProvider.notifier),
+        missingTracksNotifier: container.read(playlistMissingTracksSyncProvider.notifier),
+        cloudAccounts: [],
+      );
+
+      expect(secondOutcome.isSuccess, isTrue);
+      expect(secondOutcome.totalNewTracksCount, equals(0));
+      expect(secondOutcome.message, contains('already up to date'));
+    });
+
+    testWidgets('PlaylistDetailsScreen renders 1-Tap Sync button and updates lastSyncedAt', (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          cloudStreamProxyProvider.overrideWithValue(_FakeCloudStreamProxy()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final playlist = await container.read(playlistsProvider.notifier).createPlaylist(
+        'Vibe Station',
+        description: 'Spotify Linked',
+        initialTrackIds: [],
+        syncSourceUrl: 'https://open.spotify.com/playlist/vibe_station_123',
+        lastSyncedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: PlaylistDetailsScreen(playlist: playlist),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // SliverAppBar sync action tooltip
+      expect(find.byIcon(Icons.sync_rounded), findsWidgets);
+      expect(find.textContaining('Sync with Spotify • 5m ago'), findsOneWidget);
     });
   });
 }

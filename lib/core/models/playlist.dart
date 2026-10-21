@@ -14,6 +14,8 @@ class Playlist {
     this.smartType,
     this.customArtworkUrl,
     this.colorSeedValue = 0xFF6750A4,
+    this.syncSourceUrl,
+    this.lastSyncedAt,
   });
 
   final String id;
@@ -26,6 +28,8 @@ class Playlist {
   final String? smartType; // 'hires', 'offline', 'favorites', 'heavy_rotation', 'recently_added'
   final String? customArtworkUrl;
   final int colorSeedValue;
+  final String? syncSourceUrl;
+  final DateTime? lastSyncedAt;
 
   Color get colorSeed => Color(colorSeedValue);
   int get trackCount => trackIds.length;
@@ -41,6 +45,9 @@ class Playlist {
     String? smartType,
     String? customArtworkUrl,
     int? colorSeedValue,
+    String? syncSourceUrl,
+    DateTime? lastSyncedAt,
+    bool clearSyncSourceUrl = false,
   }) {
     return Playlist(
       id: id ?? this.id,
@@ -53,6 +60,8 @@ class Playlist {
       smartType: smartType ?? this.smartType,
       customArtworkUrl: customArtworkUrl ?? this.customArtworkUrl,
       colorSeedValue: colorSeedValue ?? this.colorSeedValue,
+      syncSourceUrl: clearSyncSourceUrl ? null : (syncSourceUrl ?? this.syncSourceUrl),
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     );
   }
 
@@ -68,6 +77,8 @@ class Playlist {
       'smartType': smartType,
       'customArtworkUrl': customArtworkUrl,
       'colorSeedValue': colorSeedValue,
+      'syncSourceUrl': syncSourceUrl,
+      'lastSyncedAt': lastSyncedAt?.millisecondsSinceEpoch,
     };
   }
 
@@ -96,6 +107,10 @@ class Playlist {
       smartType: map['smartType'] as String?,
       customArtworkUrl: map['customArtworkUrl'] as String?,
       colorSeedValue: (map['colorSeedValue'] as int?) ?? 0xFF6750A4,
+      syncSourceUrl: map['syncSourceUrl'] as String?,
+      lastSyncedAt: map['lastSyncedAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastSyncedAt'] as int)
+          : null,
     );
   }
 }

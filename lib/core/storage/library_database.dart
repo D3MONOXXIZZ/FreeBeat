@@ -30,7 +30,7 @@ class LibraryDatabase {
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
       _db = await openDatabase(
         fullPath,
-        version: 3,
+        version: 4,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE cloud_accounts (
@@ -82,7 +82,9 @@ class LibraryDatabase {
               isSmart INTEGER DEFAULT 0,
               smartType TEXT,
               customArtworkUrl TEXT,
-              colorSeedValue INTEGER DEFAULT 6770852
+              colorSeedValue INTEGER DEFAULT 6770852,
+              syncSourceUrl TEXT,
+              lastSyncedAt INTEGER
             )
           ''');
           await db.execute('''
@@ -142,6 +144,14 @@ class LibraryDatabase {
                 presetId TEXT NOT NULL
               )
             ''');
+          }
+          if (oldVersion < 4) {
+            try {
+              await db.execute('ALTER TABLE playlists ADD COLUMN syncSourceUrl TEXT');
+            } catch (_) {}
+            try {
+              await db.execute('ALTER TABLE playlists ADD COLUMN lastSyncedAt INTEGER');
+            } catch (_) {}
           }
         },
       );

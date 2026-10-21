@@ -2495,6 +2495,8 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     String title, {
     String description = '',
     List<String> initialTrackIds = const [],
+    String? syncSourceUrl,
+    DateTime? lastSyncedAt,
   }) async {
     await PixelHaptics.hifiConfirm();
     final now = DateTime.now();
@@ -2508,6 +2510,8 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       createdAt: now,
       updatedAt: now,
       colorSeedValue: colorSeed,
+      syncSourceUrl: syncSourceUrl,
+      lastSyncedAt: lastSyncedAt,
     );
     state = [newPlaylist, ...state];
     if (_db != null) {
@@ -2516,10 +2520,50 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     return newPlaylist;
   }
 
+  Future<void> updatePlaylistSyncSource(
+    String playlistId,
+    String? syncSourceUrl,
+  ) async {
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final updated = p.copyWith(
+          syncSourceUrl: syncSourceUrl,
+          clearSyncSourceUrl: syncSourceUrl == null,
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> updatePlaylistLastSynced(
+    String playlistId,
+    DateTime syncedAt,
+  ) async {
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final updated = p.copyWith(
+          lastSyncedAt: syncedAt,
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
   Future<void> renamePlaylist(
     String playlistId,
     String newTitle, {
     String? description,
+    String? syncSourceUrl,
   }) async {
     await PixelHaptics.tick();
     state = state.map((p) {
@@ -2527,6 +2571,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
         final updated = p.copyWith(
           title: newTitle.trim().isEmpty ? p.title : newTitle.trim(),
           description: description ?? p.description,
+          syncSourceUrl: syncSourceUrl ?? p.syncSourceUrl,
           updatedAt: DateTime.now(),
         );
         if (_db != null) {

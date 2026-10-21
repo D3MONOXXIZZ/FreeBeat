@@ -5,6 +5,8 @@ import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
 import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
+import '../../services/playlist/playlist_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
@@ -33,6 +35,130 @@ class PlaylistDetailsScreen extends ConsumerStatefulWidget {
 
 class _PlaylistDetailsScreenState
     extends ConsumerState<PlaylistDetailsScreen> {
+  bool _isSyncing = false;
+
+  String _formatLastSynced(DateTime? dt) {
+    if (dt == null) return 'Never synced';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  void _handleSyncPlaylist(Playlist current) {
+    PixelHaptics.tick();
+    if (current.syncSourceUrl == null || current.syncSourceUrl!.isEmpty) {
+      _showLinkSourceDialog(current);
+    } else {
+      _performSync(current, current.syncSourceUrl!);
+    }
+  }
+
+  void _showLinkSourceDialog(Playlist current) {
+    PixelHaptics.tick();
+    final urlController = TextEditingController(text: current.syncSourceUrl ?? '');
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          backgroundColor: cs.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          icon: Icon(Icons.sync_rounded, color: cs.primary, size: 28),
+          title: const Text(
+            'Sync with Spotify',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Link a public Spotify or Apple Music playlist to automatically import newly added songs with 1 tap.',
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: urlController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Playlist Link',
+                  hintText: 'https://open.spotify.com/playlist/...',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final text = urlController.text.trim();
+                Navigator.of(ctx).pop();
+                if (text.isNotEmpty) {
+                  ref.read(playlistsProvider.notifier).updatePlaylistSyncSource(current.id, text);
+                  _performSync(current, text);
+                }
+              },
+              icon: const Icon(Icons.sync_rounded, size: 18),
+              label: const Text('Save & Sync'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _performSync(Playlist current, String url) async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    await PixelHaptics.tick();
+
+    final allTracks = ref.read(tracksCatalogProvider);
+    final cloudAccounts = ref.read(cloudAccountsProvider);
+    final playlistsNotifier = ref.read(playlistsProvider.notifier);
+    final missingTracksNotifier = ref.read(playlistMissingTracksSyncProvider.notifier);
+
+    final outcome = await ref.read(playlistSyncServiceProvider).syncPlaylist(
+      playlist: current,
+      sourceUrl: url,
+      allLibraryTracks: allTracks,
+      playlistsNotifier: playlistsNotifier,
+      missingTracksNotifier: missingTracksNotifier,
+      cloudAccounts: cloudAccounts,
+    );
+
+    if (mounted) {
+      setState(() => _isSyncing = false);
+
+      if (outcome.isSuccess && outcome.totalNewTracksCount > 0) {
+        await PixelHaptics.hifiConfirm();
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(outcome.message),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      );
+    }
+  }
   String _formatTotalDuration(List<Track> tracks) {
     final totalMs = tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
     final totalSeconds = (totalMs / 1000).floor();
@@ -215,6 +341,7 @@ class _PlaylistDetailsScreenState
     PixelHaptics.tick();
     final titleController = TextEditingController(text: current.title);
     final descController = TextEditingController(text: current.description);
+    final urlController = TextEditingController(text: current.syncSourceUrl ?? '');
 
     showDialog<void>(
       context: context,
@@ -254,6 +381,19 @@ class _PlaylistDetailsScreenState
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: urlController,
+                decoration: InputDecoration(
+                  labelText: 'Spotify / Source URL (Optional)',
+                  hintText: 'https://open.spotify.com/playlist/...',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
             ],
           ),
           actions: [
@@ -265,10 +405,12 @@ class _PlaylistDetailsScreenState
               onPressed: () {
                 final newTitle = titleController.text.trim();
                 if (newTitle.isNotEmpty) {
+                  final newUrl = urlController.text.trim();
                   ref.read(playlistsProvider.notifier).renamePlaylist(
                         current.id,
                         newTitle,
                         description: descController.text.trim(),
+                        syncSourceUrl: newUrl.isEmpty ? null : newUrl,
                       );
                   Navigator.of(ctx).pop();
                 }
@@ -531,6 +673,20 @@ class _PlaylistDetailsScreenState
             actions: [
               if (!livePlaylist.isSmart)
                 IconButton(
+                  icon: _isSyncing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                  tooltip: livePlaylist.syncSourceUrl != null
+                      ? 'Sync with ${livePlaylist.syncSourceUrl!.contains('spotify') ? 'Spotify' : 'Source'} (${_formatLastSynced(livePlaylist.lastSyncedAt)})'
+                      : 'Sync Playlist with Spotify',
+                  onPressed: _isSyncing ? null : () => _handleSyncPlaylist(livePlaylist),
+                ),
+              if (!livePlaylist.isSmart)
+                IconButton(
                   icon: const Icon(Icons.playlist_add_rounded),
                   tooltip: 'Import Songs',
                   onPressed: () => showPlaylistImportModal(
@@ -687,6 +843,62 @@ class _PlaylistDetailsScreenState
                   _buildDownloadRow(context, cs, playlistTracks),
                   if (!livePlaylist.isSmart) ...[
                     const SizedBox(height: 10),
+                    if (livePlaylist.syncSourceUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: FilledButton.tonalIcon(
+                          onPressed: _isSyncing
+                              ? null
+                              : () => _handleSyncPlaylist(livePlaylist),
+                          icon: _isSyncing
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync_rounded, size: 18),
+                          label: Text(
+                            _isSyncing
+                                ? 'Syncing...'
+                                : 'Sync with ${livePlaylist.syncSourceUrl!.contains('spotify') ? 'Spotify' : 'Source'} • ${_formatLastSynced(livePlaylist.lastSyncedAt)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handleSyncPlaylist(livePlaylist),
+                          icon: const Icon(Icons.sync_rounded, size: 18),
+                          label: const Text(
+                            'Link to Spotify for 1-Tap Sync',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
                     OutlinedButton.icon(
                       onPressed: () {
                         PixelHaptics.tick();
@@ -743,6 +955,35 @@ class _PlaylistDetailsScreenState
                       ),
                       if (!livePlaylist.isSmart) ...[
                         const SizedBox(height: 16),
+                        if (livePlaylist.syncSourceUrl != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: FilledButton.icon(
+                              onPressed: _isSyncing
+                                  ? null
+                                  : () => _handleSyncPlaylist(livePlaylist),
+                              icon: _isSyncing
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.sync_rounded, size: 18),
+                              label: Text(_isSyncing
+                                  ? 'Syncing with Spotify...'
+                                  : 'Sync Tracks from Spotify'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 22,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                            ),
+                          ),
                         FilledButton.tonalIcon(
                           onPressed: () {
                             PixelHaptics.tick();

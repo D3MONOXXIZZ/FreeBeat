@@ -42,6 +42,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   String? _errorMessage;
   PlaylistImportResult? _result;
   late TextEditingController _titleController;
+  String? _detectedSourceUrl;
 
   bool _syncMissingTracks = true;
   String? _selectedAccountId;
@@ -153,6 +154,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
 
       if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
         // Spotify or Apple Music URL
+        _detectedSourceUrl = trimmed;
         res = await _importService.importFromUrl(trimmed, allTracks);
       } else if (trimmed.startsWith('{') && trimmed.contains('"tracks"')) {
         // FreeBeat QR Code JSON share payload
@@ -235,6 +237,11 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     Playlist target;
     if (widget.targetPlaylist != null) {
       target = widget.targetPlaylist!;
+      if (_detectedSourceUrl != null && target.syncSourceUrl == null) {
+        await ref
+            .read(playlistsProvider.notifier)
+            .updatePlaylistSyncSource(target.id, _detectedSourceUrl);
+      }
       // Append matched tracks to existing playlist
       if (_result!.matchedTracks.isNotEmpty) {
         await ref.read(playlistsProvider.notifier).addTracksToPlaylist(
@@ -251,6 +258,8 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             title,
             description: _result!.description,
             initialTrackIds: _result!.matchedTracks.map((t) => t.id).toList(),
+            syncSourceUrl: _detectedSourceUrl,
+            lastSyncedAt: _detectedSourceUrl != null ? DateTime.now() : null,
           );
     }
 
