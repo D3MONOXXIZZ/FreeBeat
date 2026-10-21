@@ -6,16 +6,36 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 
 /// Shows a Stock Google Pixel Material 3 Expressive confirmation dialog
-/// to remove a track from the FreeBeat library, clean up its cache,
-/// and remove it from all playlists.
+/// to remove one or more tracks from the FreeBeat library, clean up cache,
+/// and remove them from all playlists.
 Future<bool> showRemoveTrackConfirmationDialog(
   BuildContext context,
   WidgetRef ref,
   Track track, {
   VoidCallback? onRemoved,
+}) {
+  return showRemoveTracksConfirmationDialog(
+    context,
+    ref,
+    [track],
+    onRemoved: onRemoved,
+  );
+}
+
+/// Shows a Stock Google Pixel Material 3 Expressive confirmation dialog
+/// to remove multiple tracks in batch from the FreeBeat library.
+Future<bool> showRemoveTracksConfirmationDialog(
+  BuildContext context,
+  WidgetRef ref,
+  List<Track> tracks, {
+  VoidCallback? onRemoved,
 }) async {
+  if (tracks.isEmpty) return false;
   final cs = Theme.of(context).colorScheme;
   unawaited(PixelHaptics.sheetExpand());
+
+  final isSingle = tracks.length == 1;
+  final singleTrack = tracks.first;
 
   final confirmed = await showDialog<bool>(
     context: context,
@@ -23,13 +43,15 @@ Future<bool> showRemoveTrackConfirmationDialog(
       return AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         icon: Icon(Icons.delete_outline_rounded, size: 28, color: cs.error),
-        title: const Text('Remove from Library?'),
+        title: Text(isSingle ? 'Remove from Library?' : 'Remove ${tracks.length} Tracks?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Are you sure you want to remove "${track.title}" by ${track.artist} from your FreeBeat library?',
+              isSingle
+                  ? 'Are you sure you want to remove "${singleTrack.title}" by ${singleTrack.artist} from your FreeBeat library?'
+                  : 'Are you sure you want to remove ${tracks.length} selected tracks from your FreeBeat library?',
               style: TextStyle(
                 fontSize: 14.5,
                 color: cs.onSurface,
@@ -53,7 +75,9 @@ Future<bool> showRemoveTrackConfirmationDialog(
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'This will remove the song from your library, offline downloads, and playlists.',
+                      isSingle
+                          ? 'This will remove the song from your library, offline downloads, and playlists.'
+                          : 'This will remove all ${tracks.length} songs from your library, offline downloads, and playlists.',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onErrorContainer,
@@ -77,7 +101,7 @@ Future<bool> showRemoveTrackConfirmationDialog(
               foregroundColor: cs.onError,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove'),
+            child: Text(isSingle ? 'Remove' : 'Remove ${tracks.length} Tracks'),
           ),
         ],
       );
@@ -86,11 +110,16 @@ Future<bool> showRemoveTrackConfirmationDialog(
 
   if (confirmed == true) {
     unawaited(PixelHaptics.hifiConfirm());
-    await ref.read(tracksCatalogProvider.notifier).removeTracks([track.id]);
+    await ref
+        .read(tracksCatalogProvider.notifier)
+        .removeTracks(tracks.map((t) => t.id).toList());
     if (context.mounted) {
+      final snackMsg = isSingle
+          ? 'Removed "${singleTrack.title}" from library'
+          : 'Removed ${tracks.length} tracks from library';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Removed "${track.title}" from library'),
+          content: Text(snackMsg),
           behavior: SnackBarBehavior.floating,
         ),
       );

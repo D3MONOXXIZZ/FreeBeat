@@ -24,6 +24,7 @@ class SwipeToQueueWrapper extends ConsumerStatefulWidget {
     this.primaryActionIcon = Icons.queue_music_rounded,
     this.onPrimaryAction,
     this.dismissOnPrimaryAction = false,
+    this.enabled = true,
   });
 
   final Track track;
@@ -39,6 +40,7 @@ class SwipeToQueueWrapper extends ConsumerStatefulWidget {
   final IconData primaryActionIcon;
   final VoidCallback? onPrimaryAction;
   final bool dismissOnPrimaryAction;
+  final bool enabled;
 
   /// Shows a unified Material You floating confirmation SnackBar when a track is queued.
   static void showQueuedSnackBar(BuildContext context, String trackTitle) {
@@ -306,6 +308,9 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
   Widget build(BuildContext context) {
     if (_isDismissed) {
       return const SizedBox.shrink();
+    }
+    if (!widget.enabled) {
+      return widget.child;
     }
 
     final cs = Theme.of(context).colorScheme;

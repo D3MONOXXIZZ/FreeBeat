@@ -2035,6 +2035,30 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     state = state.copyWith(queue: [...withoutTrack, track]);
   }
 
+  void playNextMultiple(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    PixelHaptics.tick();
+    final trackIds = tracks.map((t) => t.id).toSet();
+    final currentIdx =
+        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+    final withoutTracks =
+        state.queue.where((t) => !trackIds.contains(t.id)).toList();
+    final insertIdx = currentIdx == -1
+        ? 0
+        : (currentIdx + 1).clamp(0, withoutTracks.length);
+    final newQueue = List<Track>.from(withoutTracks)..insertAll(insertIdx, tracks);
+    state = state.copyWith(queue: newQueue);
+  }
+
+  void addToQueueMultiple(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    PixelHaptics.tick();
+    final trackIds = tracks.map((t) => t.id).toSet();
+    final withoutTracks =
+        state.queue.where((t) => !trackIds.contains(t.id)).toList();
+    state = state.copyWith(queue: [...withoutTracks, ...tracks]);
+  }
+
   void clearUpNext() {
     PixelHaptics.tick();
     final currentIdx =
@@ -2657,6 +2681,28 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       if (p.id == playlistId) {
         final updated = p.copyWith(
           trackIds: p.trackIds.where((id) => id != trackId).toList(),
+          updatedAt: DateTime.now(),
+        );
+        if (_db != null) {
+          _db.upsertPlaylist(updated);
+        }
+        return updated;
+      }
+      return p;
+    }).toList();
+  }
+
+  Future<void> removeTracksFromPlaylist(
+    String playlistId,
+    List<String> trackIds,
+  ) async {
+    if (trackIds.isEmpty) return;
+    await PixelHaptics.tick();
+    final removeSet = trackIds.toSet();
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        final updated = p.copyWith(
+          trackIds: p.trackIds.where((id) => !removeSet.contains(id)).toList(),
           updatedAt: DateTime.now(),
         );
         if (_db != null) {

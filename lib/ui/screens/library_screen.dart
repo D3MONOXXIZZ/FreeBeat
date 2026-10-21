@@ -42,6 +42,53 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _segment = 'all'; // 'all', 'hires', 'offline', 'favorites'
   String? _selectedArtist;
 
+  bool _isMultiSelect = false;
+  final Set<String> _selectedTrackIds = <String>{};
+
+  void _enterMultiSelect([String? initialTrackId]) {
+    setState(() {
+      _isMultiSelect = true;
+      if (initialTrackId != null) {
+        _selectedTrackIds.add(initialTrackId);
+      }
+    });
+    PixelHaptics.sheetExpand();
+  }
+
+  void _exitMultiSelect() {
+    setState(() {
+      _isMultiSelect = false;
+      _selectedTrackIds.clear();
+    });
+    PixelHaptics.tick();
+  }
+
+  void _toggleSelectTrack(String trackId) {
+    setState(() {
+      if (_selectedTrackIds.contains(trackId)) {
+        _selectedTrackIds.remove(trackId);
+      } else {
+        _selectedTrackIds.add(trackId);
+      }
+    });
+    PixelHaptics.tick();
+  }
+
+  void _toggleSelectAll(List<Track> filtered) {
+    setState(() {
+      final filteredIds = filtered.map((t) => t.id).toSet();
+      final allSelected = filteredIds.isNotEmpty &&
+          filteredIds.every((id) => _selectedTrackIds.contains(id));
+      if (allSelected) {
+        _selectedTrackIds.removeAll(filteredIds);
+      } else {
+        _selectedTrackIds.addAll(filteredIds);
+        _isMultiSelect = true;
+      }
+    });
+    PixelHaptics.tick();
+  }
+
   String _formatTrackDuration(int ms) {
     final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
     final minutes = totalSeconds ~/ 60;
@@ -309,22 +356,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerLowest,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(
-              top: BorderSide(
-                color: cs.outlineVariant.withValues(alpha: 0.4),
-                width: 1,
+        return Material(
+          color: cs.surfaceContainerLowest,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.4),
+                  width: 1,
+                ),
               ),
             ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Center(
@@ -379,6 +428,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                   const SizedBox(height: 16),
                   const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.checklist_rounded),
+                    title: const Text('Select Track',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Enter multi-selection mode'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _enterMultiSelect(track.id);
+                    },
+                  ),
                   ListTile(
                     leading: const Icon(Icons.playlist_play_rounded),
                     title: const Text('Play Next',
@@ -492,10 +551,298 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
+
+  void _showBatchTrackOptions(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    PixelHaptics.sheetExpand();
+    final cs = Theme.of(context).colorScheme;
+    final totalDurationMs = tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
+    final totalSeconds = (totalDurationMs / 1000).floor();
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final formattedDuration =
+        hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+    final artistCount = tracks
+        .map((t) => t.artist)
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .length;
+
+    final allPinned = tracks.every((t) => t.isPinnedOffline);
+    final unpinnedCount = tracks.where((t) => !t.isPinnedOffline).length;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Material(
+          color: cs.surfaceContainerLowest,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(28)),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.4),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.queue_music_rounded,
+                                color: cs.onPrimaryContainer,
+                                size: 28,
+                              ),
+                              Positioned(
+                                right: 4,
+                                bottom: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: cs.primary,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '${tracks.length}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: cs.onPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${tracks.length} Selected ${tracks.length == 1 ? "Track" : "Tracks"}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '$formattedDuration • $artistCount ${artistCount == 1 ? "artist" : "artists"}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.playlist_play_rounded),
+                    title: const Text('Play Next',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                        'Insert ${tracks.length} tracks immediately after current track'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      ref
+                          .read(playbackProvider.notifier)
+                          .playNextMultiple(tracks);
+                      _exitMultiSelect();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Playing next: ${tracks.length} tracks',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.queue_music_rounded),
+                    title: const Text('Add to Queue',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                        'Append ${tracks.length} tracks to Up Next queue'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      ref
+                          .read(playbackProvider.notifier)
+                          .addToQueueMultiple(tracks);
+                      _exitMultiSelect();
+                      PixelHaptics.hifiConfirm();
+                      SwipeToQueueWrapper.showQueuedSnackBar(
+                        context,
+                        '${tracks.length} tracks',
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.playlist_add_rounded),
+                    title: const Text('Add to Playlist',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                        'Save ${tracks.length} tracks to custom or new playlist'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showAddToPlaylistModal(context, null, tracks);
+                      _exitMultiSelect();
+                    },
+                  ),
+                  if (tracks.length == 1) ...[
+                    ListTile(
+                      leading: const Icon(Icons.info_outline_rounded),
+                      title: const Text('View Track Details',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                          '${tracks.first.codec} • ${tracks.first.bitDepth}-Bit • ${tracks.first.formattedSampleRate}'),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                TrackDetailsScreen(track: tracks.first),
+                          ),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.person_rounded),
+                      title: Text('View Artist: ${tracks.first.artist}',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ArtistDetailsScreen(
+                              artistName: tracks.first.artist,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                  ListTile(
+                    leading: Icon(
+                      allPinned
+                          ? Icons.download_done_rounded
+                          : Icons.download_rounded,
+                    ),
+                    title: Text(
+                      allPinned
+                          ? 'Remove from Offline Cache (${tracks.length} tracks)'
+                          : 'Download / Cache Offline ($unpinnedCount new)',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      allPinned
+                          ? 'Delete local cached files to free device space'
+                          : 'Download and pin for offline lossless playback',
+                    ),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      if (allPinned) {
+                        ref
+                            .read(tracksCatalogProvider.notifier)
+                            .unpinTracksOffline(
+                              tracks.map((t) => t.id).toList(),
+                            );
+                      } else {
+                        ref
+                            .read(tracksCatalogProvider.notifier)
+                            .pinTracksOffline(
+                              tracks.map((t) => t.id).toList(),
+                            );
+                      }
+                      _exitMultiSelect();
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading:
+                        Icon(Icons.delete_outline_rounded, color: cs.error),
+                    title: Text(
+                      'Remove from Library',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.error,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Remove ${tracks.length} tracks from library, offline cache, and playlists',
+                    ),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showRemoveTracksConfirmationDialog(
+                        context,
+                        ref,
+                        tracks,
+                        onRemoved: _exitMultiSelect,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -533,95 +880,229 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }).toList();
 
+    final isAllFilteredSelected = filtered.isNotEmpty &&
+        filtered.every((t) => _selectedTrackIds.contains(t.id));
+    final selectedTracks = allTracks
+        .where((t) => _selectedTrackIds.contains(t.id))
+        .toList();
+
     final hasActiveTrack = ref.watch(
-      playbackProvider.select((p) => p.currentTrack.id.isNotEmpty && p.queue.isNotEmpty),
+      playbackProvider.select(
+        (p) => p.currentTrack.id.isNotEmpty && p.queue.isNotEmpty,
+      ),
     );
     // Align with mini player when music is active (58.0 + Scaffold's 16.0 margin = 74.0dp, exactly matching the mini player from 74-124dp above screen bottom)
     // When no track is active, sit comfortably above the navigation pill (8.0 + 16.0 = 24.0dp)
     final bottomFabPadding = hasActiveTrack ? 58.0 : 8.0;
 
-    return Scaffold(
-      floatingActionButton: widget.showFab
-          ? Padding(
-              padding: EdgeInsets.only(bottom: bottomFabPadding),
-              child: SizedBox(
-                width: 50,
-                height: 50,
-                child: FloatingActionButton(
-                  shape: const CircleBorder(),
-                  elevation: 4,
-                  backgroundColor: cs.primaryContainer,
-                  foregroundColor: cs.onPrimaryContainer,
-                  tooltip:
-                      _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-                  onPressed: _segment == 'playlists'
-                      ? _showCreatePlaylistDialog
-                      : _pickLocalFiles,
-                  child: Icon(
-                    _segment == 'playlists'
-                        ? Icons.playlist_add_rounded
-                        : Icons.add_rounded,
-                    size: 26,
-                  ),
+    return PopScope(
+      canPop: !_isMultiSelect,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isMultiSelect) {
+          _exitMultiSelect();
+        }
+      },
+      child: Scaffold(
+        floatingActionButtonLocation: _isMultiSelect
+            ? FloatingActionButtonLocation.centerFloat
+            : FloatingActionButtonLocation.endFloat,
+        floatingActionButton: _isMultiSelect
+            ? Padding(
+                padding: EdgeInsets.only(bottom: bottomFabPadding),
+                child: _BatchActionsFloatingBar(
+                  selectedCount: _selectedTrackIds.length,
+                  onPlayNext: _selectedTrackIds.isEmpty
+                      ? null
+                      : () {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playNextMultiple(selectedTracks);
+                          _exitMultiSelect();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Playing next: ${selectedTracks.length} tracks',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                  onAddToQueue: _selectedTrackIds.isEmpty
+                      ? null
+                      : () {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .addToQueueMultiple(selectedTracks);
+                          _exitMultiSelect();
+                          SwipeToQueueWrapper.showQueuedSnackBar(
+                            context,
+                            '${selectedTracks.length} tracks',
+                          );
+                        },
+                  onAddToPlaylist: _selectedTrackIds.isEmpty
+                      ? null
+                      : () {
+                          showAddToPlaylistModal(context, null, selectedTracks);
+                          _exitMultiSelect();
+                        },
+                  onToggleOffline: _selectedTrackIds.isEmpty
+                      ? null
+                      : () {
+                          final allPinned = selectedTracks
+                              .every((t) => t.isPinnedOffline);
+                          if (allPinned) {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .unpinTracksOffline(
+                                  selectedTracks.map((t) => t.id).toList(),
+                                );
+                          } else {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .pinTracksOffline(
+                                  selectedTracks.map((t) => t.id).toList(),
+                                );
+                          }
+                          _exitMultiSelect();
+                        },
+                  onRemove: _selectedTrackIds.isEmpty
+                      ? null
+                      : () {
+                          showRemoveTracksConfirmationDialog(
+                            context,
+                            ref,
+                            selectedTracks,
+                            onRemoved: _exitMultiSelect,
+                          );
+                        },
+                  onOptions: _selectedTrackIds.isEmpty
+                      ? null
+                      : () => _showBatchTrackOptions(selectedTracks),
+                ),
+              )
+            : (widget.showFab
+                ? Padding(
+                    padding: EdgeInsets.only(bottom: bottomFabPadding),
+                    child: SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: FloatingActionButton(
+                        shape: const CircleBorder(),
+                        elevation: 4,
+                        backgroundColor: cs.primaryContainer,
+                        foregroundColor: cs.onPrimaryContainer,
+                        tooltip: _segment == 'playlists'
+                            ? 'New Playlist'
+                            : 'Add Music',
+                        onPressed: _segment == 'playlists'
+                            ? _showCreatePlaylistDialog
+                            : _pickLocalFiles,
+                        child: Icon(
+                          _segment == 'playlists'
+                              ? Icons.playlist_add_rounded
+                              : Icons.add_rounded,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  )
+                : null),
+        body: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // ─────────────────────────────────────────────────────────────────
+            // 1. M3 Top App Bar
+            // ─────────────────────────────────────────────────────────────────
+            SliverAppBar(
+              pinned: true,
+              leading: _isMultiSelect
+                  ? IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Exit Selection',
+                      onPressed: _exitMultiSelect,
+                    )
+                  : null,
+              title: Text(
+                _isMultiSelect
+                    ? (_selectedTrackIds.isEmpty
+                        ? 'Select Tracks'
+                        : '${_selectedTrackIds.length} Selected')
+                    : 'Your Library',
+                style: textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: _isMultiSelect ? 20 : null,
                 ),
               ),
-            )
-          : null,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          // ───────────────────────────────────────────────────────────────────
-          // 1. M3 Top App Bar
-          // ───────────────────────────────────────────────────────────────────
-          SliverAppBar(
-            pinned: true,
-            title: Text(
-              'Your Library',
-              style: textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              actions: [
+                if (_isMultiSelect) ...[
+                  IconButton(
+                    icon: Icon(
+                      isAllFilteredSelected
+                          ? Icons.deselect_rounded
+                          : Icons.select_all_rounded,
+                    ),
+                    tooltip:
+                        isAllFilteredSelected ? 'Deselect All' : 'Select All',
+                    onPressed: () => _toggleSelectAll(filtered),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    tooltip: 'Batch Options',
+                    onPressed: _selectedTrackIds.isEmpty
+                        ? null
+                        : () => _showBatchTrackOptions(selectedTracks),
+                  ),
+                ] else ...[
+                  IconButton(
+                    icon: const Icon(Icons.playlist_add_check_circle_outlined),
+                    tooltip: 'Import Spotify / Apple Music Playlist',
+                    onPressed: () => showPlaylistImportModal(context),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.checklist_rounded),
+                    tooltip: 'Select Tracks',
+                    onPressed: () => _enterMultiSelect(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_rounded),
+                    tooltip:
+                        _segment == 'playlists' ? 'New Playlist' : 'Add Music',
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      if (_segment == 'playlists') {
+                        _showCreatePlaylistDialog();
+                      } else {
+                        _pickLocalFiles();
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.search_rounded),
+                    tooltip: 'Search Library',
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SearchScreen()),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    tooltip: 'Settings',
+                    onPressed: () {
+                      PixelHaptics.tick();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+                const SizedBox(width: 8),
+              ],
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.playlist_add_check_circle_outlined),
-                tooltip: 'Import Spotify / Apple Music Playlist',
-                onPressed: () => showPlaylistImportModal(context),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_rounded),
-                tooltip: _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-                onPressed: () {
-                  PixelHaptics.tick();
-                  if (_segment == 'playlists') {
-                    _showCreatePlaylistDialog();
-                  } else {
-                    _pickLocalFiles();
-                  }
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.search_rounded),
-                tooltip: 'Search Library',
-                onPressed: () {
-                  PixelHaptics.tick();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SearchScreen()),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Settings',
-                onPressed: () {
-                  PixelHaptics.tick();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-            ],
-          ),
 
           // Real-Time Import Progress Loading Bar
           if (importProgress.isImporting)
@@ -1270,6 +1751,73 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               )
             else if (filtered.isNotEmpty) ...[
+              // Track List Header with Count & Multi-Select / Select All controls
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 16, 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _isMultiSelect
+                            ? '${_selectedTrackIds.length} of ${filtered.length} selected'
+                            : '${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isMultiSelect) ...[
+                            TextButton.icon(
+                              onPressed: () => _toggleSelectAll(filtered),
+                              icon: Icon(
+                                isAllFilteredSelected
+                                    ? Icons.deselect_rounded
+                                    : Icons.select_all_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                isAllFilteredSelected
+                                    ? 'Deselect All'
+                                    : 'Select All',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                              ),
+                            ),
+                          ] else ...[
+                            TextButton.icon(
+                              onPressed: () => _enterMultiSelect(),
+                              icon: const Icon(
+                                Icons.checklist_rounded,
+                                size: 18,
+                              ),
+                              label: const Text(
+                                'Select',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // 3. Fully Virtualized Track List with RepaintBoundary per item for smooth 120Hz scrolling
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
@@ -1305,16 +1853,31 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       return RepaintBoundary(
                         child: SwipeToQueueWrapper(
                           track: track,
+                          enabled: !_isMultiSelect,
                           child: _LibraryTrackTile(
                             track: track,
                             isCurrent: isCurrent,
                             isPlaying: isPlaying,
                             durationText:
                                 _formatTrackDuration(track.durationMs),
+                            isMultiSelect: _isMultiSelect,
+                            isSelected: _selectedTrackIds.contains(track.id),
+                            onSelectToggle: () => _toggleSelectTrack(track.id),
                             onTap: () {
-                              ref
-                                  .read(playbackProvider.notifier)
-                                  .playTrack(track);
+                              if (_isMultiSelect) {
+                                _toggleSelectTrack(track.id);
+                              } else {
+                                ref
+                                    .read(playbackProvider.notifier)
+                                    .playTrack(track);
+                              }
+                            },
+                            onLongPress: () {
+                              if (_isMultiSelect) {
+                                _toggleSelectTrack(track.id);
+                              } else {
+                                _enterMultiSelect(track.id);
+                              }
                             },
                             onToggleFavorite: () {
                               ref
@@ -1341,6 +1904,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ],
         ],
       ],
+      ),
       ),
     );
   }
@@ -1417,6 +1981,10 @@ class _LibraryTrackTile extends StatelessWidget {
     required this.onToggleFavorite,
     required this.onTogglePin,
     required this.onOptionsTap,
+    this.isMultiSelect = false,
+    this.isSelected = false,
+    this.onSelectToggle,
+    this.onLongPress,
   });
 
   final Track track;
@@ -1427,6 +1995,10 @@ class _LibraryTrackTile extends StatelessWidget {
   final VoidCallback onToggleFavorite;
   final VoidCallback onTogglePin;
   final VoidCallback onOptionsTap;
+  final bool isMultiSelect;
+  final bool isSelected;
+  final VoidCallback? onSelectToggle;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1435,16 +2007,50 @@ class _LibraryTrackTile extends StatelessWidget {
     return InkWell(
       onTap: () {
         PixelHaptics.tick();
-        onTap();
+        if (isMultiSelect) {
+          onSelectToggle?.call();
+        } else {
+          onTap();
+        }
       },
       onLongPress: () {
         PixelHaptics.sheetExpand();
-        onOptionsTap();
+        if (onLongPress != null) {
+          onLongPress!();
+        } else {
+          onOptionsTap();
+        }
       },
-      child: Padding(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? cs.primaryContainer.withValues(alpha: 0.35)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
+            if (isMultiSelect) ...[
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: isSelected ? cs.primary : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? cs.primary : cs.outlineVariant,
+                    width: 2,
+                  ),
+                ),
+                child: isSelected
+                    ? Icon(Icons.check_rounded, size: 16, color: cs.onPrimary)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+            ],
             MaterialYouAlbumCover(
               track: track,
               size: 48,
@@ -1494,13 +2100,17 @@ class _LibraryTrackTile extends StatelessWidget {
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () {
-                            PixelHaptics.tick();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    ArtistDetailsScreen(artistName: track.artist),
-                              ),
-                            );
+                            if (isMultiSelect) {
+                              onSelectToggle?.call();
+                            } else {
+                              PixelHaptics.tick();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ArtistDetailsScreen(artistName: track.artist),
+                                ),
+                              );
+                            }
                           },
                           child: Text(
                             '${track.artist} • $durationText',
@@ -1518,29 +2128,117 @@ class _LibraryTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-            MaterialYouDownloadButton(
-              track: track,
-              size: 20,
-            ),
-            IconButton(
-              icon: Icon(
-                track.isFavorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+            if (!isMultiSelect) ...[
+              MaterialYouDownloadButton(
+                track: track,
                 size: 20,
               ),
-              onPressed: onToggleFavorite,
-            ),
-            IconButton(
-              icon: const Icon(Icons.more_vert_rounded, size: 20),
-              tooltip: 'Track Options',
-              onPressed: () {
-                PixelHaptics.tick();
-                onOptionsTap();
-              },
-            ),
+              IconButton(
+                icon: Icon(
+                  track.isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                  size: 20,
+                ),
+                onPressed: onToggleFavorite,
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert_rounded, size: 20),
+                tooltip: 'Track Options',
+                onPressed: () {
+                  PixelHaptics.tick();
+                  onOptionsTap();
+                },
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BatchActionsFloatingBar extends StatelessWidget {
+  const _BatchActionsFloatingBar({
+    required this.selectedCount,
+    required this.onPlayNext,
+    required this.onAddToQueue,
+    required this.onAddToPlaylist,
+    required this.onToggleOffline,
+    required this.onRemove,
+    required this.onOptions,
+  });
+
+  final int selectedCount;
+  final VoidCallback? onPlayNext;
+  final VoidCallback? onAddToQueue;
+  final VoidCallback? onAddToPlaylist;
+  final VoidCallback? onToggleOffline;
+  final VoidCallback? onRemove;
+  final VoidCallback? onOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isEnabled = selectedCount > 0;
+
+    return Center(
+      child: Material(
+        elevation: 6,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(32),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 350),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.4),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.playlist_play_rounded),
+                tooltip: 'Play Next',
+                onPressed: isEnabled ? onPlayNext : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.queue_music_rounded),
+                tooltip: 'Add to Queue',
+                onPressed: isEnabled ? onAddToQueue : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.playlist_add_rounded),
+                tooltip: 'Add to Playlist',
+                onPressed: isEnabled ? onAddToPlaylist : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.download_rounded),
+                tooltip: 'Download / Offline',
+                onPressed: isEnabled ? onToggleOffline : null,
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: isEnabled ? cs.error : null,
+                ),
+                tooltip: 'Remove from Library',
+                onPressed: isEnabled ? onRemove : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: 'More Options',
+                onPressed: isEnabled ? onOptions : null,
+              ),
+            ],
+          ),
         ),
       ),
     );

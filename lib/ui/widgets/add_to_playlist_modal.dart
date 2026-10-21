@@ -7,20 +7,26 @@ import 'expressive_shapes.dart';
 import 'generative_playlist_cover.dart';
 
 /// Shows the Material 3 Expressive "Add to Playlist" bottom sheet modal.
-Future<void> showAddToPlaylistModal(BuildContext context, Track track) {
+Future<void> showAddToPlaylistModal(
+  BuildContext context, [
+  Track? track,
+  List<Track>? tracks,
+]) {
+  final targetTracks = tracks ?? (track != null ? [track] : <Track>[]);
+  if (targetTracks.isEmpty) return Future.value();
   PixelHaptics.sheetExpand();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (ctx) => _AddToPlaylistSheet(track: track),
+    builder: (ctx) => _AddToPlaylistSheet(tracks: targetTracks),
   );
 }
 
 class _AddToPlaylistSheet extends ConsumerStatefulWidget {
-  const _AddToPlaylistSheet({required this.track});
+  const _AddToPlaylistSheet({required this.tracks});
 
-  final Track track;
+  final List<Track> tracks;
 
   @override
   ConsumerState<_AddToPlaylistSheet> createState() =>
@@ -92,15 +98,21 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                         title,
                         description: descController.text.trim(),
                       );
-                  // Automatically add this track to the newly created playlist
+                  // Automatically add tracks to the newly created playlist
                   await ref
                       .read(playlistsProvider.notifier)
-                      .addTrackToPlaylist(playlist.id, widget.track.id);
+                      .addTracksToPlaylist(
+                        playlist.id,
+                        widget.tracks.map((t) => t.id).toList(),
+                      );
                   await PixelHaptics.hifiConfirm();
                   if (mounted) {
+                    final msg = widget.tracks.length == 1
+                        ? 'Added to "$title"'
+                        : 'Added ${widget.tracks.length} tracks to "$title"';
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Added to "$title"'),
+                        content: Text(msg),
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -180,14 +192,18 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Add to Playlist',
+                          widget.tracks.length == 1
+                              ? 'Add to Playlist'
+                              : 'Add ${widget.tracks.length} Tracks to Playlist',
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${widget.track.title} • ${widget.track.artist}',
+                          widget.tracks.length == 1
+                              ? '${widget.tracks.first.title} • ${widget.tracks.first.artist}'
+                              : '${widget.tracks.length} selected tracks from library',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: textTheme.bodySmall?.copyWith(
@@ -280,25 +296,41 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                       itemBuilder: (context, idx) {
                         final playlist = playlists[idx];
+                        final targetTrackIds =
+                            widget.tracks.map((t) => t.id).toList();
+                        final isSingle = widget.tracks.length == 1;
+                        final allPresent = targetTrackIds.isNotEmpty &&
+                            targetTrackIds.every(
+                                (id) => playlist.trackIds.contains(id));
+                        final somePresent = targetTrackIds.any(
+                            (id) => playlist.trackIds.contains(id));
                         final isInPlaylist =
-                            playlist.trackIds.contains(widget.track.id);
+                            isSingle ? playlist.trackIds.contains(widget.tracks.first.id) : allPresent;
 
                         return SpringPressScale(
                           onTap: () async {
                             final notifier =
                                 ref.read(playlistsProvider.notifier);
                             if (isInPlaylist) {
-                              await notifier.removeTrackFromPlaylist(
-                                playlist.id,
-                                widget.track.id,
-                              );
+                              if (isSingle) {
+                                await notifier.removeTrackFromPlaylist(
+                                  playlist.id,
+                                  widget.tracks.first.id,
+                                );
+                              } else {
+                                await notifier.removeTracksFromPlaylist(
+                                  playlist.id,
+                                  targetTrackIds,
+                                );
+                              }
                               await PixelHaptics.tick();
                               if (context.mounted) {
+                                final msg = isSingle
+                                    ? 'Removed from "${playlist.title}"'
+                                    : 'Removed ${widget.tracks.length} tracks from "${playlist.title}"';
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text(
-                                      'Removed from "${playlist.title}"',
-                                    ),
+                                    content: Text(msg),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                       borderRadius:
@@ -308,17 +340,25 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                                 );
                               }
                             } else {
-                              await notifier.addTrackToPlaylist(
-                                playlist.id,
-                                widget.track.id,
-                              );
+                              if (isSingle) {
+                                await notifier.addTrackToPlaylist(
+                                  playlist.id,
+                                  widget.tracks.first.id,
+                                );
+                              } else {
+                                await notifier.addTracksToPlaylist(
+                                  playlist.id,
+                                  targetTrackIds,
+                                );
+                              }
                               await PixelHaptics.hifiConfirm();
                               if (context.mounted) {
+                                final msg = isSingle
+                                    ? 'Added to "${playlist.title}"'
+                                    : 'Added ${widget.tracks.length} tracks to "${playlist.title}"';
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text(
-                                      'Added to "${playlist.title}"',
-                                    ),
+                                    content: Text(msg),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                       borderRadius:
@@ -333,7 +373,10 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                             decoration: BoxDecoration(
                               color: isInPlaylist
                                   ? cs.primaryContainer.withValues(alpha: 0.28)
-                                  : Colors.transparent,
+                                  : (somePresent && !isSingle)
+                                      ? cs.secondaryContainer
+                                          .withValues(alpha: 0.15)
+                                      : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: ListTile(
@@ -348,10 +391,10 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontWeight: isInPlaylist
+                                  fontWeight: (isInPlaylist || somePresent)
                                       ? FontWeight.w800
                                       : FontWeight.w600,
-                                  color: isInPlaylist
+                                  color: (isInPlaylist || somePresent)
                                       ? cs.primary
                                       : cs.onSurface,
                                 ),
@@ -370,10 +413,12 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                                 decoration: BoxDecoration(
                                   color: isInPlaylist
                                       ? cs.primary
-                                      : Colors.transparent,
+                                      : (somePresent && !isSingle)
+                                          ? cs.primary.withValues(alpha: 0.2)
+                                          : Colors.transparent,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: isInPlaylist
+                                    color: (isInPlaylist || somePresent)
                                         ? cs.primary
                                         : cs.outlineVariant,
                                     width: 1.5,
@@ -385,7 +430,13 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                                         size: 18,
                                         color: cs.onPrimary,
                                       )
-                                    : null,
+                                    : (somePresent && !isSingle)
+                                        ? Icon(
+                                            Icons.remove_rounded,
+                                            size: 16,
+                                            color: cs.primary,
+                                          )
+                                        : null,
                               ),
                             ),
                           ),
