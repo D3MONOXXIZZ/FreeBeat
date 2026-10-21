@@ -9,6 +9,7 @@ import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/playlist_import_modal.dart';
 import '../widgets/playlist_qr_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
@@ -530,6 +531,15 @@ class _PlaylistDetailsScreenState
             actions: [
               if (!livePlaylist.isSmart)
                 IconButton(
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  tooltip: 'Import Songs',
+                  onPressed: () => showPlaylistImportModal(
+                    context,
+                    targetPlaylist: livePlaylist,
+                  ),
+                ),
+              if (!livePlaylist.isSmart)
+                IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: 'Edit Playlist',
                   onPressed: () => _showRenameDialog(livePlaylist),
@@ -675,6 +685,29 @@ class _PlaylistDetailsScreenState
                     ],
                   ),
                   _buildDownloadRow(context, cs, playlistTracks),
+                  if (!livePlaylist.isSmart) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        PixelHaptics.tick();
+                        showPlaylistImportModal(
+                          context,
+                          targetPlaylist: livePlaylist,
+                        );
+                      },
+                      icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                      label: const Text(
+                        'Import Songs (Spotify / Apple Music / Text / M3U)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -701,13 +734,39 @@ class _PlaylistDetailsScreenState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Add songs from your library using the 3-dots menu on any track.',
+                        'Add songs from your library using the 3-dots menu on any track, or import from Spotify or Apple Music.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 13,
                           color: cs.onSurfaceVariant,
                         ),
                       ),
+                      if (!livePlaylist.isSmart) ...[
+                        const SizedBox(height: 16),
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            PixelHaptics.tick();
+                            showPlaylistImportModal(
+                              context,
+                              targetPlaylist: livePlaylist,
+                            );
+                          },
+                          icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                          label: const Text(
+                            'Import Songs into Playlist',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

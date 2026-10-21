@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
+import '../../core/models/playlist.dart';
 import '../../services/auth/native_cloud_auth_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../services/playlist/playlist_import_service.dart';
@@ -14,18 +15,19 @@ import '../screens/playlist_details_screen.dart';
 import 'material_you_album_cover.dart';
 
 /// Opens the Material 3 Expressive Playlist Importer modal.
-Future<void> showPlaylistImportModal(BuildContext context) {
+Future<void> showPlaylistImportModal(BuildContext context, {Playlist? targetPlaylist}) {
   PixelHaptics.sheetExpand();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (ctx) => const _PlaylistImportSheet(),
+    builder: (ctx) => _PlaylistImportSheet(targetPlaylist: targetPlaylist),
   );
 }
 
 class _PlaylistImportSheet extends ConsumerStatefulWidget {
-  const _PlaylistImportSheet();
+  const _PlaylistImportSheet({this.targetPlaylist});
+  final Playlist? targetPlaylist;
 
   @override
   ConsumerState<_PlaylistImportSheet> createState() =>
@@ -56,7 +58,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController();
+    _titleController = TextEditingController(text: widget.targetPlaylist?.title ?? '');
   }
 
   @override
@@ -201,7 +203,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
 
       setState(() {
         _result = res;
-        _titleController.text = res.title;
+        _titleController.text = widget.targetPlaylist?.title ?? res.title;
         _isLoading = false;
       });
       await PixelHaptics.hifiConfirm();
@@ -230,26 +232,46 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
     if (_result == null) return;
     PixelHaptics.hifiConfirm();
 
-    final title = _titleController.text.trim().isEmpty
-        ? _result!.title
-        : _titleController.text.trim();
-
-    final playlist = await ref.read(playlistsProvider.notifier).createPlaylist(
-          title,
-          description: _result!.description,
-          initialTrackIds: _result!.matchedTracks.map((t) => t.id).toList(),
+    Playlist target;
+    if (widget.targetPlaylist != null) {
+      target = widget.targetPlaylist!;
+      // Append matched tracks to existing playlist
+      if (_result!.matchedTracks.isNotEmpty) {
+        await ref.read(playlistsProvider.notifier).addTracksToPlaylist(
+          target.id,
+          _result!.matchedTracks.map((t) => t.id).toList(),
         );
+      }
+    } else {
+      final title = _titleController.text.trim().isEmpty
+          ? _result!.title
+          : _titleController.text.trim();
+
+      target = await ref.read(playlistsProvider.notifier).createPlaylist(
+            title,
+            description: _result!.description,
+            initialTrackIds: _result!.matchedTracks.map((t) => t.id).toList(),
+          );
+    }
 
     final missing = _result!.missingTracks;
 
     if (syncMissing && missing.isNotEmpty) {
       final accounts = ref.read(cloudAccountsProvider);
+      final remoteAccounts = accounts
+          .where((a) =>
+              a.providerType != CloudProviderType.androidSaf &&
+              a.providerType != CloudProviderType.demoCloud)
+          .toList();
+
       CloudAccount targetAccount;
       if (_selectedAccountId != null && _selectedAccountId != 'device_storage') {
         targetAccount = accounts.firstWhere(
           (a) => a.id == _selectedAccountId,
-          orElse: () => _defaultLocalStorageAccount,
+          orElse: () => remoteAccounts.isNotEmpty ? remoteAccounts.first : _defaultLocalStorageAccount,
         );
+      } else if (remoteAccounts.isNotEmpty && _selectedAccountId != 'device_storage') {
+        targetAccount = remoteAccounts.first;
       } else if (accounts.isNotEmpty && _selectedAccountId != 'device_storage') {
         targetAccount = accounts.first;
       } else {
@@ -259,8 +281,8 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
       unawaited(
         ref.read(playlistMissingTracksSyncProvider.notifier).startSync(
               missingTracks: missing,
-              playlistId: playlist.id,
-              playlistTitle: title,
+              playlistId: target.id,
+              playlistTitle: target.title,
               account: targetAccount,
             ),
       );
@@ -268,12 +290,17 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
 
     if (mounted) {
       Navigator.of(context).pop();
+      final title = target.title;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            syncMissing && missing.isNotEmpty
-                ? 'Created "$title" • Downloading & syncing ${missing.length} missing songs in parallel...'
-                : 'Created playlist "$title" with ${_result!.matchedCount} tracks!',
+            widget.targetPlaylist != null
+                ? (syncMissing && missing.isNotEmpty
+                    ? 'Syncing ${missing.length} missing songs into "$title" to cloud...'
+                    : 'Added ${_result!.matchedCount} songs to "$title"')
+                : (syncMissing && missing.isNotEmpty
+                    ? 'Created "$title" • Downloading & syncing ${missing.length} missing songs in parallel...'
+                    : 'Created playlist "$title" with ${_result!.matchedCount} tracks!'),
           ),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -282,14 +309,18 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
         ),
       );
 
-      // Navigate to the newly created playlist
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PlaylistDetailsScreen(playlist: playlist),
-        ),
-      );
+      // Only push new screen if this was creating a brand new playlist
+      if (widget.targetPlaylist == null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PlaylistDetailsScreen(playlist: target),
+          ),
+        );
+      }
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -354,13 +385,13 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Import Playlist',
+                      widget.targetPlaylist != null ? 'Import Songs into Playlist' : 'Import Playlist',
                       style: textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
-                      'Spotify, Apple Music, .M3U8, or CSV tracklists',
+                      widget.targetPlaylist != null ? 'Adding songs to "${widget.targetPlaylist!.title}"' : 'Spotify, Apple Music, .M3U8, or CSV tracklists',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onSurfaceVariant,
@@ -453,7 +484,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   child: OutlinedButton.icon(
                     onPressed: _isLoading ? null : () => _directImport(syncMissing: false),
                     icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                    label: const Text('Save Playlist'),
+                    label: Text(widget.targetPlaylist != null ? 'Add Matched' : 'Save Playlist'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -467,7 +498,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   child: FilledButton.icon(
                     onPressed: _isLoading ? null : () => _directImport(syncMissing: true),
                     icon: const Icon(Icons.cloud_download_rounded, size: 18),
-                    label: const Text('Get Missing Tracks'),
+                    label: Text(widget.targetPlaylist != null ? 'Sync & Add Missing' : 'Get Missing Tracks'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -480,21 +511,60 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             ),
           ] else ...[
             // Result View
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(
-                labelText: 'Playlist Title',
-                filled: true,
-                fillColor: cs.surfaceContainerHighest,
-                border: OutlineInputBorder(
+            if (widget.targetPlaylist != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.playlist_play_rounded, size: 22, color: cs.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Adding to Playlist',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            widget.targetPlaylist!.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              TextField(
+                controller: _titleController,
+                decoration: InputDecoration(
+                  labelText: 'Playlist Title',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
             const SizedBox(height: 12),
 
             // Match stat chip
@@ -691,7 +761,15 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                                       (accounts.any((a) => a.id == _selectedAccountId) ||
                                           _selectedAccountId == 'device_storage'))
                                   ? _selectedAccountId
-                                  : accounts.first.id,
+                                  : (accounts.any((a) =>
+                                          a.providerType != CloudProviderType.androidSaf &&
+                                          a.providerType != CloudProviderType.demoCloud)
+                                      ? accounts
+                                          .firstWhere((a) =>
+                                              a.providerType != CloudProviderType.androidSaf &&
+                                              a.providerType != CloudProviderType.demoCloud)
+                                          .id
+                                      : (accounts.isNotEmpty ? accounts.first.id : 'device_storage')),
                               items: [
                                 for (final acc in accounts)
                                   DropdownMenuItem(
@@ -744,6 +822,40 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                             ),
                           ),
                         ),
+                        if (accounts.every((a) =>
+                            a.providerType == CloudProviderType.androidSaf ||
+                            a.providerType == CloudProviderType.demoCloud)) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(Icons.cloud_outlined, size: 14, color: cs.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Tip: Connect Google Drive to save to cloud & stream on demand.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _isConnectingGoogle ? null : _connectGoogleDrive,
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                child: _isConnectingGoogle
+                                    ? const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Text('Connect', style: TextStyle(fontSize: 11)),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ],
                   ],
@@ -817,7 +929,9 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                         ),
                       ),
                       label: Text(
-                        'Save Playlist (${_result!.matchedCount})',
+                        widget.targetPlaylist != null
+                            ? 'Add Matched (${_result!.matchedCount})'
+                            : 'Save Playlist (${_result!.matchedCount})',
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -840,8 +954,12 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     ),
                     label: Text(
                       _syncMissingTracks && _result!.missingTracks.isNotEmpty
-                          ? 'Get Missing Tracks (${_result!.totalParsed})'
-                          : 'Save Playlist (${_result!.matchedCount})',
+                          ? (widget.targetPlaylist != null
+                              ? 'Sync Missing & Add (${_result!.totalParsed})'
+                              : 'Get Missing Tracks (${_result!.totalParsed})')
+                          : (widget.targetPlaylist != null
+                              ? 'Add to Playlist (${_result!.matchedCount})'
+                              : 'Save Playlist (${_result!.matchedCount})'),
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
                       overflow: TextOverflow.ellipsis,
                     ),

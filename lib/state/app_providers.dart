@@ -347,6 +347,20 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
           }
         }
 
+        // 3. Ensure imported and cloud tracks are NOT automatically marked as pinned offline
+        // Tracks should only be in the Offline Vault on explicit user demand (via pin/download).
+        if (clean.isPinnedOffline) {
+          if (clean.providerType != CloudProviderType.androidSaf) {
+            // Remote cloud track: only pinned if locally cached file actually exists
+            if (clean.localCachePath == null || !File(clean.localCachePath!).existsSync()) {
+              clean = clean.copyWith(isPinnedOffline: false, clearLocalCachePath: true);
+            }
+          } else if (clean.id.startsWith('local_')) {
+            // Local fallback import: unpin so it streams on demand and doesn't clutter Offline Vault
+            clean = clean.copyWith(isPinnedOffline: false);
+          }
+        }
+
         if (clean != t) {
           await _db.upsertTracks([clean]);
         }
