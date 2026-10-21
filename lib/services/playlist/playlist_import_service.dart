@@ -1045,6 +1045,7 @@ class PlaylistImportService {
               expectedDurationMs: entry.durationMs,
               preferredArtworkUrl: entry.artworkUrl,
               previewAudioUrl: entry.previewAudioUrl,
+              sourceUrl: entry.urlOrPath,
             ),
           );
         }

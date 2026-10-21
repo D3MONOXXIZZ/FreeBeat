@@ -82,32 +82,50 @@ void main() {
       expect(candidate.streamUrl, equals('https://mock.stream.server/audio.m4a'));
     });
 
-    test('iTunes API resolves AAC stream candidate instantly with metadata', () async {
+    test('30s preview URLs are strictly rejected and never imported as full tracks', () async {
       final mockClient = MockClient((request) async {
-        final url = request.url.toString();
-        if (url.contains('itunes.apple.com/search')) {
-          return http.Response(
-            jsonEncode({
-              'resultCount': 1,
-              'results': [
-                {
-                  'trackId': 998877,
-                  'trackName': 'Hello',
-                  'artistName': 'Adele',
-                  'collectionName': '25',
-                  'previewUrl': 'https://audio-ssl.itunes.apple.com/m4a/hello.m4a',
-                  'artworkUrl100': 'https://is1-ssl.mzstatic.com/100x100bb.jpg',
-                  'trackTimeMillis': 295502,
-                }
-              ]
-            }),
-            200,
-          );
-        }
         return http.Response('Not Found', 404);
       });
 
       final resolver = MissingTrackAudioResolver(httpClient: mockClient);
+      final candidate = await resolver.resolveTrackAudio(
+        title: 'Direct Song',
+        artist: 'Direct Artist',
+        directPreviewUrl: 'https://p.scdn.co/mp3-preview/direct123.mp3',
+        expectedDurationMs: 30000,
+      );
+
+      // 30s previews MUST be rejected
+      expect(candidate, isNull);
+    });
+
+    test('Direct YouTube link extracts video ID and rejects short snippets (<45s)', () {
+      expect(
+        MissingTrackAudioResolver.extractYouTubeVideoId('https://music.youtube.com/watch?v=dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+      expect(
+        MissingTrackAudioResolver.extractYouTubeVideoId('https://youtu.be/dQw4w9WgXcQ'),
+        equals('dQw4w9WgXcQ'),
+      );
+    });
+
+    test('Custom resolver returns full audio candidate with full length validation', () async {
+      final resolver = MissingTrackAudioResolver(
+        customResolver: ({required artist, required title, expectedDurationMs}) async {
+          return AudioStreamCandidate(
+            streamUrl: 'https://youtube.com/audio/test.m4a',
+            format: 'm4a',
+            bitrateKbps: 256,
+            sourceId: 'yt_test_123',
+            sourceTitle: title,
+            channelOrArtist: artist,
+            durationMs: 210000,
+            isFullLength: true,
+          );
+        },
+      );
+
       final candidate = await resolver.resolveTrackAudio(
         title: 'Hello',
         artist: 'Adele',
@@ -115,31 +133,9 @@ void main() {
       );
 
       expect(candidate, isNotNull);
-      expect(candidate!.sourceId, equals('itunes_998877'));
-      expect(candidate.sourceTitle, equals('Hello'));
-      expect(candidate.channelOrArtist, equals('Adele'));
-      expect(candidate.album, equals('25'));
-      expect(candidate.streamUrl, equals('https://audio-ssl.itunes.apple.com/m4a/hello.m4a'));
-      expect(candidate.format, equals('m4a'));
-      expect(candidate.bitrateKbps, equals(256));
-      expect(candidate.artworkUrl, contains('600x600bb'));
-    });
-
-    test('Direct preview URL passes through immediately with 0ms delay', () async {
-      final resolver = MissingTrackAudioResolver();
-      final candidate = await resolver.resolveTrackAudio(
-        title: 'Direct Song',
-        artist: 'Direct Artist',
-        directPreviewUrl: 'https://p.scdn.co/mp3-preview/direct123.mp3',
-        preferredArtworkUrl: 'https://i.scdn.co/image/art123.jpg',
-        preferredAlbum: 'Direct Album',
-      );
-
-      expect(candidate, isNotNull);
-      expect(candidate!.streamUrl, equals('https://p.scdn.co/mp3-preview/direct123.mp3'));
-      expect(candidate.format, equals('mp3'));
-      expect(candidate.artworkUrl, equals('https://i.scdn.co/image/art123.jpg'));
-      expect(candidate.album, equals('Direct Album'));
+      expect(candidate!.isFullLength, isTrue);
+      expect(candidate.durationMs, greaterThanOrEqualTo(45000));
+      expect(candidate.sourceId, equals('yt_test_123'));
     });
 
     test('JioSaavn full-length studio engine resolves 320kbps full song with DES decryption', () async {

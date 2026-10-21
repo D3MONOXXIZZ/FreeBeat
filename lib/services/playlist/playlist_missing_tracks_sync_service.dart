@@ -18,6 +18,7 @@ class MissingTrackItem {
     this.preferredArtworkUrl,
     this.previewAudioUrl,
     this.album,
+    this.sourceUrl,
   });
 
   final String title;
@@ -26,6 +27,7 @@ class MissingTrackItem {
   final String? preferredArtworkUrl;
   final String? previewAudioUrl;
   final String? album;
+  final String? sourceUrl;
 
   String get displayName =>
       artist.isNotEmpty ? '$artist - $title' : title;
@@ -401,12 +403,12 @@ class PlaylistMissingTracksSyncNotifier
     );
 
     try {
-      // 1. Resolve Audio Stream with multi-tiered fast fallback
+      // 1. Resolve Audio Stream prioritizing YouTube and full tracks (no 30s previews)
       final candidate = await _resolver.resolveTrackAudio(
         title: item.title,
         artist: item.artist,
         expectedDurationMs: item.expectedDurationMs,
-        directPreviewUrl: item.previewAudioUrl,
+        sourceUrl: item.sourceUrl,
         preferredArtworkUrl: item.preferredArtworkUrl,
         preferredAlbum: item.album,
       );

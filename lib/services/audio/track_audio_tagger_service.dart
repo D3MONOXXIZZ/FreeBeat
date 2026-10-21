@@ -75,6 +75,13 @@ class TrackAudioTaggerService {
     String? preferredArtworkUrl,
     void Function(double progress)? onProgress,
   }) async {
+    // Strict Full-Length Verification: Reject previews and short snippets (< 45s)
+    if (!candidate.isFullLength || candidate.durationMs < 45000) {
+      throw Exception(
+        'Candidate "${candidate.sourceTitle}" is a short preview (${candidate.durationMs ~/ 1000}s). Only authentic full-length tracks may be imported.',
+      );
+    }
+
     final tempDir = await getTemporaryDirectory();
     final scratchDir = Directory(p.join(tempDir.path, 'freebeat_scratch_audio'));
     if (!await scratchDir.exists()) {
