@@ -700,7 +700,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.targetPlaylist != null ? 'Import Songs into Playlist' : 'Import Music & Playlists',
+                      widget.targetPlaylist != null ? 'Import Songs into Playlist' : 'Import Playlist',
                       style: textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),

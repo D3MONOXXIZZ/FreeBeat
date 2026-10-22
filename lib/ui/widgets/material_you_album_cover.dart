@@ -246,16 +246,14 @@ class MaterialYouAlbumCover extends StatelessWidget {
           errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
       } else {
-        final file = File(art);
-        if (file.existsSync()) {
-          return Image.file(
-            file,
-            fit: BoxFit.cover,
-            cacheWidth: targetCache,
-            cacheHeight: targetCache,
-            errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
-          );
-        }
+        return Image.file(
+          File(art),
+          fit: BoxFit.cover,
+          cacheWidth: targetCache,
+          cacheHeight: targetCache,
+          errorBuilder: (_, __, ___) =>
+              _buildProceduralMaterialYouArt(context, trackColor, cs),
+        );
       }
     }
 

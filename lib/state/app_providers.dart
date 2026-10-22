@@ -2642,24 +2642,27 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
 
   Future<void> updatePlaylistArtwork(String playlistId, String artworkUrl) async {
     if (artworkUrl.isEmpty) return;
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         if (p.customArtworkUrl == null || p.customArtworkUrl!.isEmpty) {
           final updated = p.copyWith(customArtworkUrl: artworkUrl);
-          if (_db != null) {
-            _db.upsertPlaylist(updated);
-          }
+          targetUpdated = updated;
           return updated;
         }
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> updatePlaylistSyncSource(
     String playlistId,
     String? syncSourceUrl,
   ) async {
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final updated = p.copyWith(
@@ -2667,32 +2670,35 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
           clearSyncSourceUrl: syncSourceUrl == null,
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> updatePlaylistLastSynced(
     String playlistId,
     DateTime syncedAt,
   ) async {
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final updated = p.copyWith(
           lastSyncedAt: syncedAt,
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> renamePlaylist(
@@ -2702,6 +2708,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     String? syncSourceUrl,
   }) async {
     await PixelHaptics.tick();
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final updated = p.copyWith(
@@ -2710,13 +2717,14 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
           syncSourceUrl: syncSourceUrl ?? p.syncSourceUrl,
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> deletePlaylist(String playlistId) async {
@@ -2747,6 +2755,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     List<String> trackIds,
   ) async {
     if (trackIds.isEmpty) return;
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final newIds = trackIds.where((id) => !p.trackIds.contains(id)).toList();
@@ -2755,17 +2764,19 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
           trackIds: [...p.trackIds, ...newIds],
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
     unawaited(PixelHaptics.tick());
   }
 
   Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         if (!p.trackIds.contains(trackId)) {
@@ -2773,14 +2784,15 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
             trackIds: [...p.trackIds, trackId],
             updatedAt: DateTime.now(),
           );
-          if (_db != null) {
-            _db.upsertPlaylist(updated);
-          }
+          targetUpdated = updated;
           return updated;
         }
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
     unawaited(PixelHaptics.tick());
   }
 
@@ -2789,19 +2801,21 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     String trackId,
   ) async {
     await PixelHaptics.tick();
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final updated = p.copyWith(
           trackIds: p.trackIds.where((id) => id != trackId).toList(),
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> removeTracksFromPlaylist(
@@ -2811,19 +2825,21 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     if (trackIds.isEmpty) return;
     await PixelHaptics.tick();
     final removeSet = trackIds.toSet();
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final updated = p.copyWith(
           trackIds: p.trackIds.where((id) => !removeSet.contains(id)).toList(),
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> reorderTracks(
@@ -2832,6 +2848,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     int newIndex,
   ) async {
     await PixelHaptics.tick();
+    Playlist? targetUpdated;
     state = state.map((p) {
       if (p.id == playlistId) {
         final list = List<String>.from(p.trackIds);
@@ -2844,31 +2861,36 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
           trackIds: list,
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        targetUpdated = updated;
         return updated;
       }
       return p;
     }).toList();
+    if (targetUpdated != null && _db != null) {
+      await _db.upsertPlaylist(targetUpdated!);
+    }
   }
 
   Future<void> removeTracksFromAllPlaylists(List<String> trackIds) async {
     if (trackIds.isEmpty) return;
     final idSet = trackIds.toSet();
+    final updatedList = <Playlist>[];
     state = state.map((p) {
       if (p.trackIds.any(idSet.contains)) {
         final updated = p.copyWith(
           trackIds: p.trackIds.where((id) => !idSet.contains(id)).toList(),
           updatedAt: DateTime.now(),
         );
-        if (_db != null) {
-          _db.upsertPlaylist(updated);
-        }
+        updatedList.add(updated);
         return updated;
       }
       return p;
     }).toList();
+    if (_db != null) {
+      for (final updated in updatedList) {
+        await _db.upsertPlaylist(updated);
+      }
+    }
   }
 
   String exportPlaylistM3u8(Playlist playlist, List<Track> allTracks) {
@@ -3049,6 +3071,16 @@ final duplicateTracksProvider = Provider<Map<String, List<Track>>>((ref) {
   // Retain only groups with more than 1 track
   map.removeWhere((key, list) => list.length <= 1);
   return map;
+});
+
+/// Memoized list of distinct artists across all indexed library tracks
+final allArtistsProvider = Provider<List<String>>((ref) {
+  final allTracks = ref.watch(tracksCatalogProvider);
+  return allTracks
+      .map((t) => t.artist)
+      .where((a) => a.isNotEmpty)
+      .toSet()
+      .toList();
 });
 
 

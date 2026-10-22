@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
+import '../widgets/material_you_album_cover.dart';
 
 /// Fullscreen Synchronized Karaoke Lyrics Screen (Google Pixel Material You Style).
 /// Strictly mirrors Screen 6 in Figma inspiration:
@@ -267,22 +268,13 @@ class _FullscreenLyricsScreenState
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: track.dominantColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          playback.isPlaying
-                              ? Icons.equalizer_rounded
-                              : Icons.music_note_rounded,
-                          color: cs.onPrimary,
-                          size: 20,
-                        ),
-                      ),
+                    MaterialYouAlbumCover(
+                      track: track,
+                      size: 42,
+                      borderRadius: 12,
+                      showQualityBadge: false,
+                      showSourceBadge: false,
+                      showPlayingAnimation: false,
                     ),
                     const SizedBox(width: 12),
                     Expanded(

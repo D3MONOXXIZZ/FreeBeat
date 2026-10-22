@@ -6,6 +6,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/mini_player_dock.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import 'track_details_screen.dart';
@@ -64,10 +65,14 @@ class ArtistDetailsScreen extends ConsumerWidget {
         ? artistTracks.first
         : PlaybackViewState.emptyTrack;
 
+    final hasActiveTrack = currentTrackId.isNotEmpty;
+
     return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+      body: Stack(
+        children: [
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
           // ─────────────────────────────────────────────────────────────────
           // 1. M3 Large Collapsing App Bar
           // ─────────────────────────────────────────────────────────────────
@@ -450,10 +455,21 @@ class ArtistDetailsScreen extends ConsumerWidget {
             ),
           ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 60)),
+          SliverToBoxAdapter(
+            child: SizedBox(height: hasActiveTrack ? 120 : 60),
+          ),
         ],
       ),
-    );
+      if (hasActiveTrack)
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 12,
+          child: const MiniPlayerDock(),
+        ),
+    ],
+  ),
+);
   }
 
   Widget _buildArtistDownloadRow(

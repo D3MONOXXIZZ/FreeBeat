@@ -861,13 +861,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final importProgress = ref.watch(importProgressProvider);
     final allPlaylists = ref.watch(smartPlaylistsProvider);
     final duplicateMap = ref.watch(duplicateTracksProvider);
-
-    // Extract unique artists
-    final artists = allTracks
-        .map((t) => t.artist)
-        .where((a) => a.isNotEmpty)
-        .toSet()
-        .toList();
+    final artists = ref.watch(allArtistsProvider);
 
     final filtered = allTracks.where((t) {
       if (_selectedArtist != null && t.artist != _selectedArtist) {
@@ -1053,42 +1047,124 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         : () => _showBatchTrackOptions(selectedTracks),
                   ),
                 ] else ...[
-                  IconButton(
-                    icon: const Icon(Icons.playlist_add_check_circle_outlined),
-                    tooltip: 'Import Spotify, Apple Music, or YouTube Playlist',
-                    onPressed: () => showPlaylistImportModal(context),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.checklist_rounded),
-                    tooltip: 'Select Tracks',
-                    onPressed: () => _enterMultiSelect(),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded),
-                    tooltip: 'Add to Library',
-                    onPressed: _showAddMusicOptionsSheet,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.search_rounded),
-                    tooltip: 'Search Library',
-                    onPressed: () {
-                      PixelHaptics.tick();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SearchScreen()),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined),
-                    tooltip: 'Settings',
-                    onPressed: () {
-                      PixelHaptics.tick();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SettingsScreen(),
+                  Theme(
+                    data: Theme.of(context).copyWith(
+                      popupMenuTheme: PopupMenuThemeData(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      );
-                    },
+                        elevation: 6,
+                        color: cs.surfaceContainerHigh,
+                      ),
+                    ),
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(Icons.menu_rounded, size: 26),
+                      tooltip: 'Menu',
+                      onSelected: (value) {
+                        PixelHaptics.tick();
+                        switch (value) {
+                          case 'search':
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SearchScreen(),
+                              ),
+                            );
+                            break;
+                          case 'add':
+                            _showAddMusicOptionsSheet();
+                            break;
+                          case 'import_playlist':
+                            showPlaylistImportModal(context);
+                            break;
+                          case 'select':
+                            _enterMultiSelect();
+                            break;
+                          case 'settings':
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SettingsScreen(),
+                              ),
+                            );
+                            break;
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        PopupMenuItem(
+                          value: 'search',
+                          child: Row(
+                            children: [
+                              Icon(Icons.search_rounded,
+                                  color: cs.primary, size: 20),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Search Library',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'add',
+                          child: Row(
+                            children: [
+                              Icon(Icons.add_rounded,
+                                  color: cs.primary, size: 20),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Add to Library',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'import_playlist',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.playlist_add_check_circle_outlined,
+                                color: cs.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Import Playlist',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'select',
+                          child: Row(
+                            children: [
+                              Icon(Icons.checklist_rounded,
+                                  color: cs.primary, size: 20),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Select Tracks',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'settings',
+                          child: Row(
+                            children: [
+                              Icon(Icons.settings_outlined,
+                                  color: cs.onSurfaceVariant, size: 20),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Settings',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
                 const SizedBox(width: 8),
@@ -1425,6 +1501,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   physics: const BouncingScrollPhysics(),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, index) {
@@ -1830,6 +1908,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                   sliver: SliverList.separated(
                     itemCount: filtered.length,
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: true,
                     separatorBuilder: (context, index) => Divider(
                       height: 1,
                       indent: 74,
@@ -1841,47 +1921,46 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       final isCurrent = activeTrackId == track.id;
                       final isPlaying = isCurrent && isPlaybackActive;
 
-                      return RepaintBoundary(
-                        child: SwipeToQueueWrapper(
+                      return SwipeToQueueWrapper(
+                        key: ValueKey(track.id),
+                        track: track,
+                        enabled: !_isMultiSelect,
+                        child: _LibraryTrackTile(
                           track: track,
-                          enabled: !_isMultiSelect,
-                          child: _LibraryTrackTile(
-                            track: track,
-                            isCurrent: isCurrent,
-                            isPlaying: isPlaying,
-                            durationText:
-                                _formatTrackDuration(track.durationMs),
-                            isMultiSelect: _isMultiSelect,
-                            isSelected: _selectedTrackIds.contains(track.id),
-                            onSelectToggle: () => _toggleSelectTrack(track.id),
-                            onTap: () {
-                              if (_isMultiSelect) {
-                                _toggleSelectTrack(track.id);
-                              } else {
-                                ref
-                                    .read(playbackProvider.notifier)
-                                    .playTrack(track);
-                              }
-                            },
-                            onLongPress: () {
-                              if (_isMultiSelect) {
-                                _toggleSelectTrack(track.id);
-                              } else {
-                                _enterMultiSelect(track.id);
-                              }
-                            },
-                            onToggleFavorite: () {
+                          isCurrent: isCurrent,
+                          isPlaying: isPlaying,
+                          durationText:
+                              _formatTrackDuration(track.durationMs),
+                          isMultiSelect: _isMultiSelect,
+                          isSelected: _selectedTrackIds.contains(track.id),
+                          onSelectToggle: () => _toggleSelectTrack(track.id),
+                          onTap: () {
+                            if (_isMultiSelect) {
+                              _toggleSelectTrack(track.id);
+                            } else {
                               ref
-                                  .read(tracksCatalogProvider.notifier)
-                                  .toggleFavorite(track.id);
-                            },
-                            onTogglePin: () {
-                              ref
-                                  .read(tracksCatalogProvider.notifier)
-                                  .togglePinOffline(track.id);
-                            },
-                            onOptionsTap: () => _showTrackOptions(track),
-                          ),
+                                  .read(playbackProvider.notifier)
+                                  .playTrack(track);
+                            }
+                          },
+                          onLongPress: () {
+                            if (_isMultiSelect) {
+                              _toggleSelectTrack(track.id);
+                            } else {
+                              _enterMultiSelect(track.id);
+                            }
+                          },
+                          onToggleFavorite: () {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .toggleFavorite(track.id);
+                          },
+                          onTogglePin: () {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .togglePinOffline(track.id);
+                          },
+                          onOptionsTap: () => _showTrackOptions(track),
                         ),
                       );
                     },
@@ -2012,8 +2091,7 @@ class _LibraryTrackTile extends StatelessWidget {
           onOptionsTap();
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: Container(
         decoration: BoxDecoration(
           color: isSelected
               ? cs.primaryContainer.withValues(alpha: 0.35)
@@ -2024,8 +2102,7 @@ class _LibraryTrackTile extends StatelessWidget {
         child: Row(
           children: [
             if (isMultiSelect) ...[
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+              Container(
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(

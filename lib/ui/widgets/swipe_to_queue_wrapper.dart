@@ -93,7 +93,7 @@ class SwipeToQueueWrapper extends ConsumerStatefulWidget {
 
 class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
+  AnimationController? _animController;
   Animation<double>? _snapAnimation;
 
   double _dragOffset = 0.0;
@@ -105,10 +105,8 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
   static const double _kActivationThreshold = 80.0;
   static const double _kResistanceThreshold = 100.0;
 
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
+  AnimationController _ensureAnimController() {
+    _animController ??= AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 240),
     )..addListener(() {
@@ -118,11 +116,12 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
           });
         }
       });
+    return _animController!;
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _animController?.dispose();
     super.dispose();
   }
 
@@ -149,7 +148,7 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
 
   void _handleDragStart(DragStartDetails details) {
     if (_isDismissed) return;
-    _animController.stop();
+    _animController?.stop();
   }
 
   void _handleDragUpdate(DragUpdateDetails details) {
@@ -256,16 +255,17 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
   }
 
   void _animateSnapBack() {
+    final controller = _ensureAnimController();
     _snapAnimation = Tween<double>(
       begin: _effectiveOffset,
       end: 0.0,
     ).animate(
       CurvedAnimation(
-        parent: _animController,
+        parent: controller,
         curve: Curves.easeOutCubic,
       ),
     );
-    _animController.forward(from: 0.0).then((_) {
+    controller.forward(from: 0.0).then((_) {
       if (mounted) {
         setState(() {
           _dragOffset = 0.0;
@@ -281,16 +281,17 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
   void _animateDismissOut({required bool isRight}) {
     final screenWidth = MediaQuery.of(context).size.width;
     final target = isRight ? screenWidth : -screenWidth;
+    final controller = _ensureAnimController();
     _snapAnimation = Tween<double>(
       begin: _effectiveOffset,
       end: target,
     ).animate(
       CurvedAnimation(
-        parent: _animController,
+        parent: controller,
         curve: Curves.easeInCubic,
       ),
     );
-    _animController.forward(from: 0.0).then((_) {
+    controller.forward(from: 0.0).then((_) {
       if (mounted) {
         setState(() {
           _isDismissed = true;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -21,16 +22,21 @@ class LibraryDatabase {
     'BUILTIN_SPEAKER': 'vocal',
   };
 
-  bool _initAttempted = false;
+  Completer<void>? _initCompleter;
 
   Future<void> init() async {
-    _initAttempted = true;
+    if (_db != null) return;
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+      return;
+    }
+    _initCompleter = Completer<void>();
     try {
       final dbPath = await getDatabasesPath();
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
       _db = await openDatabase(
         fullPath,
-        version: 4,
+        version: 5,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE cloud_accounts (
@@ -153,18 +159,63 @@ class LibraryDatabase {
               await db.execute('ALTER TABLE playlists ADD COLUMN lastSyncedAt INTEGER');
             } catch (_) {}
           }
+          if (oldVersion < 5) {
+            await _ensureAllPlaylistColumnsExist(db);
+          }
         },
       );
+      await _ensureAllPlaylistColumnsExist(_db!);
+      if (!_initCompleter!.isCompleted) {
+        _initCompleter!.complete();
+      }
     } catch (_) {
       // Runs with in-memory store in test environments without native sqflite platform channels
       _db = null;
+      if (!_initCompleter!.isCompleted) {
+        _initCompleter!.complete();
+      }
     }
   }
 
+  static Future<void> _ensureAllPlaylistColumnsExist(Database db) async {
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(playlists)');
+      final existingColumns =
+          info.map((r) => r['name']?.toString().toLowerCase()).toSet();
+
+      final requiredColumns = <String, String>{
+        'id': 'TEXT PRIMARY KEY',
+        'title': 'TEXT NOT NULL',
+        'description': 'TEXT',
+        'trackidsjson': 'TEXT',
+        'createdat': 'INTEGER NOT NULL DEFAULT 0',
+        'updatedat': 'INTEGER NOT NULL DEFAULT 0',
+        'issmart': 'INTEGER DEFAULT 0',
+        'smarttype': 'TEXT',
+        'customartworkurl': 'TEXT',
+        'colorseedvalue': 'INTEGER DEFAULT 6770852',
+        'syncsourceurl': 'TEXT',
+        'lastsyncedat': 'INTEGER',
+      };
+
+      for (final entry in requiredColumns.entries) {
+        if (!existingColumns.contains(entry.key)) {
+          try {
+            await db.execute(
+                'ALTER TABLE playlists ADD COLUMN ${entry.key} ${entry.value}');
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<void> _ensureInitialized() async {
-    if (_db == null && !_initAttempted) {
-      await init();
+    if (_db != null) return;
+    if (_initCompleter != null) {
+      await _initCompleter!.future;
+      return;
     }
+    await init();
   }
 
   Future<List<CloudAccount>> loadAccounts() async {
@@ -234,8 +285,15 @@ class LibraryDatabase {
   Future<List<Playlist>> loadPlaylists() async {
     await _ensureInitialized();
     if (_db == null) return List.unmodifiable(_memoryPlaylists);
-    final rows = await _db!.query('playlists', orderBy: 'updatedAt DESC');
-    return rows.map(Playlist.fromMap).toList();
+    try {
+      final rows = await _db!.query('playlists', orderBy: 'updatedAt DESC');
+      final playlists = rows.map(Playlist.fromMap).toList();
+      _memoryPlaylists.clear();
+      _memoryPlaylists.addAll(playlists);
+      return playlists;
+    } catch (_) {
+      return List.unmodifiable(_memoryPlaylists);
+    }
   }
 
   Future<void> upsertPlaylist(Playlist playlist) async {
@@ -243,11 +301,22 @@ class LibraryDatabase {
     _memoryPlaylists.removeWhere((p) => p.id == playlist.id);
     _memoryPlaylists.insert(0, playlist);
     if (_db != null) {
-      await _db!.insert(
-        'playlists',
-        playlist.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      try {
+        await _db!.insert(
+          'playlists',
+          playlist.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (_) {
+        await _ensureAllPlaylistColumnsExist(_db!);
+        try {
+          await _db!.insert(
+            'playlists',
+            playlist.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } catch (_) {}
+      }
     }
   }
 

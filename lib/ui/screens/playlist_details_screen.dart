@@ -11,6 +11,7 @@ import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
+import '../widgets/mini_player_dock.dart';
 import '../widgets/playlist_import_modal.dart';
 import '../widgets/playlist_qr_modal.dart';
 import '../widgets/remove_track_dialog.dart';
@@ -656,10 +657,14 @@ class _PlaylistDetailsScreenState
         .whereType<Track>()
         .toList();
 
+    final hasActiveTrack = currentTrackId.isNotEmpty;
+
     return Scaffold(
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+      body: Stack(
+        children: [
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
           // 1. Sleek App Bar
           SliverAppBar(
             pinned: true,
@@ -1111,9 +1116,20 @@ class _PlaylistDetailsScreenState
               ),
             ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          SliverToBoxAdapter(
+            child: SizedBox(height: hasActiveTrack ? 120 : 60),
+          ),
         ],
       ),
-    );
+      if (hasActiveTrack)
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 12,
+          child: const MiniPlayerDock(),
+        ),
+    ],
+  ),
+);
   }
 }
