@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -31,6 +32,7 @@ class UniversalCloudUploadService {
   final http.Client _http;
   final Map<String, String> _folderIdCache = {};
   final Map<String, List<Map<String, dynamic>>> _folderFilesCache = {};
+  final Map<String, Future<String>> _inFlightFolderCreation = {};
 
   static String _normalizeTrackString(String s) {
     return s
@@ -520,21 +522,55 @@ class UniversalCloudUploadService {
       return _folderIdCache[subCacheKey]!;
     }
 
+    // In-flight concurrency gate: if another worker is currently finding or creating
+    // this folder, await that same in-flight future rather than creating duplicate folders!
+    if (_inFlightFolderCreation.containsKey(subCacheKey)) {
+      return await _inFlightFolderCreation[subCacheKey]!;
+    }
+
+    final future = _doGetOrCreateGoogleDriveFolder(
+      token: token,
+      folderName: folderName,
+      parentFolderName: parentFolderName,
+      subCacheKey: subCacheKey,
+    );
+    _inFlightFolderCreation[subCacheKey] = future;
     try {
-      // Find or create root container "FreeBeat Music"
+      final res = await future;
+      return res;
+    } finally {
+      _inFlightFolderCreation.remove(subCacheKey);
+    }
+  }
+
+  Future<String> _doGetOrCreateGoogleDriveFolder({
+    required String token,
+    required String folderName,
+    required String parentFolderName,
+    required String subCacheKey,
+  }) async {
+    try {
+      // 1. Find or create root container "FreeBeat Music"
       final rootCacheKey = '$token:$parentFolderName';
       String rootId = _folderIdCache[rootCacheKey] ?? '';
       if (rootId.isEmpty) {
-        rootId = await _findDriveFolder(token, parentFolderName, null);
-        if (rootId.isEmpty) {
-          rootId = await _createDriveFolder(token, parentFolderName, null);
-        }
-        if (rootId.isNotEmpty) {
-          _folderIdCache[rootCacheKey] = rootId;
+        if (_inFlightFolderCreation.containsKey(rootCacheKey)) {
+          rootId = await _inFlightFolderCreation[rootCacheKey]!;
+        } else {
+          final rootFuture = _findOrCreateDriveFolder(token, parentFolderName, null);
+          _inFlightFolderCreation[rootCacheKey] = rootFuture;
+          try {
+            rootId = await rootFuture;
+            if (rootId.isNotEmpty) {
+              _folderIdCache[rootCacheKey] = rootId;
+            }
+          } finally {
+            _inFlightFolderCreation.remove(rootCacheKey);
+          }
         }
       }
 
-      // Find or create playlist subfolder under root container
+      // 2. Find or create playlist subfolder under root container
       String subId = await _findDriveFolder(token, folderName, rootId.isNotEmpty ? rootId : null);
       if (subId.isEmpty) {
         subId = await _createDriveFolder(token, folderName, rootId.isNotEmpty ? rootId : null);
@@ -548,18 +584,33 @@ class UniversalCloudUploadService {
     }
   }
 
+  Future<String> _findOrCreateDriveFolder(String token, String name, String? parentId) async {
+    var id = await _findDriveFolder(token, name, parentId);
+    if (id.isEmpty) {
+      id = await _createDriveFolder(token, name, parentId);
+    }
+    return id;
+  }
+
   Future<String> _findDriveFolder(String token, String name, String? parentId) async {
     final parentClause = parentId != null ? " and '$parentId' in parents" : '';
+    final safeName = name.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
     final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
-      'q': "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and trashed = false$parentClause",
-      'fields': 'files(id, name)',
+      'q': "name = '$safeName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false$parentClause",
+      'fields': 'files(id, name, createdTime)',
+      'orderBy': 'createdTime asc',
     });
     final resp = await _http.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
     if (resp.statusCode == 200) {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final files = data['files'] as List<dynamic>? ?? [];
       if (files.isNotEmpty) {
-        return files.first['id'] as String;
+        final primaryId = files.first['id'] as String;
+        // If duplicate folders exist with this name, asynchronously consolidate files and trash duplicates!
+        if (files.length > 1) {
+          unawaited(_cleanupDuplicateDriveFolders(token, primaryId, files.sublist(1)));
+        }
+        return primaryId;
       }
     }
     return '';
@@ -584,6 +635,61 @@ class UniversalCloudUploadService {
       return data['id'] as String;
     }
     return '';
+  }
+
+  /// Automatically consolidates files from duplicate folders into the primary folder
+  /// and trashes the redundant empty folders so the user's Drive stays clean.
+  Future<void> _cleanupDuplicateDriveFolders(
+    String token,
+    String primaryFolderId,
+    List<dynamic> duplicateFolders,
+  ) async {
+    for (final dup in duplicateFolders) {
+      if (dup is! Map) continue;
+      final dupId = dup['id']?.toString() ?? '';
+      if (dupId.isEmpty || dupId == primaryFolderId) continue;
+
+      try {
+        final files = await _listDriveFolderFiles(token, dupId);
+        final primaryFiles = await _listDriveFolderFiles(token, primaryFolderId);
+
+        for (final file in files) {
+          final fileId = file['id'] as String?;
+          final fileName = file['name'] as String?;
+          if (fileId == null || fileId.isEmpty) continue;
+
+          final alreadyInPrimary = primaryFiles.any((pf) => pf['name'] == fileName);
+          if (alreadyInPrimary) {
+            await _http.patch(
+              Uri.parse('https://www.googleapis.com/drive/v3/files/$fileId'),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'trashed': true}),
+            );
+          } else {
+            await _http.patch(
+              Uri.parse('https://www.googleapis.com/drive/v3/files/$fileId?addParents=$primaryFolderId&removeParents=$dupId'),
+              headers: {'Authorization': 'Bearer $token'},
+            );
+            primaryFiles.add(file);
+          }
+        }
+
+        // Trash the redundant duplicate folder
+        await _http.patch(
+          Uri.parse('https://www.googleapis.com/drive/v3/files/$dupId'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'trashed': true}),
+        );
+      } catch (e) {
+        debugPrint('Note: Cleanup of duplicate Drive folder $dupId caught: $e');
+      }
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
