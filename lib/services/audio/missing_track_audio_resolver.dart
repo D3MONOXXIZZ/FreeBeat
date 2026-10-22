@@ -464,9 +464,20 @@ class MissingTrackAudioResolver {
       // Reject truncated clips / 30s snippets
       if (durMs < 45000) return null;
 
-      final manifest = await client.videos.streamsClient
-          .getManifest(videoId)
-          .timeout(const Duration(milliseconds: 4000));
+      StreamManifest manifest;
+      try {
+        manifest = await client.videos.streamsClient
+            .getManifest(
+              videoId,
+              requireWatchPage: false,
+              ytClients: [YoutubeApiClient.androidSdkless],
+            )
+            .timeout(const Duration(milliseconds: 5000));
+      } catch (_) {
+        manifest = await client.videos.streamsClient
+            .getManifest(videoId)
+            .timeout(const Duration(milliseconds: 4000));
+      }
       final audioOnly = manifest.audioOnly;
       if (audioOnly.isNotEmpty) {
         final bestAudio = audioOnly.withHighestBitrate();
@@ -814,9 +825,20 @@ class MissingTrackAudioResolver {
         for (final candidate in rankedCandidates.take(2)) {
           final video = candidate.video;
           try {
-            final manifest = await client.videos.streamsClient
-                .getManifest(video.id)
-                .timeout(const Duration(milliseconds: 4000));
+            StreamManifest manifest;
+            try {
+              manifest = await client.videos.streamsClient
+                  .getManifest(
+                    video.id,
+                    requireWatchPage: false,
+                    ytClients: [YoutubeApiClient.androidSdkless],
+                  )
+                  .timeout(const Duration(milliseconds: 5000));
+            } catch (_) {
+              manifest = await client.videos.streamsClient
+                  .getManifest(video.id)
+                  .timeout(const Duration(milliseconds: 4000));
+            }
             final audioOnly = manifest.audioOnly;
             if (audioOnly.isNotEmpty) {
               final bestAudio = audioOnly.withHighestBitrate();

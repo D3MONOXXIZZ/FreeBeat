@@ -196,6 +196,7 @@ class PlaylistMissingTracksSyncNotifier
 
   bool _isCancelled = false;
   Completer<CloudAuthDecision>? _authDecisionCompleter;
+  Completer<void>? _activeResolveGate;
 
   void cancelSync() {
     _isCancelled = true;
@@ -358,9 +359,19 @@ class PlaylistMissingTracksSyncNotifier
               playlistName: playlistTitle,
               account: account,
               secrets: secrets,
-            ).timeout(const Duration(seconds: 45));
+            ).timeout(const Duration(seconds: 90));
           } catch (e) {
             debugPrint('Worker timeout or error on track $idx: $e');
+            _updateTrackProgress(
+              idx,
+              (p) => p.copyWith(
+                status: SyncTrackStatus.failed,
+                error: e.toString(),
+              ),
+            );
+            state = state.copyWith(
+              failedCount: state.failedCount + 1,
+            );
           } finally {
             activeFutures.remove(workerFuture);
           }
@@ -403,15 +414,29 @@ class PlaylistMissingTracksSyncNotifier
     );
 
     try {
-      // 1. Resolve Audio Stream prioritizing YouTube and full tracks (no 30s previews)
-      final candidate = await _resolver.resolveTrackAudio(
-        title: item.title,
-        artist: item.artist,
-        expectedDurationMs: item.expectedDurationMs,
-        sourceUrl: item.sourceUrl,
-        preferredArtworkUrl: item.preferredArtworkUrl,
-        preferredAlbum: item.album,
-      );
+      // Pacing gate: ensures YouTube stream resolution queries are paced sequentially
+      // to eliminate burst rate-limiting while allowing downloads and uploads to remain concurrent.
+      while (_activeResolveGate != null && !_activeResolveGate!.isCompleted) {
+        await _activeResolveGate!.future;
+      }
+      final gate = Completer<void>();
+      _activeResolveGate = gate;
+
+      AudioStreamCandidate? candidate;
+      try {
+        // 1. Resolve Audio Stream prioritizing YouTube and full tracks (no 30s previews)
+        candidate = await _resolver.resolveTrackAudio(
+          title: item.title,
+          artist: item.artist,
+          expectedDurationMs: item.expectedDurationMs,
+          sourceUrl: item.sourceUrl,
+          preferredArtworkUrl: item.preferredArtworkUrl,
+          preferredAlbum: item.album,
+        );
+      } finally {
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (!gate.isCompleted) gate.complete();
+      }
 
       if (candidate == null) {
         throw Exception('No stream candidate found for "${item.displayName}"');
