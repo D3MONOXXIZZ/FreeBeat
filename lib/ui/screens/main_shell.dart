@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
+import '../widgets/add_to_library_modal.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/nav_pill.dart';
@@ -56,50 +56,6 @@ class _MainShellState extends ConsumerState<MainShell> {
     );
   }
 
-  Future<void> _pickLocalAudioFromShell() async {
-    PixelHaptics.tick();
-    final authService = ref.read(nativeCloudAuthServiceProvider);
-    final accounts = ref.read(cloudAccountsProvider);
-    final safAccount = accounts.firstWhere(
-      (a) => a.providerType == CloudProviderType.androidSaf,
-      orElse: () => const CloudAccount(
-        id: 'local_storage_saf',
-        providerType: CloudProviderType.androidSaf,
-        displayName: 'Local Storage',
-        endpointOrFolder: 'Local Music Files',
-      ),
-    );
-    final progressNotifier = ref.read(importProgressProvider.notifier);
-    final picked = await authService.pickFromInstalledCloudApp(
-      account: safAccount,
-      batchSize: 10,
-      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
-        progressNotifier.startBatch(
-          batchFilenames: batchFilenames,
-          batchStartIndex: batchStartIndex,
-          totalFiles: totalFiles,
-        );
-      },
-      onProgress: (cur, tot, track) {
-        progressNotifier.update(
-          current: cur,
-          total: tot,
-          name: track?.title ?? '',
-          track: track,
-        );
-      },
-      onBatchCompleted: (batchTracks) async {
-        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
-      },
-    );
-    if (picked.isNotEmpty) {
-      await PixelHaptics.hifiConfirm();
-      progressNotifier.complete();
-    } else {
-      progressNotifier.clearPending();
-    }
-  }
-
   Widget _buildLibraryAddFab(ColorScheme cs) {
     return SizedBox(
       width: 50,
@@ -109,8 +65,8 @@ class _MainShellState extends ConsumerState<MainShell> {
         elevation: 4,
         backgroundColor: cs.primaryContainer,
         foregroundColor: cs.onPrimaryContainer,
-        tooltip: 'Add Music',
-        onPressed: _pickLocalAudioFromShell,
+        tooltip: 'Add to Library',
+        onPressed: () => showAddToLibraryModal(context, ref),
         child: const Icon(
           Icons.add_rounded,
           size: 26,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/services/playlist/playlist_import_service.dart';
 import 'package:freebeat/ui/screens/library_screen.dart';
+import 'package:freebeat/ui/screens/main_shell.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -62,6 +63,40 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify the 4 key import options are presented
+      expect(find.text('Add to Library'), findsOneWidget);
+      expect(find.text('Import from Link'), findsOneWidget);
+      expect(find.text('Import Folder from Cloud'), findsOneWidget);
+      expect(find.text('Pick Audio Files'), findsOneWidget);
+      expect(find.text('New Playlist'), findsOneWidget);
+    });
+
+    testWidgets('MainShell big + button next to mini player in library also opens Add to Library modal', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: MainShell(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Navigate to Library tab (index 1)
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+
+      // Find the big + FAB in MainShell next to mini player
+      final shellFab = find.descendant(
+        of: find.byType(FloatingActionButton),
+        matching: find.byIcon(Icons.add_rounded),
+      );
+      expect(shellFab, findsOneWidget);
+
+      // Tap the shell FAB
+      await tester.tap(shellFab);
+      await tester.pumpAndSettle();
+
+      // Verify it opens the Add to Library modal, NOT directly opening file picker
       expect(find.text('Add to Library'), findsOneWidget);
       expect(find.text('Import from Link'), findsOneWidget);
       expect(find.text('Import Folder from Cloud'), findsOneWidget);
