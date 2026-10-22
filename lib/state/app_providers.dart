@@ -426,10 +426,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
       state = sanitized;
       if (_ref != null) {
-        final playback = _ref.read(playbackProvider);
-        if (playback.queue.isEmpty) {
-          _ref.read(playbackProvider.notifier).setQueue(sanitized);
-        }
+        _ref.read(playbackProvider.notifier).syncWithLoadedCatalog(sanitized);
         _enrichMissingArtwork(sanitized);
       }
     }
@@ -1466,6 +1463,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           ),
         ) {
     _initAudioPlayer();
+    _restoreLastPlaybackState();
   }
 
   final Ref _ref;
@@ -1476,6 +1474,150 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   bool _sleepTimerEndAfterTrack = false;
   bool _isInitializingPlayer = false;
   bool _playerInitFailed = false;
+
+  int _lastSavedPosMs = -1;
+  int _lastSavedPosTimestamp = 0;
+
+  void _savePlaybackPosition({bool force = false}) {
+    if (state.currentTrack.id.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final currentPos = state.positionMs;
+    if (!force &&
+        (now - _lastSavedPosTimestamp < 2500) &&
+        (currentPos - _lastSavedPosMs).abs() < 3000) {
+      return;
+    }
+    _lastSavedPosTimestamp = now;
+    _lastSavedPosMs = currentPos;
+    unawaited(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('playback_last_pos_ms', currentPos);
+      } catch (_) {}
+    }());
+  }
+
+  void _savePlaybackState() {
+    unawaited(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (state.currentTrack.id.isEmpty) {
+          await prefs.remove('playback_last_track_id');
+          await prefs.remove('playback_last_track_json');
+          await prefs.remove('playback_last_pos_ms');
+          return;
+        }
+        await prefs.setString('playback_last_track_id', state.currentTrack.id);
+        await prefs.setString(
+            'playback_last_track_json', jsonEncode(state.currentTrack.toMap()));
+        await prefs.setInt('playback_last_pos_ms', state.positionMs);
+        await prefs.setBool('playback_last_shuffle', state.isShuffle);
+        await prefs.setInt('playback_last_repeat_mode', state.repeatMode);
+        if (state.queue.isNotEmpty) {
+          final queueIds = state.queue.map((t) => t.id).take(100).toList();
+          await prefs.setStringList('playback_last_queue_ids', queueIds);
+        }
+      } catch (_) {}
+    }());
+  }
+
+  Future<void> _restoreLastPlaybackState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      final lastTrackJson = prefs.getString('playback_last_track_json');
+      final lastPosMs = prefs.getInt('playback_last_pos_ms') ?? 0;
+      final lastShuffle = prefs.getBool('playback_last_shuffle');
+      final lastRepeat = prefs.getInt('playback_last_repeat_mode');
+
+      if (lastTrackJson != null && lastTrackJson.isNotEmpty) {
+        final map = jsonDecode(lastTrackJson) as Map<String, dynamic>;
+        final track = Track.fromMap(map);
+        if (track.id.isNotEmpty && !state.isPlaying && mounted) {
+          state = state.copyWith(
+            currentTrack: track,
+            positionMs: lastPosMs,
+            isShuffle: lastShuffle ?? state.isShuffle,
+            repeatMode: lastRepeat ?? state.repeatMode,
+          );
+          _syncForegroundNotification(track: track, isPlaying: false);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error restoring last playback state: $e');
+    }
+  }
+
+  Future<void> syncWithLoadedCatalog(List<Track> catalog) async {
+    if (catalog.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      final savedTrackId = prefs.getString('playback_last_track_id');
+      final savedPosMs = prefs.getInt('playback_last_pos_ms') ?? state.positionMs;
+      final savedQueueIds = prefs.getStringList('playback_last_queue_ids') ?? [];
+
+      Track? targetTrack;
+      final effectiveId = (savedTrackId != null && savedTrackId.isNotEmpty)
+          ? savedTrackId
+          : state.currentTrack.id;
+
+      if (effectiveId.isNotEmpty) {
+        targetTrack = catalog.firstWhere(
+          (t) => t.id == effectiveId,
+          orElse: () => PlaybackViewState.emptyTrack,
+        );
+        if (targetTrack.id.isEmpty) {
+          targetTrack = null;
+        }
+      }
+
+      List<Track> restoredQueue = catalog;
+      if (savedQueueIds.isNotEmpty) {
+        final catalogMap = {for (final t in catalog) t.id: t};
+        final orderedQueue = <Track>[];
+        for (final qId in savedQueueIds) {
+          final found = catalogMap[qId];
+          if (found != null) {
+            orderedQueue.add(found);
+          }
+        }
+        if (orderedQueue.isNotEmpty) {
+          final orderedIds = orderedQueue.map((t) => t.id).toSet();
+          for (final t in catalog) {
+            if (!orderedIds.contains(t.id)) {
+              orderedQueue.add(t);
+            }
+          }
+          restoredQueue = orderedQueue;
+        }
+      }
+
+      final current = targetTrack ??
+          (state.currentTrack.id.isNotEmpty
+              ? state.currentTrack
+              : restoredQueue.first);
+      final finalPos = targetTrack != null
+          ? savedPosMs
+          : (state.currentTrack.id == current.id ? state.positionMs : 0);
+
+      if (!state.isPlaying) {
+        state = state.copyWith(
+          currentTrack: current,
+          queue: restoredQueue,
+          positionMs: finalPos,
+        );
+        _syncForegroundNotification(track: current, isPlaying: false);
+      } else {
+        state = state.copyWith(queue: restoredQueue);
+      }
+    } catch (e) {
+      debugPrint('Error syncing playback with catalog: $e');
+      if (state.queue.isEmpty) {
+        setQueue(catalog);
+      }
+    }
+  }
 
   Future<void> _initAudioPlayer() async {
     if (_audioPlayer != null || _isInitializingPlayer || _playerInitFailed) return;
@@ -1497,7 +1639,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         if (!mounted) return;
         switch (action) {
           case 'onPlayPause':
-            togglePlayPause();
+            final playingExtra = extras['isPlaying'] as bool?;
+            togglePlayPause(forcePlay: playingExtra);
             break;
           case 'onNext':
             skipNext();
@@ -1551,6 +1694,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
                   positionMs: state.positionMs,
                 );
           } catch (_) {}
+          _savePlaybackState();
         }
       });
 
@@ -1570,6 +1714,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               state.positionMs != posMs) {
             lastEmittedPosMs = posMs;
             state = state.copyWith(positionMs: posMs);
+            _savePlaybackPosition();
           }
         }
       });
@@ -1645,14 +1790,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } catch (_) {}
   }
 
-  Future<void> togglePlayPause() async {
+  Future<void> togglePlayPause({bool? forcePlay}) async {
     await PixelHaptics.playPauseToggle();
-    final nextPlaying = !state.isPlaying;
+    final nextPlaying = forcePlay ?? !state.isPlaying;
     state = state.copyWith(isPlaying: nextPlaying);
 
     if (nextPlaying) {
       _startTicker();
       await _ensureAudioPlayerInitialized();
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(true);
+      } catch (_) {}
       try {
         final proxy = _ref.read(cloudStreamProxyProvider);
         final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
@@ -1664,7 +1813,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         if (_audioPlayer != null) {
           await _audioPlayer!.setVolume(1.0);
           if (_audioPlayer!.audioSource == null) {
-            await _loadAndPlayTrack(state.currentTrack);
+            final trackToPlay = state.currentTrack.id.isNotEmpty
+                ? state.currentTrack
+                : (state.queue.isNotEmpty ? state.queue.first : PlaybackViewState.emptyTrack);
+            if (trackToPlay.id.isNotEmpty) {
+              if (state.currentTrack.id != trackToPlay.id) {
+                state = state.copyWith(currentTrack: trackToPlay);
+              }
+              await _loadAndPlayTrack(trackToPlay, initialPositionMs: state.positionMs);
+            }
           } else {
             await _audioPlayer!.play();
           }
@@ -1673,16 +1830,19 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         debugPrint('Toggle play error: $e');
       }
       _syncForegroundNotification(isPlaying: true);
+      _savePlaybackState();
     } else {
       _progressTicker?.cancel();
       try {
         await _audioPlayer?.pause();
       } catch (_) {}
       _syncForegroundNotification(isPlaying: false);
+      _savePlaybackPosition(force: true);
+      _savePlaybackState();
     }
   }
 
-  Future<void> _loadAndPlayTrack(Track track) async {
+  Future<void> _loadAndPlayTrack(Track track, {int? initialPositionMs}) async {
     if (_audioPlayer == null || track.id.isEmpty) return;
     try {
       final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
@@ -1701,6 +1861,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           await _audioPlayer!.setPitch(state.pitch);
         } catch (_) {}
       }
+
+      final initPos = (initialPositionMs != null &&
+              initialPositionMs > 0 &&
+              initialPositionMs < (track.durationMs - 2000))
+          ? Duration(milliseconds: initialPositionMs)
+          : null;
 
       // 0. Hardware & Universal FFmpeg Transcode check (WMA, ASF, AIFF, etc.) to 16-bit PCM WAV
       final pathLower = (cachedPath ?? track.localCachePath ?? track.streamUrl).toLowerCase();
@@ -1727,7 +1893,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               sourcePath: sourceToDecode,
             );
             if (transcoded != null && transcoded.isNotEmpty && File(transcoded).existsSync()) {
-              await _audioPlayer!.setFilePath(transcoded);
+              await _audioPlayer!.setFilePath(transcoded, initialPosition: initPos);
               await _audioPlayer!.setVolume(1.0);
               await _audioPlayer!.play();
               _syncForegroundNotification(track: track, isPlaying: true);
@@ -1741,7 +1907,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
       // 1. If pinned offline or explicitly cached on disk, play local file directly (0ms latency)
       if (cachedPath != null && File(cachedPath).existsSync()) {
-        await _audioPlayer!.setFilePath(cachedPath);
+        await _audioPlayer!.setFilePath(cachedPath, initialPosition: initPos);
         await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
         _syncForegroundNotification(track: track, isPlaying: true);
@@ -1749,7 +1915,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
 
       if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
-        await _audioPlayer!.setFilePath(track.localCachePath!);
+        await _audioPlayer!.setFilePath(track.localCachePath!, initialPosition: initPos);
         await _audioPlayer!.setVolume(1.0);
         await _audioPlayer!.play();
         _syncForegroundNotification(track: track, isPlaying: true);
@@ -1762,7 +1928,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           !track.streamUrl.startsWith('content://')) {
         final localFile = File(track.streamUrl);
         if (localFile.existsSync()) {
-          await _audioPlayer!.setFilePath(track.streamUrl);
+          await _audioPlayer!.setFilePath(track.streamUrl, initialPosition: initPos);
           await _audioPlayer!.setVolume(1.0);
           await _audioPlayer!.play();
           _syncForegroundNotification(track: track, isPlaying: true);
@@ -1781,7 +1947,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
                 orElse: () => File(''),
               );
               if (match.path.isNotEmpty && match.existsSync()) {
-                await _audioPlayer!.setFilePath(match.path);
+                await _audioPlayer!.setFilePath(match.path, initialPosition: initPos);
                 await _audioPlayer!.setVolume(1.0);
                 await _audioPlayer!.play();
                 _syncForegroundNotification(track: track, isPlaying: true);
@@ -1797,6 +1963,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         try {
           await _audioPlayer!.setAudioSource(
             AudioSource.uri(Uri.parse(track.streamUrl)),
+            initialPosition: initPos,
           );
           await _audioPlayer!.setVolume(1.0);
           await _audioPlayer!.play();
@@ -1814,7 +1981,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
                   orElse: () => File(''),
                 );
                 if (match.path.isNotEmpty && match.existsSync()) {
-                  await _audioPlayer!.setFilePath(match.path);
+                  await _audioPlayer!.setFilePath(match.path, initialPosition: initPos);
                   await _audioPlayer!.setVolume(1.0);
                   await _audioPlayer!.play();
                   _syncForegroundNotification(track: track, isPlaying: true);
@@ -1857,6 +2024,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       if (playbackUrl.startsWith('http://127.0.0.1')) {
         await _audioPlayer!.setAudioSource(
           AudioSource.uri(Uri.parse(playbackUrl)),
+          initialPosition: initPos,
         );
       } else {
         Map<String, String>? headers;
@@ -1871,6 +2039,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
         await _audioPlayer!.setAudioSource(
           AudioSource.uri(Uri.parse(playbackUrl), headers: headers),
+          initialPosition: initPos,
         );
       }
       await _audioPlayer!.setVolume(1.0);
@@ -1895,7 +2064,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             sourcePath: src,
           );
           if (recovered != null && File(recovered).existsSync()) {
-            await _audioPlayer!.setFilePath(recovered);
+            final initPos = (initialPositionMs != null &&
+                    initialPositionMs > 0 &&
+                    initialPositionMs < (track.durationMs - 2000))
+                ? Duration(milliseconds: initialPositionMs)
+                : null;
+            await _audioPlayer!.setFilePath(recovered, initialPosition: initPos);
             await _audioPlayer!.setVolume(1.0);
             await _audioPlayer!.play();
             _syncForegroundNotification(track: track, isPlaying: true);
@@ -1923,6 +2097,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             ? state.currentTrack
             : sanitizedTracks.first);
     state = state.copyWith(queue: sanitizedTracks, currentTrack: current);
+    _savePlaybackState();
   }
 
   void updateCurrentTrack(Track updated) {
@@ -1978,6 +2153,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       isPlaying: true,
     );
     _startTicker();
+    _savePlaybackState();
+    _savePlaybackPosition(force: true);
 
     await _ensureAudioPlayerInitialized();
     try {
@@ -1999,6 +2176,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
     final clamped = targetMs.clamp(0, state.currentTrack.durationMs);
     state = state.copyWith(positionMs: clamped);
+    _savePlaybackPosition(force: true);
     try {
       unawaited(_audioPlayer?.seek(Duration(milliseconds: clamped)));
     } catch (_) {}
@@ -2068,6 +2246,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             isShuffle: newShuffle,
           );
     } catch (_) {}
+    _savePlaybackState();
   }
 
   void cycleRepeatMode() {
@@ -2079,6 +2258,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             repeatMode: newRepeat,
           );
     } catch (_) {}
+    _savePlaybackState();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -2190,6 +2370,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             positionMs: 0,
             bufferedPositionMs: 0,
           );
+          _savePlaybackState();
         }
       } else {
         _progressTicker?.cancel();
@@ -2205,9 +2386,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           bufferedPositionMs: 0,
         );
         _syncForegroundNotification(isPlaying: false);
+        _savePlaybackState();
       }
     } else {
       state = state.copyWith(queue: newQueue);
+      _savePlaybackState();
     }
   }
 

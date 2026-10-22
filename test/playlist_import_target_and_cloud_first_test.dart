@@ -184,13 +184,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. SliverAppBar Import Action
-      expect(find.byTooltip('Import Songs'), findsOneWidget);
+      // 1. Small Action Pill for Import
+      expect(find.text('Import'), findsWidgets);
+      expect(find.byTooltip('Import Songs (Spotify, Apple Music, YouTube, M3U)'), findsOneWidget);
 
-      // 2. Header Action Row Button
-      expect(find.text('Import Songs (Spotify / Apple Music / Text / M3U)'), findsOneWidget);
-
-      // 3. Empty State Prominent Action
+      // 2. Empty State Prominent Action
       expect(find.text('Import Songs into Playlist'), findsOneWidget);
     });
 
@@ -393,9 +391,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // SliverAppBar sync action tooltip
+      // Sync action pill & tooltip
       expect(find.byIcon(Icons.sync_rounded), findsWidgets);
-      expect(find.textContaining('Sync with Spotify • 5m ago'), findsOneWidget);
+      expect(find.byTooltip('Sync with Spotify • 5m ago'), findsOneWidget);
     });
 
     test('YouTube videoId and playlistId extraction across all YouTube & YT Music URL formats', () {

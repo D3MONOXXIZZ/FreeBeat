@@ -1135,6 +1135,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       onSelected: (value) {
                         PixelHaptics.tick();
                         switch (value) {
+                          case 'play_all':
+                            if (filtered.isNotEmpty) {
+                              PixelHaptics.playPauseToggle();
+                              ref.read(playbackProvider.notifier).playTrack(
+                                    filtered.first,
+                                    newQueue: filtered,
+                                  );
+                            }
+                            break;
                           case 'search':
                             _focusSearch();
                             break;
@@ -1165,6 +1174,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         }
                       },
                       itemBuilder: (ctx) => [
+                        PopupMenuItem(
+                          value: 'play_all',
+                          child: Row(
+                            children: [
+                              Icon(Icons.play_circle_fill_rounded,
+                                  color: cs.primary, size: 20),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Play All Tracks',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         PopupMenuItem(
                           value: 'search',
                           child: Row(
@@ -2156,6 +2181,31 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               ),
                             ),
                           ] else ...[
+                            FilledButton.icon(
+                              onPressed: () {
+                                if (filtered.isNotEmpty) {
+                                  PixelHaptics.playPauseToggle();
+                                  ref.read(playbackProvider.notifier).playTrack(
+                                        filtered.first,
+                                        newQueue: filtered,
+                                      );
+                                }
+                              },
+                              icon: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 18,
+                              ),
+                              label: const Text(
+                                'Play All',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             TextButton.icon(
                               onPressed: () => _enterMultiSelect(),
                               icon: const Icon(

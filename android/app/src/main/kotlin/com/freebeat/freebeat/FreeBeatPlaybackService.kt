@@ -82,23 +82,28 @@ class FreeBeatPlaybackService : Service() {
         when (action) {
             ACTION_PLAY_PAUSE -> {
                 isPlaying = !isPlaying
-                playerActionListener?.invoke("onPlayPause", mapOf("isPlaying" to isPlaying))
+                if (isPlaying) {
+                    acquireWakeLock()
+                } else {
+                    releaseWakeLock()
+                }
+                dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to isPlaying))
                 updateNotification()
             }
             ACTION_NEXT -> {
-                playerActionListener?.invoke("onNext", emptyMap())
+                dispatchPlayerAction("onNext", emptyMap())
             }
             ACTION_PREV -> {
-                playerActionListener?.invoke("onPrevious", emptyMap())
+                dispatchPlayerAction("onPrevious", emptyMap())
             }
             ACTION_SHUFFLE -> {
                 isShuffle = !isShuffle
-                playerActionListener?.invoke("onShuffle", mapOf("isShuffle" to isShuffle))
+                dispatchPlayerAction("onShuffle", mapOf("isShuffle" to isShuffle))
                 updateNotification()
             }
             ACTION_REPEAT -> {
                 repeatMode = (repeatMode + 1) % 3
-                playerActionListener?.invoke("onRepeat", mapOf("repeatMode" to repeatMode))
+                dispatchPlayerAction("onRepeat", mapOf("repeatMode" to repeatMode))
                 updateNotification()
             }
             ACTION_STOP -> {
@@ -222,6 +227,28 @@ class FreeBeatPlaybackService : Service() {
         }
     }
 
+    private fun dispatchPlayerAction(action: String, extras: Map<String, Any> = emptyMap()) {
+        val listener = playerActionListener
+        if (listener != null) {
+            listener.invoke(action, extras)
+        } else {
+            // If MainActivity was killed while paused, wake it up to resume playback smoothly
+            try {
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                    this.action = Intent.ACTION_MAIN
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    putExtra("auto_play", action == "onPlayPause")
+                }
+                if (launchIntent != null) {
+                    startActivity(launchIntent)
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("FreeBeatPlayback", "Failed to launch activity from service: ${e.message}")
+            }
+        }
+    }
+
     private fun initMediaSession() {
         mediaSession = MediaSessionCompat(this, "FreeBeatMediaSession").apply {
             isActive = true
@@ -229,33 +256,35 @@ class FreeBeatPlaybackService : Service() {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     isPlaying = true
-                    playerActionListener?.invoke("onPlayPause", mapOf("isPlaying" to true))
+                    acquireWakeLock()
+                    dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to true))
                     updateNotification()
                 }
 
                 override fun onPause() {
                     isPlaying = false
-                    playerActionListener?.invoke("onPlayPause", mapOf("isPlaying" to false))
+                    releaseWakeLock()
+                    dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to false))
                     updateNotification()
                 }
 
                 override fun onSkipToNext() {
-                    playerActionListener?.invoke("onNext", emptyMap())
+                    dispatchPlayerAction("onNext", emptyMap())
                 }
 
                 override fun onSkipToPrevious() {
-                    playerActionListener?.invoke("onPrevious", emptyMap())
+                    dispatchPlayerAction("onPrevious", emptyMap())
                 }
 
                 override fun onSeekTo(pos: Long) {
                     currentPositionMs = pos
-                    playerActionListener?.invoke("onSeek", mapOf("positionMs" to pos))
+                    dispatchPlayerAction("onSeek", mapOf("positionMs" to pos))
                     updateNotification()
                 }
 
                 override fun onSetShuffleMode(shuffleMode: Int) {
                     isShuffle = (shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE)
-                    playerActionListener?.invoke("onShuffle", mapOf("isShuffle" to isShuffle))
+                    dispatchPlayerAction("onShuffle", mapOf("isShuffle" to isShuffle))
                     updateNotification()
                 }
 
@@ -265,7 +294,7 @@ class FreeBeatPlaybackService : Service() {
                         PlaybackStateCompat.REPEAT_MODE_ALL -> 1
                         else -> 0
                     }
-                    playerActionListener?.invoke("onRepeat", mapOf("repeatMode" to repeatMode))
+                    dispatchPlayerAction("onRepeat", mapOf("repeatMode" to repeatMode))
                     updateNotification()
                 }
 
@@ -273,12 +302,12 @@ class FreeBeatPlaybackService : Service() {
                     when (action) {
                         ACTION_SHUFFLE -> {
                             isShuffle = !isShuffle
-                            playerActionListener?.invoke("onShuffle", mapOf("isShuffle" to isShuffle))
+                            dispatchPlayerAction("onShuffle", mapOf("isShuffle" to isShuffle))
                             updateNotification()
                         }
                         ACTION_REPEAT -> {
                             repeatMode = (repeatMode + 1) % 3
-                            playerActionListener?.invoke("onRepeat", mapOf("repeatMode" to repeatMode))
+                            dispatchPlayerAction("onRepeat", mapOf("repeatMode" to repeatMode))
                             updateNotification()
                         }
                     }

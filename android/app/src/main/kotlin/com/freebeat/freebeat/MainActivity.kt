@@ -1,6 +1,7 @@
 package com.freebeat.freebeat
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -539,9 +540,37 @@ class MainActivity : FlutterActivity() {
 
         FreeBeatPlaybackService.playerActionListener = { action, extras ->
             runOnUiThread {
-                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-                    .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
+                try {
+                    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+                        .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
+                } catch (e: Throwable) {
+                    android.util.Log.w("MainActivity", "Failed to dispatch onNotificationAction: ${e.message}")
+                }
             }
+        }
+
+        val autoPlay = intent?.getBooleanExtra("auto_play", false) ?: false
+        val initialAction = intent?.getStringExtra("action")
+        if (autoPlay || !initialAction.isNullOrEmpty()) {
+            intent?.removeExtra("auto_play")
+            intent?.removeExtra("action")
+            window.decorView.postDelayed({
+                val actionToDispatch = if (!initialAction.isNullOrEmpty()) initialAction else "onPlayPause"
+                FreeBeatPlaybackService.playerActionListener?.invoke(actionToDispatch, mapOf("isPlaying" to true))
+            }, 1200)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val autoPlay = intent.getBooleanExtra("auto_play", false)
+        val action = intent.getStringExtra("action")
+        if (autoPlay || !action.isNullOrEmpty()) {
+            intent.removeExtra("auto_play")
+            intent.removeExtra("action")
+            val actionToDispatch = if (!action.isNullOrEmpty()) action else "onPlayPause"
+            FreeBeatPlaybackService.playerActionListener?.invoke(actionToDispatch, mapOf("isPlaying" to true))
         }
     }
 
@@ -1421,6 +1450,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        FreeBeatPlaybackService.playerActionListener = null
         clearDisplayRefreshRateOverrides()
         releaseEffects()
         super.onDestroy()
