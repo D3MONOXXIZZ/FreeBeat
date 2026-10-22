@@ -140,6 +140,14 @@ class TrackMatchScorer {
     'teaser',
     'trailer',
     'snippet',
+    'how we made',
+    'the making of',
+    'making of',
+    'behind the scenes',
+    'interview',
+    'podcast',
+    'documentary',
+    'vlog',
   };
 
   static String extractPrimaryArtist(String fullArtist) {
@@ -185,6 +193,7 @@ class TrackMatchScorer {
     required String candidateArtist,
     int? targetDurationMs,
     int? candidateDurationMs,
+    int maxDurationDiffMs = 45000,
   }) {
     final lowerTargetTitle = targetTitle.toLowerCase();
     final lowerTargetArtist = targetArtist.toLowerCase();
@@ -341,7 +350,7 @@ class TrackMatchScorer {
       );
     }
 
-    // 4. Duration Check (Tightened to 40s)
+    // 4. Duration Check
     int? diffMs;
     double durationBonus = 0.0;
     if (targetDurationMs != null &&
@@ -349,7 +358,7 @@ class TrackMatchScorer {
         candidateDurationMs != null &&
         candidateDurationMs > 0) {
       diffMs = (candidateDurationMs - targetDurationMs).abs();
-      if (diffMs > 40000) {
+      if (diffMs > maxDurationDiffMs) {
         return TrackMatchEvaluation(
           score: -1.0,
           isDisqualified: true,
@@ -361,9 +370,11 @@ class TrackMatchScorer {
       } else if (diffMs <= 5000) {
         durationBonus = 0.20;
       } else if (diffMs <= 15000) {
-        durationBonus = 0.10;
-      } else if (diffMs > 25000) {
-        durationBonus = -0.10;
+        durationBonus = 0.15;
+      } else if (diffMs <= 30000) {
+        durationBonus = 0.05;
+      } else if (diffMs > 40000) {
+        durationBonus = -0.15;
       }
     }
 
@@ -542,7 +553,7 @@ class MissingTrackAudioResolver {
         cleanTitle: cleanTitle.isNotEmpty ? cleanTitle : title,
         cleanArtist: cleanArtist.isNotEmpty ? cleanArtist : artist,
         expectedDurationMs: expectedDurationMs,
-      ).timeout(const Duration(milliseconds: 5500));
+      ).timeout(const Duration(milliseconds: 12000));
       if (ytCandidate != null &&
           ytCandidate.isFullLength &&
           ytCandidate.durationMs >= 45000) {
@@ -718,6 +729,22 @@ class MissingTrackAudioResolver {
     }
   }
 
+  static int? _parseDurationString(String? dur) {
+    if (dur == null || dur.isEmpty) return null;
+    final parts = dur.trim().split(':');
+    if (parts.length == 2) {
+      final m = int.tryParse(parts[0]) ?? 0;
+      final s = int.tryParse(parts[1]) ?? 0;
+      return (m * 60 + s) * 1000;
+    } else if (parts.length == 3) {
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts[1]) ?? 0;
+      final s = int.tryParse(parts[2]) ?? 0;
+      return (h * 3600 + m * 60 + s) * 1000;
+    }
+    return null;
+  }
+
   /// YouTube stream extraction with strict match validation and safety timeouts.
   Future<AudioStreamCandidate?> _resolveViaYouTubeExplode({
     required String cleanTitle,
@@ -725,34 +752,46 @@ class MissingTrackAudioResolver {
     int? expectedDurationMs,
   }) async {
     final client = ytClient;
-    final primaryArtist = cleanArtist.split(RegExp(r'[,&;]')).first.trim();
-    final queries = [
-      if (primaryArtist.isNotEmpty && cleanTitle.isNotEmpty) ...[
-        '$cleanArtist - $cleanTitle (Audio)',
-        '$cleanTitle $primaryArtist topic',
-        '$cleanTitle $primaryArtist',
-        '$primaryArtist - $cleanTitle',
-      ],
-      if (cleanArtist.isNotEmpty && cleanArtist != primaryArtist) ...[
-        '$cleanTitle $cleanArtist audio',
-        '$cleanTitle $cleanArtist',
-      ],
-      '$cleanTitle audio',
-    ];
+    final primaryArtist = cleanArtist
+        .split(RegExp(r'[,&;/]|\bfeat\.?\b|\bft\.?\b|\bwith\b', caseSensitive: false))
+        .first
+        .trim();
+
+    final seenQueries = <String>{};
+    final queries = <String>[];
+    void addQuery(String q) {
+      final trimmed = q.trim();
+      if (trimmed.isNotEmpty && seenQueries.add(trimmed.toLowerCase())) {
+        queries.add(trimmed);
+      }
+    }
+
+    if (primaryArtist.isNotEmpty && cleanTitle.isNotEmpty) {
+      addQuery('$primaryArtist $cleanTitle');
+      if (cleanArtist != primaryArtist) {
+        addQuery('$cleanArtist $cleanTitle');
+      }
+      addQuery('$cleanTitle $primaryArtist');
+    }
+    if (cleanTitle.isNotEmpty) {
+      addQuery(cleanTitle);
+    }
 
     for (final query in queries) {
       try {
         final searchResults = await client.search
-            .search(query)
-            .timeout(const Duration(milliseconds: 4500));
-        if (searchResults.isEmpty) continue;
+            .searchContent(query)
+            .timeout(const Duration(milliseconds: 5000));
+        final searchVideos = searchResults.whereType<SearchVideo>().toList();
+        if (searchVideos.isEmpty) continue;
 
-        final candidates = <AudioStreamCandidate>[];
+        final rankedCandidates = <({SearchVideo video, double score, int? durMs})>[];
 
-        for (final video in searchResults.take(8)) {
-          final durMs = video.duration?.inMilliseconds;
+        for (final video in searchVideos.take(10)) {
+          final durMs = _parseDurationString(video.duration);
           // STRICT FULL-LENGTH CHECK: Never consider 30s clips or short previews
-          if (durMs != null && durMs < 45000) continue;
+          // Also reject >15min full podcasts/documentaries if expected duration is standard
+          if (durMs != null && (durMs < 45000 || (expectedDurationMs == null && durMs > 900000))) continue;
 
           final eval = TrackMatchScorer.evaluate(
             targetTitle: cleanTitle,
@@ -761,46 +800,50 @@ class MissingTrackAudioResolver {
             candidateArtist: video.author,
             targetDurationMs: expectedDurationMs,
             candidateDurationMs: durMs,
+            maxDurationDiffMs: 90000,
           );
 
           if (!eval.isMatch) continue;
+          rankedCandidates.add((video: video, score: eval.score, durMs: durMs));
+        }
 
+        if (rankedCandidates.isEmpty) continue;
+        rankedCandidates.sort((a, b) => b.score.compareTo(a.score));
+
+        // Fetch audio stream manifest only for the top-scoring candidate(s)
+        for (final candidate in rankedCandidates.take(2)) {
+          final video = candidate.video;
           try {
             final manifest = await client.videos.streamsClient
                 .getManifest(video.id)
-                .timeout(const Duration(milliseconds: 3500));
+                .timeout(const Duration(milliseconds: 4000));
             final audioOnly = manifest.audioOnly;
             if (audioOnly.isNotEmpty) {
               final bestAudio = audioOnly.withHighestBitrate();
               final format = bestAudio.container.name.toLowerCase();
               final kbps = (bestAudio.bitrate.bitsPerSecond / 1000).round();
 
-              candidates.add(
-                AudioStreamCandidate(
-                  streamUrl: bestAudio.url.toString(),
-                  format: format == 'webm' ? 'opus' : format,
-                  bitrateKbps: kbps > 0 ? kbps : 192,
-                  sourceId: video.id.value,
-                  sourceTitle: video.title,
-                  channelOrArtist: video.author,
-                  durationMs: durMs ?? expectedDurationMs ?? 210000,
-                  streamSizeBytes: bestAudio.size.totalBytes,
-                  audioOnlyStreamInfo: bestAudio,
-                  ytClient: client,
-                  artworkUrl: video.thumbnails.highResUrl,
-                  isFullLength: true,
-                  matchScore: eval.score,
-                ),
+              return AudioStreamCandidate(
+                streamUrl: bestAudio.url.toString(),
+                format: format == 'webm' ? 'opus' : format,
+                bitrateKbps: kbps > 0 ? kbps : 192,
+                sourceId: video.id.value,
+                sourceTitle: video.title,
+                channelOrArtist: video.author,
+                durationMs: candidate.durMs ?? expectedDurationMs ?? 210000,
+                streamSizeBytes: bestAudio.size.totalBytes,
+                audioOnlyStreamInfo: bestAudio,
+                ytClient: client,
+                artworkUrl: video.thumbnails.isNotEmpty
+                    ? video.thumbnails.first.url.toString()
+                    : 'https://i.ytimg.com/vi/${video.id.value}/hqdefault.jpg',
+                isFullLength: true,
+                matchScore: candidate.score,
               );
             }
           } catch (_) {
             continue;
           }
-        }
-
-        if (candidates.isNotEmpty) {
-          candidates.sort((a, b) => b.matchScore.compareTo(a.matchScore));
-          return candidates.first;
         }
       } catch (_) {}
     }
