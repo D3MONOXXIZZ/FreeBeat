@@ -1087,4 +1087,125 @@ void main() {
       expect(result.missingTracks[0].expectedDurationMs, equals(223000));
     });
   });
+
+  group('Cloud and Local Deduplication on Playlist Re-Import', () {
+    test('findExistingCloudTrack detects already uploaded files in Google Drive folder and reuses them', () async {
+      final mockClient = MockClient((request) async {
+        final q = request.url.queryParameters['q'] ?? '';
+        if (q.contains("name = 'FreeBeat Music'")) {
+          return http.Response(jsonEncode({'files': [{'id': 'folder_root'}]}), 200);
+        }
+        if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+          return http.Response(jsonEncode({'files': [{'id': 'folder_sub'}]}), 200);
+        }
+        if (q.contains('in parents')) {
+          return http.Response(
+            jsonEncode({
+              'files': [
+                {
+                  'id': 'gdrive_existing_999',
+                  'name': 'Daft Punk - One More Time.opus',
+                  'size': '4500000',
+                  'mimeType': 'audio/ogg',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('{}', 200);
+      });
+
+      final uploader = UniversalCloudUploadService(httpClient: mockClient);
+      const account = CloudAccount(
+        id: 'acc_gdrive_dedup',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'My Google Drive',
+        endpointOrFolder: '/',
+      );
+
+      final existingTrack = await uploader.findExistingCloudTrack(
+        account: account,
+        secrets: {'accessToken': 'test_token'},
+        playlistName: 'Discovery',
+        title: 'One More Time',
+        artist: 'Daft Punk',
+      );
+
+      expect(existingTrack, isNotNull);
+      expect(existingTrack!.id, equals('gdrive_gdrive_existing_999'));
+      expect(existingTrack.remotePathOrId, equals('gdrive_existing_999'));
+      expect(existingTrack.streamUrl, contains('gdrive_existing_999?alt=media'));
+      expect(existingTrack.sizeBytes, equals(4500000));
+    });
+
+    test('uploadPreparedTrack skips Google Drive multipart POST when file already exists in folder', () async {
+      var multipartPostCount = 0;
+      final mockClient = MockClient((request) async {
+        final q = request.url.queryParameters['q'] ?? '';
+        if (q.contains("name = 'FreeBeat Music'")) {
+          return http.Response(jsonEncode({'files': [{'id': 'folder_root'}]}), 200);
+        }
+        if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+          return http.Response(jsonEncode({'files': [{'id': 'folder_sub'}]}), 200);
+        }
+        if (q.contains('in parents')) {
+          return http.Response(
+            jsonEncode({
+              'files': [
+                {
+                  'id': 'drive_preexisting_file_42',
+                  'name': 'The Weeknd - Blinding Lights.opus',
+                  'size': '3800000',
+                  'mimeType': 'audio/ogg',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (request.url.path.contains('/upload/drive/v3/files')) {
+          multipartPostCount++;
+          return http.Response(jsonEncode({'id': 'unexpected_new_upload'}), 200);
+        }
+        return http.Response('{}', 200);
+      });
+
+      final scratchFile = File('${Directory.systemTemp.path}/test_dedup_${DateTime.now().millisecondsSinceEpoch}.tmp');
+      await scratchFile.writeAsString('mock audio data');
+
+      final uploader = UniversalCloudUploadService(httpClient: mockClient);
+      final prepared = PreparedTrackAudio(
+        file: scratchFile,
+        filename: 'The Weeknd - Blinding Lights.opus',
+        title: 'Blinding Lights',
+        artist: 'The Weeknd',
+        album: 'After Hours',
+        format: 'opus',
+        durationMs: 200000,
+        sizeBytes: 3800000,
+        bitrateKbps: 160,
+      );
+
+      const account = CloudAccount(
+        id: 'acc_gdrive_dedup2',
+        providerType: CloudProviderType.googleDrive,
+        displayName: 'My Google Drive',
+        endpointOrFolder: '/',
+      );
+
+      final track = await uploader.uploadPreparedTrack(
+        preparedAudio: prepared,
+        account: account,
+        secrets: {'accessToken': 'test_token'},
+        playlistName: 'Hits',
+      );
+
+      // Verify that multipart upload was bypassed and zero duplicates were created
+      expect(multipartPostCount, equals(0));
+      expect(track.id, equals('gdrive_drive_preexisting_file_42'));
+      expect(track.remotePathOrId, equals('drive_preexisting_file_42'));
+      expect(await scratchFile.exists(), isFalse);
+    });
+  });
 }

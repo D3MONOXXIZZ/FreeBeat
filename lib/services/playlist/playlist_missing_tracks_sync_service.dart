@@ -407,6 +407,51 @@ class PlaylistMissingTracksSyncNotifier
   }) async {
     if (_isCancelled) return null;
 
+    // STEP 0: Check if this track already exists in the cloud folder or local storage
+    // (e.g. if the user deleted and re-imported the playlist, or if it was previously synced).
+    // Reusing the existing cloud track completely bypasses YouTube stream resolution,
+    // audio download, and uploading, saving bandwidth and preventing duplicate files in Drive!
+    try {
+      final existingTrack = await _uploader.findExistingCloudTrack(
+        account: account,
+        secrets: secrets,
+        playlistName: playlistName,
+        title: item.title,
+        artist: item.artist,
+        expectedDurationMs: item.expectedDurationMs,
+        preferredArtworkUrl: item.preferredArtworkUrl,
+        preferredAlbum: item.album,
+      );
+
+      if (existingTrack != null) {
+        // Register in tracks catalog and add to playlist
+        await _ref.read(tracksCatalogProvider.notifier).addIndexedTracks([existingTrack]);
+        await _ref.read(playlistsProvider.notifier).addTracksToPlaylist(
+              playlistId,
+              [existingTrack.id],
+            );
+
+        _updateTrackProgress(
+          index,
+          (p) => p.copyWith(
+            status: SyncTrackStatus.completed,
+            completedTrack: existingTrack,
+            progressFraction: 1.0,
+          ),
+        );
+
+        state = state.copyWith(
+          completedCount: state.completedCount + 1,
+          uploadedTracks: [...state.uploadedTracks, existingTrack],
+        );
+
+        await PixelHaptics.tick();
+        return existingTrack;
+      }
+    } catch (e) {
+      debugPrint('Cloud deduplication check error for "${item.displayName}": $e');
+    }
+
     _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.resolving));
     state = state.copyWith(
       currentTrackTitle: item.displayName,

@@ -293,9 +293,9 @@ void main() {
       // Verify "Imported Tracks" library card was removed as requested
       expect(find.textContaining('Imported Tracks'), findsNothing);
 
-      // Verify connected drive has direct action buttons to import tracks and folders under account details
+      // Verify connected drive has direct action buttons to import tracks and manage allowed folder
       expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
-      expect(find.text('Import Folder'), findsOneWidget);
+      expect(find.text('Allowed Folder'), findsOneWidget);
     });
 
     test('scanDirectoryNative retrieves directory tree entries via MethodChannel', () async {

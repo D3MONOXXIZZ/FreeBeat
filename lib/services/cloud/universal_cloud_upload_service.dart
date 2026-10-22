@@ -30,6 +30,195 @@ class UniversalCloudUploadService {
 
   final http.Client _http;
   final Map<String, String> _folderIdCache = {};
+  final Map<String, List<Map<String, dynamic>>> _folderFilesCache = {};
+
+  static String _normalizeTrackString(String s) {
+    return s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), '') // remove parenthesized details
+        .replaceAll(RegExp(r'[^\w\s]'), '') // remove punctuation
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  /// Lists all audio files inside a Google Drive folder, cached per folderId.
+  Future<List<Map<String, dynamic>>> _listDriveFolderFiles(
+    String token,
+    String folderId,
+  ) async {
+    final cacheKey = '$token:$folderId';
+    if (_folderFilesCache.containsKey(cacheKey)) {
+      return _folderFilesCache[cacheKey]!;
+    }
+
+    try {
+      final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+        'q': "'$folderId' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'",
+        'fields': 'files(id, name, size, mimeType)',
+        'pageSize': '1000',
+      });
+      final resp = await _http.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 12));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final files = (data['files'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+        _folderFilesCache[cacheKey] = files;
+        return files;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Map<String, dynamic>? _matchFileInList({
+    required List<Map<String, dynamic>> files,
+    String? expectedFilename,
+    required String title,
+    required String artist,
+  }) {
+    if (files.isEmpty) return null;
+
+    final cleanTitle = _normalizeTrackString(title);
+    final cleanArtist = _normalizeTrackString(artist);
+    final primaryArtist = cleanArtist.split(RegExp(r'[,&;]')).first.trim();
+
+    // 1. Exact filename match
+    if (expectedFilename != null && expectedFilename.isNotEmpty) {
+      final lowerExpected = expectedFilename.toLowerCase();
+      for (final f in files) {
+        final name = (f['name'] ?? '').toString().toLowerCase();
+        if (name == lowerExpected) return f;
+      }
+    }
+
+    // 2. Normalized filename match (artist + title)
+    for (final f in files) {
+      final name = _normalizeTrackString((f['name'] ?? '').toString());
+      if (cleanArtist.isNotEmpty && cleanTitle.isNotEmpty) {
+        if (name.contains(cleanTitle) && (name.contains(cleanArtist) || (primaryArtist.isNotEmpty && name.contains(primaryArtist)))) {
+          return f;
+        }
+      }
+    }
+
+    // 3. Title match if candidate title is specific (> 3 chars)
+    if (cleanTitle.length > 3) {
+      for (final f in files) {
+        final name = _normalizeTrackString((f['name'] ?? '').toString());
+        if (name.contains(cleanTitle)) {
+          // If artist is specified, ensure it doesn't contradict
+          if (primaryArtist.isNotEmpty && name.contains(' - ')) {
+            if (!name.contains(primaryArtist)) continue;
+          }
+          return f;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /// Checks if an audio file for a given track already exists in the destination cloud folder
+  /// or local storage. Returns the existing [Track] if found, preventing redundant downloads
+  /// and duplicate cloud uploads.
+  Future<Track?> findExistingCloudTrack({
+    required CloudAccount account,
+    required Map<String, String> secrets,
+    required String playlistName,
+    required String title,
+    required String artist,
+    int? expectedDurationMs,
+    String? preferredArtworkUrl,
+    String? preferredAlbum,
+  }) async {
+    final cleanPlaylist = _sanitizeFolder(playlistName);
+    var token = secrets['accessToken'] ?? '';
+
+    if (account.providerType == CloudProviderType.googleDrive) {
+      if (token.isEmpty) return null;
+      try {
+        final folderId = await _getOrCreateGoogleDriveFolder(
+          token: token,
+          folderName: cleanPlaylist,
+          parentFolderName: 'FreeBeat Music',
+        );
+        if (folderId.isEmpty) return null;
+
+        final files = await _listDriveFolderFiles(token, folderId);
+        final match = _matchFileInList(
+          files: files,
+          title: title,
+          artist: artist,
+        );
+        if (match != null) {
+          final fileId = match['id'] as String;
+          final fileName = (match['name'] as String?) ?? '$artist - $title';
+          final sizeBytes = int.tryParse(match['size']?.toString() ?? '') ?? 0;
+          final ext = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+
+          return Track(
+            id: 'gdrive_$fileId',
+            accountId: account.id,
+            providerType: CloudProviderType.googleDrive,
+            remotePathOrId: fileId,
+            title: title,
+            artist: artist,
+            album: preferredAlbum ?? playlistName,
+            durationMs: expectedDurationMs ?? 210000,
+            streamUrl: 'https://www.googleapis.com/drive/v3/files/$fileId?alt=media',
+            codec: ext.isNotEmpty ? ext.toUpperCase() : 'OPUS',
+            bitDepth: 16,
+            sampleRateHz: 44100,
+            bitrateKbps: 160,
+            sizeBytes: sizeBytes > 0 ? sizeBytes : 5000000,
+            artworkUrl: preferredArtworkUrl,
+            dominantColorValue: 0xFF1E293B,
+            isPinnedOffline: false,
+          );
+        }
+      } catch (_) {}
+    } else if (account.providerType == CloudProviderType.androidSaf ||
+        account.endpointOrFolder.contains('Android App Storage') ||
+        account.endpointOrFolder.contains('Folder Import')) {
+      // Local Storage Check
+      try {
+        final localMusicDir = await resolveMusicStorageDirectory(
+          cleanPlaylist,
+          customFolder: account.endpointOrFolder,
+        );
+        final cleanTitle = _normalizeTrackString(title);
+        final cleanArtist = _normalizeTrackString(artist);
+        final entities = localMusicDir.listSync();
+        for (final entity in entities) {
+          if (entity is File) {
+            final fName = _normalizeTrackString(p.basename(entity.path));
+            if (fName.contains(cleanTitle) && (cleanArtist.isEmpty || fName.contains(cleanArtist))) {
+              final stat = entity.statSync();
+              final ext = p.extension(entity.path).replaceFirst('.', '').toLowerCase();
+              return Track(
+                id: 'local_${stat.modified.millisecondsSinceEpoch}_${entity.path.hashCode.abs()}',
+                accountId: account.id,
+                providerType: CloudProviderType.androidSaf,
+                remotePathOrId: entity.path,
+                title: title,
+                artist: artist,
+                album: preferredAlbum ?? playlistName,
+                durationMs: expectedDurationMs ?? 210000,
+                streamUrl: entity.path,
+                codec: ext.isNotEmpty ? ext.toUpperCase() : 'OPUS',
+                bitDepth: 16,
+                sampleRateHz: 44100,
+                bitrateKbps: 160,
+                sizeBytes: stat.size > 0 ? stat.size : 5000000,
+                artworkUrl: preferredArtworkUrl,
+                dominantColorValue: 0xFF1E293B,
+                isPinnedOffline: false,
+              );
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
 
   /// Uploads a prepared scratch audio file to the target cloud account inside
   /// `FreeBeat Music/{playlistName}/` and returns a fully initialized [Track] model.
@@ -187,6 +376,45 @@ class UniversalCloudUploadService {
       parentFolderName: 'FreeBeat Music',
     );
 
+    // Deduplication check: verify if this track or file already exists in this Google Drive folder
+    if (parentFolderId.isNotEmpty) {
+      try {
+        final existingFiles = await _listDriveFolderFiles(token, parentFolderId);
+        final match = _matchFileInList(
+          files: existingFiles,
+          expectedFilename: preparedAudio.filename,
+          title: preparedAudio.title,
+          artist: preparedAudio.artist,
+        );
+        if (match != null) {
+          final existingId = match['id'] as String;
+          final existingSize = int.tryParse(match['size']?.toString() ?? '') ?? preparedAudio.sizeBytes;
+          await preparedAudio.purge();
+          onProgress?.call(1.0);
+          return Track(
+            id: 'gdrive_$existingId',
+            accountId: account.id,
+            providerType: CloudProviderType.googleDrive,
+            remotePathOrId: existingId,
+            title: preparedAudio.title,
+            artist: preparedAudio.artist,
+            album: preparedAudio.album,
+            durationMs: preparedAudio.durationMs,
+            streamUrl: 'https://www.googleapis.com/drive/v3/files/$existingId?alt=media',
+            codec: preparedAudio.format.toUpperCase(),
+            bitDepth: 16,
+            sampleRateHz: 44100,
+            bitrateKbps: preparedAudio.bitrateKbps,
+            sizeBytes: existingSize,
+            artworkUrl: preparedAudio.artworkUrl,
+            dominantColorValue: preparedAudio.dominantColorValue,
+            syncedLyrics: preparedAudio.syncedLyrics,
+            isPinnedOffline: false,
+          );
+        }
+      } catch (_) {}
+    }
+
     // 2. Upload via multipart/related
     final boundary = 'FreeBeatBoundary_${DateTime.now().millisecondsSinceEpoch}';
     final metadataPart = jsonEncode({
@@ -240,6 +468,17 @@ class UniversalCloudUploadService {
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final fileId = (data['id'] as String?) ?? '${DateTime.now().millisecondsSinceEpoch}';
+
+    // Update folder files cache so subsequent deduplication checks know this file exists
+    if (parentFolderId.isNotEmpty) {
+      final cacheKey = '$token:$parentFolderId';
+      _folderFilesCache[cacheKey]?.add({
+        'id': fileId,
+        'name': preparedAudio.filename,
+        'size': '${preparedAudio.sizeBytes}',
+        'mimeType': mimeType,
+      });
+    }
 
     return Track(
       id: 'gdrive_$fileId',
@@ -867,6 +1106,36 @@ class UniversalCloudUploadService {
     );
 
     final destFile = File(p.join(localMusicDir.path, preparedAudio.filename));
+
+    // Deduplication check: if destination file already exists and is non-empty valid audio, reuse it
+    if (destFile.existsSync() && destFile.lengthSync() > 100000) {
+      final existingSize = destFile.lengthSync();
+      try {
+        await preparedAudio.purge();
+      } catch (_) {}
+      onProgress?.call(1.0);
+      return Track(
+        id: 'local_${destFile.path.hashCode.abs()}',
+        accountId: account.id,
+        providerType: CloudProviderType.androidSaf,
+        remotePathOrId: destFile.path,
+        title: preparedAudio.title,
+        artist: preparedAudio.artist,
+        album: preparedAudio.album,
+        durationMs: preparedAudio.durationMs,
+        streamUrl: destFile.path,
+        codec: preparedAudio.format.toUpperCase(),
+        bitDepth: 16,
+        sampleRateHz: 44100,
+        bitrateKbps: preparedAudio.bitrateKbps,
+        sizeBytes: existingSize,
+        artworkUrl: preparedAudio.artworkUrl,
+        dominantColorValue: preparedAudio.dominantColorValue,
+        syncedLyrics: preparedAudio.syncedLyrics,
+        isPinnedOffline: true,
+      );
+    }
+
     try {
       await preparedAudio.file.rename(destFile.path);
     } catch (_) {
@@ -877,7 +1146,7 @@ class UniversalCloudUploadService {
     onProgress?.call(1.0);
 
     return Track(
-      id: 'local_${DateTime.now().millisecondsSinceEpoch}_${preparedAudio.filename.hashCode.abs()}',
+      id: 'local_${destFile.path.hashCode.abs()}',
       accountId: account.id,
       providerType: CloudProviderType.androidSaf,
       remotePathOrId: destFile.path,
