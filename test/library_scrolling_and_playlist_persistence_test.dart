@@ -160,11 +160,94 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify all items are present in the hamburger menu
-      expect(find.text('Search Library'), findsOneWidget);
+      expect(find.text('Search in Library'), findsOneWidget);
+      expect(find.text('Search Global Catalog'), findsOneWidget);
       expect(find.text('Add to Library'), findsOneWidget);
       expect(find.text('Import Playlist'), findsOneWidget);
       expect(find.text('Select Tracks'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
+    });
+  });
+
+  group('Library Screen Search Feature Tests', () {
+    testWidgets('LibraryScreen renders search bar and live-filters tracks', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+
+      final trackA = Track(
+        id: 'track_a',
+        accountId: 'acc_1',
+        providerType: CloudProviderType.androidSaf,
+        remotePathOrId: '/music/crawl.flac',
+        title: 'Crawl Outta Love',
+        artist: 'ILLENIUM',
+        album: 'Awake',
+        durationMs: 242000,
+        streamUrl: 'file:///music/crawl.flac',
+        codec: 'FLAC',
+      );
+
+      final trackB = Track(
+        id: 'track_b',
+        accountId: 'acc_1',
+        providerType: CloudProviderType.androidSaf,
+        remotePathOrId: '/music/star.flac',
+        title: 'Starlight',
+        artist: 'Muse',
+        album: 'Black Holes',
+        durationMs: 240000,
+        streamUrl: 'file:///music/star.flac',
+        codec: 'FLAC',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            tracksCatalogProvider.overrideWith((ref) {
+              final notifier = TracksCatalogNotifier(ref.watch(libraryDatabaseProvider), ref);
+              notifier.state = [trackA, trackB];
+              return notifier;
+            }),
+          ],
+          child: const MaterialApp(
+            home: LibraryScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // 1. Verify SearchBar TextField is present
+      final searchField = find.byType(TextField);
+      expect(searchField, findsOneWidget);
+      expect(find.text('Crawl Outta Love'), findsOneWidget);
+      expect(find.text('Starlight'), findsOneWidget);
+
+      // 2. Type "crawl" into search bar
+      await tester.enterText(searchField, 'crawl');
+      await tester.pumpAndSettle();
+
+      // "Crawl Outta Love" should be visible, "Starlight" should be filtered out
+      expect(find.text('Crawl Outta Love'), findsOneWidget);
+      expect(find.text('Starlight'), findsNothing);
+      expect(find.textContaining('Found 1 track for "crawl"'), findsOneWidget);
+
+      // 3. Clear search using the clear button
+      final clearButton = find.byTooltip('Clear search');
+      expect(clearButton, findsOneWidget);
+      await tester.tap(clearButton);
+      await tester.pumpAndSettle();
+
+      // Both tracks should be restored
+      expect(find.text('Crawl Outta Love'), findsOneWidget);
+      expect(find.text('Starlight'), findsOneWidget);
+
+      // 4. Search for nonexistent track -> Empty state
+      await tester.enterText(searchField, 'nonexistentquery123');
+      await tester.pumpAndSettle();
+
+      expect(find.text('No tracks matching "nonexistentquery123"'), findsOneWidget);
+      expect(find.text('Clear Search'), findsOneWidget);
+      expect(find.text('Search Online'), findsOneWidget);
     });
   });
 }

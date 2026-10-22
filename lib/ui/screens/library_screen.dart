@@ -46,6 +46,47 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   bool _isMultiSelect = false;
   final Set<String> _selectedTrackIds = <String>{};
 
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+  String _searchQuery = '';
+  bool _isSearchFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.addListener(_onSearchFocusChanged);
+  }
+
+  void _onSearchFocusChanged() {
+    if (mounted) {
+      setState(() {
+        _isSearchFocused = _searchFocusNode.hasFocus;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.removeListener(_onSearchFocusChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _focusSearch() {
+    PixelHaptics.tick();
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+    _searchFocusNode.requestFocus();
+  }
+
   void _enterMultiSelect([String? initialTrackId]) {
     setState(() {
       _isMultiSelect = true;
@@ -863,21 +904,45 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final duplicateMap = ref.watch(duplicateTracksProvider);
     final artists = ref.watch(allArtistsProvider);
 
+    final query = _searchQuery.trim().toLowerCase();
+
     final filtered = allTracks.where((t) {
       if (_selectedArtist != null && t.artist != _selectedArtist) {
         return false;
       }
       switch (_segment) {
         case 'hires':
-          return t.isHiRes;
+          if (!t.isHiRes) return false;
+          break;
         case 'offline':
-          return t.isPinnedOffline;
+          if (!t.isPinnedOffline) return false;
+          break;
         case 'favorites':
-          return t.isFavorite;
+          if (!t.isFavorite) return false;
+          break;
         default:
-          return true;
+          break;
       }
+      if (query.isNotEmpty) {
+        final matches = t.title.toLowerCase().contains(query) ||
+            t.artist.toLowerCase().contains(query) ||
+            t.album.toLowerCase().contains(query) ||
+            t.codec.toLowerCase().contains(query);
+        if (!matches) return false;
+      }
+      return true;
     }).toList();
+
+    final filteredPlaylists = query.isEmpty
+        ? allPlaylists
+        : allPlaylists.where((p) {
+            return p.title.toLowerCase().contains(query) ||
+                p.description.toLowerCase().contains(query);
+          }).toList();
+
+    final filteredArtists = query.isEmpty
+        ? artists
+        : artists.where((a) => a.toLowerCase().contains(query)).toList();
 
     final isAllFilteredSelected = filtered.isNotEmpty &&
         filtered.every((t) => _selectedTrackIds.contains(t.id));
@@ -1002,6 +1067,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   )
                 : null),
         body: CustomScrollView(
+          controller: _scrollController,
           physics: const BouncingScrollPhysics(),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
@@ -1047,6 +1113,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         : () => _showBatchTrackOptions(selectedTracks),
                   ),
                 ] else ...[
+                  IconButton(
+                    icon: const Icon(Icons.search_rounded),
+                    tooltip: 'Search Library',
+                    onPressed: _focusSearch,
+                  ),
                   Theme(
                     data: Theme.of(context).copyWith(
                       popupMenuTheme: PopupMenuThemeData(
@@ -1064,9 +1135,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         PixelHaptics.tick();
                         switch (value) {
                           case 'search':
+                            _focusSearch();
+                            break;
+                          case 'search_global':
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => const SearchScreen(),
+                                builder: (_) =>
+                                    SearchScreen(initialQuery: _searchQuery),
                               ),
                             );
                             break;
@@ -1096,9 +1171,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               Icon(Icons.search_rounded,
                                   color: cs.primary, size: 20),
                               const SizedBox(width: 12),
-                              const Text(
-                                'Search Library',
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                              const Expanded(
+                                child: Text(
+                                  'Search in Library',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'search_global',
+                          child: Row(
+                            children: [
+                              Icon(Icons.travel_explore_rounded,
+                                  color: cs.primary, size: 20),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Search Global Catalog',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -1110,9 +1203,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               Icon(Icons.add_rounded,
                                   color: cs.primary, size: 20),
                               const SizedBox(width: 12),
-                              const Text(
-                                'Add to Library',
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                              const Expanded(
+                                child: Text(
+                                  'Add to Library',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -1127,9 +1222,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 size: 20,
                               ),
                               const SizedBox(width: 12),
-                              const Text(
-                                'Import Playlist',
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                              const Expanded(
+                                child: Text(
+                                  'Import Playlist',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -1141,9 +1238,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               Icon(Icons.checklist_rounded,
                                   color: cs.primary, size: 20),
                               const SizedBox(width: 12),
-                              const Text(
-                                'Select Tracks',
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                              const Expanded(
+                                child: Text(
+                                  'Select Tracks',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -1156,9 +1255,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               Icon(Icons.settings_outlined,
                                   color: cs.onSurfaceVariant, size: 20),
                               const SizedBox(width: 12),
-                              const Text(
-                                'Settings',
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                              const Expanded(
+                                child: Text(
+                                  'Settings',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -1169,6 +1270,77 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ],
                 const SizedBox(width: 8),
               ],
+            ),
+
+            // ─────────────────────────────────────────────────────────────────
+            // 2. Material You Library Search Bar
+            // ─────────────────────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.70),
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(
+                      color: _isSearchFocused
+                          ? cs.primary
+                          : cs.outlineVariant.withValues(alpha: 0.35),
+                      width: _isSearchFocused ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val;
+                      });
+                    },
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      hintText: _segment == 'playlists'
+                          ? 'Search playlists in library...'
+                          : 'Search songs, artists, albums, codecs...',
+                      hintStyle: TextStyle(
+                        fontSize: 13.5,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: _isSearchFocused
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              color: cs.onSurfaceVariant,
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                PixelHaptics.tick();
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ),
             ),
 
           // Real-Time Import Progress Loading Bar
@@ -1410,55 +1582,121 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             // ─────────────────────────────────────────────────────────────────
             // Curated & Smart Playlists 2-Column Responsive Grid
             // ─────────────────────────────────────────────────────────────────
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 160),
-              sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.74,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (index == 0) {
-                      return _NewPlaylistCard(
-                        onTap: _showCreatePlaylistDialog,
-                      );
-                    }
-                    if (index == 1) {
-                      return _ImportPlaylistCard(
-                        onTap: () => showPlaylistImportModal(context),
-                      );
-                    }
-                    final playlist = allPlaylists[index - 2];
-                    final pTracks = allTracks
-                        .where((t) => playlist.trackIds.contains(t.id))
-                        .toList();
-                    return _PlaylistGridCard(
-                      playlist: playlist,
-                      tracks: pTracks,
-                      onTap: () {
-                        PixelHaptics.tick();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PlaylistDetailsScreen(playlist: playlist),
+            if (query.isNotEmpty && filteredPlaylists.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 40,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No playlists matching "$_searchQuery"',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
                           ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Check your search query or create a new playlist.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          icon: const Icon(Icons.clear_rounded, size: 16),
+                          label: const Text('Clear Search'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 160),
+                sliver: SliverGrid(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 0.74,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (query.isEmpty) {
+                        if (index == 0) {
+                          return _NewPlaylistCard(
+                            onTap: _showCreatePlaylistDialog,
+                          );
+                        }
+                        if (index == 1) {
+                          return _ImportPlaylistCard(
+                            onTap: () => showPlaylistImportModal(context),
+                          );
+                        }
+                        final playlist = filteredPlaylists[index - 2];
+                        final pTracks = allTracks
+                            .where((t) => playlist.trackIds.contains(t.id))
+                            .toList();
+                        return _PlaylistGridCard(
+                          playlist: playlist,
+                          tracks: pTracks,
+                          onTap: () {
+                            PixelHaptics.tick();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PlaylistDetailsScreen(playlist: playlist),
+                              ),
+                            );
+                          },
                         );
-                      },
-                    );
-                  },
-                  childCount: allPlaylists.length + 2,
+                      } else {
+                        final playlist = filteredPlaylists[index];
+                        final pTracks = allTracks
+                            .where((t) => playlist.trackIds.contains(t.id))
+                            .toList();
+                        return _PlaylistGridCard(
+                          playlist: playlist,
+                          tracks: pTracks,
+                          onTap: () {
+                            PixelHaptics.tick();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PlaylistDetailsScreen(playlist: playlist),
+                              ),
+                            );
+                          },
+                        );
+                      }
+                    },
+                    childCount: query.isEmpty
+                        ? filteredPlaylists.length + 2
+                        : filteredPlaylists.length,
+                  ),
                 ),
               ),
-            ),
           ] else ...[
             // ─────────────────────────────────────────────────────────────────
             // 3. Figma Screen 5: Artists Avatars Horizontal Row (when available)
             // ─────────────────────────────────────────────────────────────────
-          if (artists.isNotEmpty) ...[
+          if (filteredArtists.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -1466,7 +1704,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Artists',
+                      query.isNotEmpty ? 'Matching Artists' : 'Artists',
                       style: textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -1503,10 +1741,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   physics: const BouncingScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  itemCount: artists.length,
+                  itemCount: filteredArtists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, index) {
-                    final artist = artists[index];
+                    final artist = filteredArtists[index];
                     final isSelected = _selectedArtist == artist;
                     return GestureDetector(
                       onTap: () {
@@ -1760,26 +1998,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         child: Column(
                           children: [
                             Icon(
-                              _segment == 'offline'
-                                  ? Icons.download_for_offline_outlined
-                                  : Icons.filter_list_off_rounded,
+                              query.isNotEmpty
+                                  ? Icons.search_off_rounded
+                                  : (_segment == 'offline'
+                                      ? Icons.download_for_offline_outlined
+                                      : Icons.filter_list_off_rounded),
                               size: 36,
                               color: cs.onSurfaceVariant,
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              _segment == 'offline'
-                                  ? 'No Pinned Offline Tracks'
-                                  : 'No tracks in this view',
+                              query.isNotEmpty
+                                  ? 'No tracks matching "$_searchQuery"'
+                                  : (_segment == 'offline'
+                                      ? 'No Pinned Offline Tracks'
+                                      : 'No tracks in this view'),
                               style: textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              _segment == 'offline'
-                                  ? 'Pin any song, playlist, or artist to listen without an internet connection.'
-                                  : 'Try selecting a different filter or adding music to your library.',
+                              query.isNotEmpty
+                                  ? 'Check your spelling or search our online and cloud streaming engine.'
+                                  : (_segment == 'offline'
+                                      ? 'Pin any song, playlist, or artist to listen without an internet connection.'
+                                      : 'Try selecting a different filter or adding music to your library.'),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 12.5,
@@ -1787,7 +2031,39 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               ),
                             ),
                             const SizedBox(height: 14),
-                            if (_segment == 'offline')
+                            if (query.isNotEmpty) ...[
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 10,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                    icon: const Icon(Icons.clear_rounded,
+                                        size: 16),
+                                    label: const Text('Clear Search'),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => SearchScreen(
+                                            initialQuery: _searchQuery,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                        Icons.travel_explore_rounded,
+                                        size: 16),
+                                    label: const Text('Search Online'),
+                                  ),
+                                ],
+                              ),
+                            ] else if (_segment == 'offline')
                               FilledButton.tonalIcon(
                                 onPressed: () {
                                   PixelHaptics.tick();
@@ -1827,14 +2103,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        _isMultiSelect
-                            ? '${_selectedTrackIds.length} of ${filtered.length} selected'
-                            : '${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurfaceVariant,
+                      Expanded(
+                        child: Text(
+                          _isMultiSelect
+                              ? '${_selectedTrackIds.length} of ${filtered.length} selected'
+                              : (query.isNotEmpty
+                                  ? 'Found ${filtered.length} ${filtered.length == 1 ? "track" : "tracks"} for "$_searchQuery"'
+                                  : '${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: query.isNotEmpty
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                          ),
                         ),
                       ),
                       Row(
