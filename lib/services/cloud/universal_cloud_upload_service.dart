@@ -154,6 +154,10 @@ class UniversalCloudUploadService {
           final sizeBytes = int.tryParse(match['size']?.toString() ?? '') ?? 0;
           final ext = p.extension(fileName).replaceFirst('.', '').toLowerCase();
 
+          final calculatedKbps = (sizeBytes > 0 && expectedDurationMs != null && expectedDurationMs > 0)
+              ? ((sizeBytes * 8) / (expectedDurationMs / 1000) / 1000).round()
+              : 320;
+          final dynamicKbps = calculatedKbps.clamp(128, 320);
           return Track(
             id: 'gdrive_$fileId',
             accountId: account.id,
@@ -164,10 +168,10 @@ class UniversalCloudUploadService {
             album: preferredAlbum ?? playlistName,
             durationMs: expectedDurationMs ?? 210000,
             streamUrl: 'https://www.googleapis.com/drive/v3/files/$fileId?alt=media',
-            codec: ext.isNotEmpty ? ext.toUpperCase() : 'OPUS',
+            codec: ext.isNotEmpty ? ext.toUpperCase() : 'M4A',
             bitDepth: 16,
             sampleRateHz: 44100,
-            bitrateKbps: 160,
+            bitrateKbps: dynamicKbps,
             sizeBytes: sizeBytes > 0 ? sizeBytes : 5000000,
             artworkUrl: preferredArtworkUrl,
             dominantColorValue: 0xFF1E293B,
@@ -193,6 +197,10 @@ class UniversalCloudUploadService {
             if (fName.contains(cleanTitle) && (cleanArtist.isEmpty || fName.contains(cleanArtist))) {
               final stat = entity.statSync();
               final ext = p.extension(entity.path).replaceFirst('.', '').toLowerCase();
+              final calculatedKbps = (stat.size > 0 && expectedDurationMs != null && expectedDurationMs > 0)
+                  ? ((stat.size * 8) / (expectedDurationMs / 1000) / 1000).round()
+                  : 320;
+              final dynamicKbps = calculatedKbps.clamp(128, 320);
               return Track(
                 id: 'local_${stat.modified.millisecondsSinceEpoch}_${entity.path.hashCode.abs()}',
                 accountId: account.id,
@@ -203,10 +211,10 @@ class UniversalCloudUploadService {
                 album: preferredAlbum ?? playlistName,
                 durationMs: expectedDurationMs ?? 210000,
                 streamUrl: entity.path,
-                codec: ext.isNotEmpty ? ext.toUpperCase() : 'OPUS',
+                codec: ext.isNotEmpty ? ext.toUpperCase() : 'M4A',
                 bitDepth: 16,
                 sampleRateHz: 44100,
-                bitrateKbps: 160,
+                bitrateKbps: dynamicKbps,
                 sizeBytes: stat.size > 0 ? stat.size : 5000000,
                 artworkUrl: preferredArtworkUrl,
                 dominantColorValue: 0xFF1E293B,

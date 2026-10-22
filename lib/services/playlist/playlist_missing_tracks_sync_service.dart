@@ -203,7 +203,7 @@ class PlaylistMissingTracksSyncNotifier
 
   bool _isCancelled = false;
   Completer<CloudAuthDecision>? _authDecisionCompleter;
-  Completer<void>? _activeResolveGate;
+  Future<void>? _resolveChain;
 
   void cancelSync() {
     _isCancelled = true;
@@ -281,6 +281,7 @@ class PlaylistMissingTracksSyncNotifier
     if (missingTracks.isEmpty) return;
 
     _isCancelled = false;
+    _resolveChain = null;
     final credStore = _ref.read(credentialStoreProvider);
     var secrets = await credStore.readSecrets(account.id);
 
@@ -466,13 +467,14 @@ class PlaylistMissingTracksSyncNotifier
     );
 
     try {
-      // Pacing gate: ensures YouTube stream resolution queries are paced sequentially
-      // to eliminate burst rate-limiting while allowing downloads and uploads to remain concurrent.
-      while (_activeResolveGate != null && !_activeResolveGate!.isCompleted) {
-        await _activeResolveGate!.future;
+      // Pacing gate: FIFO asynchronous lock ensures stream resolution queries are paced sequentially
+      // to eliminate burst rate-limiting while allowing audio downloads and uploads to remain fully concurrent.
+      final prevGate = _resolveChain;
+      final currentGate = Completer<void>();
+      _resolveChain = currentGate.future;
+      if (prevGate != null) {
+        await prevGate;
       }
-      final gate = Completer<void>();
-      _activeResolveGate = gate;
 
       ResolvedAudioBundle? bundle;
       try {
@@ -486,8 +488,8 @@ class PlaylistMissingTracksSyncNotifier
           preferredAlbum: item.album,
         );
       } finally {
-        await Future.delayed(const Duration(milliseconds: 200));
-        if (!gate.isCompleted) gate.complete();
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (!currentGate.isCompleted) currentGate.complete();
       }
 
       if (bundle == null) {

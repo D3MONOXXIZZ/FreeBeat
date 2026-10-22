@@ -145,10 +145,17 @@ class YouTubeMusicEngine {
             if (durMs >= 45000) {
               final title = videoDetails['title']?.toString() ?? 'YouTube Track';
               final author = videoDetails['author']?.toString() ?? '';
+              final rawBitrate = fmt['bitrate'];
+              final calculatedKbps = rawBitrate is num && rawBitrate > 0
+                  ? (rawBitrate / 1000).round()
+                  : (durSec > 0 && fmt['contentLength'] != null
+                      ? ((int.tryParse(fmt['contentLength'].toString()) ?? 0) * 8 / (durSec * 1000)).round()
+                      : 160);
+              final dynamicKbps = calculatedKbps > 0 ? calculatedKbps : 160;
               return AudioStreamCandidate(
                 streamUrl: streamUrl,
                 format: 'mp4',
-                bitrateKbps: 192,
+                bitrateKbps: dynamicKbps,
                 sourceId: videoId,
                 sourceTitle: title,
                 channelOrArtist: author,

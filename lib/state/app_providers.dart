@@ -2729,7 +2729,6 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     List<String> trackIds,
   ) async {
     if (trackIds.isEmpty) return;
-    await PixelHaptics.tick();
     state = state.map((p) {
       if (p.id == playlistId) {
         final newIds = trackIds.where((id) => !p.trackIds.contains(id)).toList();
@@ -2745,10 +2744,10 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       }
       return p;
     }).toList();
+    unawaited(PixelHaptics.tick());
   }
 
   Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
-    await PixelHaptics.tick();
     state = state.map((p) {
       if (p.id == playlistId) {
         if (!p.trackIds.contains(trackId)) {
@@ -2764,6 +2763,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       }
       return p;
     }).toList();
+    unawaited(PixelHaptics.tick());
   }
 
   Future<void> removeTrackFromPlaylist(

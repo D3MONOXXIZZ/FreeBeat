@@ -338,10 +338,26 @@ class TrackMatchScorer {
       );
     }
     // 3. Title Matching (Strict, with word multiplicity and coverage check)
-    final targetTitleTokens = tokenize(targetTitle);
     final cleanTgt = cleanString(targetTitle);
-    final cleanCand = cleanString(candidateTitle);
     final targetWords = cleanTgt.split(' ').where((w) => w.isNotEmpty).toList();
+    final targetTitleTokens = tokenize(targetTitle);
+
+    // Check if candidateTitle is in "Artist - Title", "Artist x Artist - Title", or "Title - Artist" format
+    String effectiveCandTitle = candidateTitle;
+    final sepMatch = RegExp(r'\s+[-–—:]\s+').firstMatch(candidateTitle);
+    if (sepMatch != null) {
+      final partA = candidateTitle.substring(0, sepMatch.start).trim();
+      final partB = candidateTitle.substring(sepMatch.end).trim();
+      final cleanA = cleanString(partA);
+      final cleanB = cleanString(partB);
+      if (cleanB == cleanTgt || cleanB.startsWith(cleanTgt)) {
+        effectiveCandTitle = partB;
+      } else if (cleanA == cleanTgt || cleanA.startsWith(cleanTgt)) {
+        effectiveCandTitle = partA;
+      }
+    }
+
+    final cleanCand = cleanString(effectiveCandTitle);
     final candWords = cleanCand.split(' ').where((w) => w.isNotEmpty).toList();
 
     const allowedFluff = {
@@ -349,9 +365,22 @@ class TrackMatchScorer {
       'clean', 'bonus', 'track', 'song', 'official', 'original', 'extended',
       'video', 'music', 'lyric', 'lyrics', 'visualizer', '4k', 'hd', 'hq',
       'season', 'episode', 'coke', 'studio', 'nescafe', 'basement', 'session',
-      'unplugged', 'produced', 'prod',
+      'unplugged', 'produced', 'prod', 'feat', 'ft', 'featuring', 'with', 'x', 'vs',
+      'full', 'soundtrack', 'ost', 'theme', 'instrumental',
     };
-    final allowedExtra = allowedFluff.union(targetArtistTokens).union(candArtistTokens);
+    const commonStopWords = {
+      'the', 'a', 'an', 'and', 'feat', 'ft', 'with', 'by', 'of', 'in', 'on', 'to', 'x', 'vs'
+    };
+
+    final targetArtistAllWords = cleanTargetArtist.split(' ').where((w) => w.isNotEmpty).toSet();
+    final candArtistAllWords = cleanCandArtist.split(' ').where((w) => w.isNotEmpty).toSet();
+
+    final allowedExtra = allowedFluff
+        .union(targetArtistTokens)
+        .union(targetArtistAllWords)
+        .union(candArtistTokens)
+        .union(candArtistAllWords)
+        .union(commonStopWords);
 
     double titleScore = 0.0;
     if (cleanCand == cleanTgt) {
@@ -557,10 +586,17 @@ class MissingTrackAudioResolver {
             if (durMs >= 45000) {
               final title = videoDetails['title']?.toString() ?? 'YouTube Track';
               final author = videoDetails['author']?.toString() ?? '';
+              final rawBitrate = fmt['bitrate'];
+              final calculatedKbps = rawBitrate is num && rawBitrate > 0
+                  ? (rawBitrate / 1000).round()
+                  : (durSec > 0 && fmt['contentLength'] != null
+                      ? ((int.tryParse(fmt['contentLength'].toString()) ?? 0) * 8 / (durSec * 1000)).round()
+                      : 160);
+              final dynamicKbps = calculatedKbps > 0 ? calculatedKbps : 160;
               return AudioStreamCandidate(
                 streamUrl: streamUrl,
                 format: 'mp4',
-                bitrateKbps: 192,
+                bitrateKbps: dynamicKbps,
                 sourceId: videoId,
                 sourceTitle: title,
                 channelOrArtist: author,
@@ -772,7 +808,9 @@ class MissingTrackAudioResolver {
     final primaryA = cleanA.split(RegExp(r'[,&;]')).first.trim();
 
     final queries = [
+      if (cleanT.isNotEmpty && primaryA.isNotEmpty) '$cleanT $primaryA',
       if (primaryA.isNotEmpty && cleanT.isNotEmpty) '$primaryA $cleanT',
+      if (cleanA.isNotEmpty && cleanA != primaryA && cleanT.isNotEmpty) '$cleanT $cleanA',
       if (cleanA.isNotEmpty && cleanA != primaryA && cleanT.isNotEmpty) '$cleanA $cleanT',
       cleanT,
     ];
@@ -1207,8 +1245,8 @@ class MissingTrackAudioResolver {
 
   static String _sanitizeQuery(String s) {
     return s
-        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), '') // remove parenthesized info
-        .replaceAll(RegExp(r'[^\w\s\-]'), '')
+        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), ' ') // remove parenthesized info
+        .replaceAll(RegExp(r'''[^\w\s\-'"]'''), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
