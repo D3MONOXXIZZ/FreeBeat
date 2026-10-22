@@ -100,16 +100,19 @@ class TrackAudioTaggerService {
     final totalExpectedBytes = candidate.streamSizeBytes ?? (candidate.bitrateKbps * 125 * (candidate.durationMs ~/ 1000));
 
     try {
-      Stream<List<int>> byteStream;
-      if (candidate.ytClient != null && candidate.audioOnlyStreamInfo != null) {
-        byteStream = candidate.getByteStream();
-      } else {
-        final request = http.Request('GET', Uri.parse(candidate.streamUrl));
-        final response = await _http.send(request).timeout(const Duration(seconds: 15));
-        byteStream = response.stream;
+      final request = http.Request('GET', Uri.parse(candidate.streamUrl));
+      request.headers['User-Agent'] =
+          'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+      request.headers['Accept'] = '*/*';
+      final response = await _http.send(request).timeout(const Duration(seconds: 25));
+
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        throw Exception('Audio stream request failed with HTTP ${response.statusCode}');
       }
 
-      await for (final chunk in byteStream.timeout(const Duration(seconds: 15))) {
+      final byteStream = response.stream;
+
+      await for (final chunk in byteStream.timeout(const Duration(seconds: 25))) {
         sink.add(chunk);
         receivedBytes += chunk.length;
         if (onProgress != null && totalExpectedBytes > 0) {

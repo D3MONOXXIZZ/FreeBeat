@@ -453,6 +453,68 @@ class MissingTrackAudioResolver {
         (urlOrId.length == 11 && !urlOrId.contains('/') ? urlOrId : null);
     if (videoId == null) return null;
 
+    // 1. Android Player API (fastest, never triggers bot captcha or 429)
+    try {
+      final playerUri = Uri.parse('https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
+      final playerResp = await _http.post(
+        playerUri,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+        },
+        body: jsonEncode({
+          'context': {
+            'client': {
+              'clientName': 'ANDROID',
+              'clientVersion': '20.10.38',
+              'userAgent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+              'hl': 'en',
+              'timeZone': 'UTC',
+              'utcOffsetMinutes': 0,
+              'osName': 'Android',
+              'osVersion': '11',
+            },
+          },
+          'videoId': videoId,
+        }),
+      ).timeout(const Duration(seconds: 4));
+
+      if (playerResp.statusCode == 200) {
+        final data = jsonDecode(playerResp.body) as Map<String, dynamic>;
+        final streamingData = data['streamingData'] as Map<String, dynamic>?;
+        final formats = streamingData?['formats'] as List<dynamic>? ?? [];
+        final videoDetails = data['videoDetails'] as Map<String, dynamic>?;
+
+        if (formats.isNotEmpty && videoDetails != null) {
+          final fmt = formats.firstWhere((f) => f['itag'] == 18, orElse: () => formats.first);
+          final streamUrl = fmt['url'] as String?;
+          if (streamUrl != null && streamUrl.isNotEmpty) {
+            final durSec = int.tryParse(videoDetails['lengthSeconds']?.toString() ?? '') ?? 0;
+            final durMs = durSec > 0 ? durSec * 1000 : (expectedDurationMs ?? 210000);
+            if (durMs >= 45000) {
+              final title = videoDetails['title']?.toString() ?? 'YouTube Track';
+              final author = videoDetails['author']?.toString() ?? '';
+              return AudioStreamCandidate(
+                streamUrl: streamUrl,
+                format: 'mp4',
+                bitrateKbps: 192,
+                sourceId: videoId,
+                sourceTitle: title,
+                channelOrArtist: author,
+                durationMs: durMs,
+                streamSizeBytes: int.tryParse(fmt['contentLength']?.toString() ?? ''),
+                artworkUrl: preferredArtworkUrl ?? 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg',
+                album: preferredAlbum,
+                isFullLength: true,
+                matchScore: 1.0,
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. YouTubeExplode fallback
     final client = ytClient;
     try {
       final video = await client.videos
@@ -512,7 +574,7 @@ class MissingTrackAudioResolver {
   /// Resolves the authentic full audio stream for a given track title and artist.
   ///
   /// CRITICAL RULES:
-  /// 1. Prioritizes YouTube and YouTube Music first (#1 priority).
+  /// 1. Prioritizes authentic studio master recordings and full YouTube tracks.
   /// 2. Strictly enforces full-length tracks (minimum 45s, typically 3-5 mins).
   /// 3. NEVER returns 30s previews (iTunes preview or Spotify preview).
   Future<AudioStreamCandidate?> resolveTrackAudio({
@@ -557,38 +619,7 @@ class MissingTrackAudioResolver {
       }
     }
 
-    // Tier 1 (PRIORITY #1): YouTube & YouTube Music Search via YouTubeExplode
-    // Extracts full-length audio tracks directly from YouTube / YouTube Music.
-    try {
-      final ytCandidate = await _resolveViaYouTubeExplode(
-        cleanTitle: cleanTitle.isNotEmpty ? cleanTitle : title,
-        cleanArtist: cleanArtist.isNotEmpty ? cleanArtist : artist,
-        expectedDurationMs: expectedDurationMs,
-      ).timeout(const Duration(milliseconds: 12000));
-      if (ytCandidate != null &&
-          ytCandidate.isFullLength &&
-          ytCandidate.durationMs >= 45000) {
-        return ytCandidate;
-      }
-    } catch (e) {
-      debugPrint('YouTube Explode resolution error for "$title": $e');
-    }
-
-    // Tier 2: Public YouTube Mirror Audio Streams (Piped / Invidious) (Full Length)
-    try {
-      final fallbackCandidate = await _resolveViaFallbackApi(
-        title: cleanTitle.isNotEmpty ? cleanTitle : title,
-        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
-        expectedDurationMs: expectedDurationMs,
-      ).timeout(const Duration(milliseconds: 3500));
-      if (fallbackCandidate != null &&
-          fallbackCandidate.isFullLength &&
-          fallbackCandidate.durationMs >= 45000) {
-        return fallbackCandidate;
-      }
-    } catch (_) {}
-
-    // Tier 3: Worldwide Studio Catalog (JioSaavn full-length 320kbps master recordings)
+    // Tier 1 (PRIORITY #1): Worldwide Studio Catalog (JioSaavn full-length 320kbps master recordings)
     try {
       final saavnCandidate = await _resolveViaJioSaavn(
         title: cleanTitle.isNotEmpty ? cleanTitle : title,
@@ -606,10 +637,127 @@ class MissingTrackAudioResolver {
       debugPrint('Studio master resolution error for "$title": $e');
     }
 
+    // Tier 2: YouTube Music InnerTube Search & Android Player Stream
+    try {
+      final ytCandidate = await _resolveViaYouTubeInnerTube(
+        title: cleanTitle.isNotEmpty ? cleanTitle : title,
+        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
+        expectedDurationMs: expectedDurationMs,
+        preferredArtworkUrl: preferredArtworkUrl,
+        preferredAlbum: preferredAlbum,
+      );
+      if (ytCandidate != null &&
+          ytCandidate.isFullLength &&
+          ytCandidate.durationMs >= 45000) {
+        return ytCandidate;
+      }
+    } catch (e) {
+      debugPrint('YouTube InnerTube resolution error for "$title": $e');
+    }
+
+    // Tier 3: YouTubeExplode Scraper Fallback
+    try {
+      final ytCandidate = await _resolveViaYouTubeExplode(
+        cleanTitle: cleanTitle.isNotEmpty ? cleanTitle : title,
+        cleanArtist: cleanArtist.isNotEmpty ? cleanArtist : artist,
+        expectedDurationMs: expectedDurationMs,
+      ).timeout(const Duration(milliseconds: 6000));
+      if (ytCandidate != null &&
+          ytCandidate.isFullLength &&
+          ytCandidate.durationMs >= 45000) {
+        return ytCandidate;
+      }
+    } catch (e) {
+      debugPrint('YouTube Explode resolution error for "$title": $e');
+    }
+
+    // Tier 4: Public YouTube Mirror Audio Streams (Piped / Invidious) (Full Length)
+    try {
+      final fallbackCandidate = await _resolveViaFallbackApi(
+        title: cleanTitle.isNotEmpty ? cleanTitle : title,
+        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
+        expectedDurationMs: expectedDurationMs,
+      ).timeout(const Duration(milliseconds: 3500));
+      if (fallbackCandidate != null &&
+          fallbackCandidate.isFullLength &&
+          fallbackCandidate.durationMs >= 45000) {
+        return fallbackCandidate;
+      }
+    } catch (_) {}
+
     // STRICT NO-PREVIEW POLICY:
     // 30s previews (from iTunes search or Spotify audioPreview) are completely forbidden.
     // If no full-length audio track could be matched from YouTube or Studio Masters,
     // return null so FreeBeat never imports truncated teaser clips into playlists.
+    return null;
+  }
+
+  /// Searches YouTube Music via lightweight InnerTube API and extracts Android player streams.
+  Future<AudioStreamCandidate?> _resolveViaYouTubeInnerTube({
+    required String title,
+    required String artist,
+    int? expectedDurationMs,
+    String? preferredArtworkUrl,
+    String? preferredAlbum,
+  }) async {
+    final cleanT = _sanitizeQuery(title);
+    final cleanA = _sanitizeQuery(artist);
+    final primaryA = cleanA.split(RegExp(r'[,&;]')).first.trim();
+
+    final queries = [
+      if (primaryA.isNotEmpty && cleanT.isNotEmpty) '$primaryA $cleanT',
+      if (cleanA.isNotEmpty && cleanA != primaryA && cleanT.isNotEmpty) '$cleanA $cleanT',
+      cleanT,
+    ];
+
+    for (final q in queries) {
+      try {
+        final searchResp = await _http.post(
+          Uri.parse('https://music.youtube.com/youtubei/v1/search?prettyPrint=false'),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://music.youtube.com/',
+          },
+          body: jsonEncode({
+            'context': {
+              'client': {
+                'clientName': 'WEB_REMIX',
+                'clientVersion': '1.20231218.01.00',
+                'hl': 'en',
+                'gl': 'US',
+              }
+            },
+            'query': q,
+          }),
+        ).timeout(const Duration(seconds: 4));
+
+        if (searchResp.statusCode == 200) {
+          final videoIds = RegExp(r'"videoId":"([a-zA-Z0-9_-]{11})"')
+              .allMatches(searchResp.body)
+              .map((m) => m.group(1)!)
+              .toSet()
+              .toList();
+
+          for (final vId in videoIds.take(3)) {
+            final candidate = await resolveDirectYouTubeUrl(
+              vId,
+              expectedDurationMs: expectedDurationMs,
+              preferredArtworkUrl: preferredArtworkUrl,
+              preferredAlbum: preferredAlbum,
+            );
+            if (candidate != null &&
+                candidate.isFullLength &&
+                candidate.durationMs >= 45000) {
+              return candidate;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('YouTube Music InnerTube search error for "$q": $e');
+      }
+    }
     return null;
   }
 
@@ -645,9 +793,17 @@ class MissingTrackAudioResolver {
     for (final q in queries) {
       try {
         final uri = Uri.parse(
-          'https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&p=1&n=10&q=${Uri.encodeComponent(q)}',
+          'https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&p=1&n=10&q=${Uri.encodeComponent(q)}',
         );
-        final resp = await _http.get(uri).timeout(const Duration(seconds: 4));
+        final resp = await _http.get(
+          uri,
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Cookie': 'L=english;',
+          },
+        ).timeout(const Duration(seconds: 4));
         if (resp.statusCode == 200) {
           final data = jsonDecode(resp.body);
           final results = data['results'] as List<dynamic>? ?? [];
@@ -657,16 +813,20 @@ class MissingTrackAudioResolver {
             if (itemId.isNotEmpty && seenIds.contains(itemId)) continue;
             if (itemId.isNotEmpty) seenIds.add(itemId);
 
-            final encUrl = item['encrypted_media_url']?.toString() ?? '';
+            final moreInfo = item['more_info'] as Map<String, dynamic>?;
+            final encUrl = (moreInfo?['encrypted_media_url'] ?? item['encrypted_media_url'])?.toString() ?? '';
             if (encUrl.isEmpty) continue;
 
-            final itemDur = int.tryParse(item['duration']?.toString() ?? '0') ?? 0;
+            final itemDur = int.tryParse(moreInfo?['duration']?.toString() ?? '') ??
+                int.tryParse(item['duration']?.toString() ?? '') ?? 0;
             if (itemDur < 45) continue;
 
             final songName =
                 item['song']?.toString() ?? item['title']?.toString() ?? title;
-            final primaryArtists =
-                item['primary_artists']?.toString() ?? item['singers']?.toString() ?? artist;
+            final primaryArtists = moreInfo?['primary_artists']?.toString() ??
+                item['primary_artists']?.toString() ??
+                item['singers']?.toString() ??
+                artist;
 
             // Evaluate candidate against target track using the precision scoring engine
             final eval = TrackMatchScorer.evaluate(
@@ -685,8 +845,8 @@ class MissingTrackAudioResolver {
 
             // Upgrade stream to 320kbps high-quality studio stream
             final stream320 = decryptedUrl.replaceAll('_96.mp4', '_320.mp4');
-            final albumName = item['album']?.toString() ?? preferredAlbum;
-            final rawImage = item['image']?.toString();
+            final albumName = (moreInfo?['album'] ?? item['album'])?.toString() ?? preferredAlbum;
+            final rawImage = (item['image'] ?? moreInfo?['image'])?.toString();
             final artwork = (rawImage != null && rawImage.isNotEmpty)
                 ? rawImage.replaceAll('150x150', '500x500')
                 : preferredArtworkUrl;
