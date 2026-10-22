@@ -395,6 +395,12 @@ class PlaylistImportService {
                           .replaceAll('\u202F', ' ')
                           .trim();
                       final tDur = (item['duration'] as num?)?.toInt();
+                      final uriStr = item['uri']?.toString() ?? '';
+                      String? trackWebUrl;
+                      if (uriStr.startsWith('spotify:track:')) {
+                        final trackId = uriStr.split(':').last;
+                        trackWebUrl = 'https://open.spotify.com/track/$trackId';
+                      }
 
                       String? previewUrl;
                       if (item['audioPreview'] is Map && item['audioPreview']['url'] != null) {
@@ -408,6 +414,17 @@ class PlaylistImportService {
                       String? artwork;
                       if (item['images'] is List && (item['images'] as List).isNotEmpty) {
                         artwork = item['images'][0]['url']?.toString();
+                      } else if (item['album'] is Map && item['album']['images'] is List && (item['album']['images'] as List).isNotEmpty) {
+                        artwork = item['album']['images'][0]['url']?.toString();
+                      } else if (item['coverArt'] is Map && item['coverArt']['sources'] is List && (item['coverArt']['sources'] as List).isNotEmpty) {
+                        artwork = item['coverArt']['sources'][0]['url']?.toString();
+                      }
+
+                      String? albumName;
+                      if (item['album'] is Map && item['album']['name'] != null) {
+                        albumName = item['album']['name']?.toString();
+                      } else if (item['albumName'] != null) {
+                        albumName = item['albumName']?.toString();
                       }
 
                       if (tName.isNotEmpty) {
@@ -417,6 +434,8 @@ class PlaylistImportService {
                           durationMs: tDur,
                           previewAudioUrl: previewUrl,
                           artworkUrl: artwork,
+                          album: albumName != null ? _unescapeHtml(albumName) : null,
+                          urlOrPath: trackWebUrl,
                         ));
                       }
                     }
@@ -1045,6 +1064,7 @@ class PlaylistImportService {
               expectedDurationMs: entry.durationMs,
               preferredArtworkUrl: entry.artworkUrl,
               previewAudioUrl: entry.previewAudioUrl,
+              album: entry.album,
               sourceUrl: entry.urlOrPath,
             ),
           );
@@ -1082,6 +1102,7 @@ class _RawTrackEntry {
     this.durationMs,
     this.previewAudioUrl,
     this.artworkUrl,
+    this.album,
   });
 
   final String title;
@@ -1090,6 +1111,7 @@ class _RawTrackEntry {
   final int? durationMs;
   final String? previewAudioUrl;
   final String? artworkUrl;
+  final String? album;
 }
 
 class HttpException implements Exception {

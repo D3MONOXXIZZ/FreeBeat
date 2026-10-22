@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -73,6 +74,7 @@ class TrackAudioTaggerService {
     required String targetArtist,
     String? targetAlbum,
     String? preferredArtworkUrl,
+    String? sourceUrl,
     void Function(double progress)? onProgress,
   }) async {
     // Strict Full-Length Verification: Reject previews and short snippets (< 45s)
@@ -132,24 +134,44 @@ class TrackAudioTaggerService {
 
     final actualSizeBytes = await scratchFile.length();
 
-    // 2. Resolve High-Res Artwork & Official Album Name via iTunes metadata if needed
-    String resolvedArtworkUrl = preferredArtworkUrl ?? candidate.artworkUrl ?? '';
-    String resolvedAlbum = (targetAlbum != null && targetAlbum != 'Imported Playlist')
+    // 2. Resolve High-Res Artwork & Official Album Name via Spotify oEmbed or iTunes metadata
+    String resolvedArtworkUrl = preferredArtworkUrl ?? '';
+    String resolvedAlbum = (targetAlbum != null && targetAlbum.isNotEmpty && targetAlbum != 'Imported Playlist')
         ? targetAlbum
-        : (candidate.album ?? 'Imported Playlist');
+        : '';
     String resolvedArtist = targetArtist.isNotEmpty ? targetArtist : candidate.channelOrArtist;
 
-    if (resolvedArtworkUrl.isEmpty || resolvedAlbum == 'Imported Playlist') {
+    // Check Spotify oEmbed for high-res official cover art if sourceUrl is Spotify
+    if ((resolvedArtworkUrl.isEmpty || resolvedArtworkUrl.contains('ytimg.com')) &&
+        sourceUrl != null &&
+        sourceUrl.contains('spotify.com/track/')) {
+      try {
+        final oEmbedUri = Uri.parse('https://open.spotify.com/oembed?url=${Uri.encodeComponent(sourceUrl)}');
+        final oEmbedResp = await _http.get(oEmbedUri).timeout(const Duration(seconds: 2));
+        if (oEmbedResp.statusCode == 200) {
+          final oEmbedData = jsonDecode(oEmbedResp.body);
+          final thumb = oEmbedData['thumbnail_url']?.toString();
+          if (thumb != null && thumb.isNotEmpty) {
+            resolvedArtworkUrl = thumb;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Lookup official iTunes album cover and album name
+    if (resolvedArtworkUrl.isEmpty || resolvedArtworkUrl.contains('ytimg.com') || resolvedAlbum.isEmpty) {
       try {
         final meta = await _metadataService.lookupSongMetadata(
           artist: resolvedArtist,
           title: targetTitle,
         ).timeout(const Duration(seconds: 2));
         if (meta != null) {
-          if (meta.artworkUrl != null && meta.artworkUrl!.isNotEmpty && resolvedArtworkUrl.isEmpty) {
+          if (meta.artworkUrl != null &&
+              meta.artworkUrl!.isNotEmpty &&
+              (resolvedArtworkUrl.isEmpty || resolvedArtworkUrl.contains('ytimg.com'))) {
             resolvedArtworkUrl = meta.artworkUrl!;
           }
-          if (meta.album != null && meta.album!.isNotEmpty && resolvedAlbum == 'Imported Playlist') {
+          if (meta.album != null && meta.album!.isNotEmpty && resolvedAlbum.isEmpty) {
             resolvedAlbum = meta.album!;
           }
           if (meta.artist != null && meta.artist!.isNotEmpty && ArtworkAndLyricsService.isInvalidOrGenericArtist(resolvedArtist)) {
@@ -157,6 +179,16 @@ class TrackAudioTaggerService {
           }
         }
       } catch (_) {}
+    }
+
+    // Fallback to candidate metadata if still empty
+    if (resolvedArtworkUrl.isEmpty) {
+      resolvedArtworkUrl = candidate.artworkUrl ?? '';
+    }
+    if (resolvedAlbum.isEmpty) {
+      resolvedAlbum = (candidate.album != null && candidate.album!.isNotEmpty)
+          ? candidate.album!
+          : targetTitle;
     }
 
     // 3. Extract Dominant Color for Material You Theme

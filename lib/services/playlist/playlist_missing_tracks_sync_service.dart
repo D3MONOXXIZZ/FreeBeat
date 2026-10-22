@@ -499,8 +499,9 @@ class PlaylistMissingTracksSyncNotifier
         candidate: candidate,
         targetTitle: item.title,
         targetArtist: item.artist,
-        targetAlbum: playlistName,
-        preferredArtworkUrl: item.preferredArtworkUrl ?? candidate.artworkUrl,
+        targetAlbum: item.album,
+        preferredArtworkUrl: item.preferredArtworkUrl,
+        sourceUrl: item.sourceUrl,
         onProgress: (frac) {
           final pct = (frac * 100).toInt();
           _updateTrackProgress(index, (p) => p.copyWith(progressFraction: frac * 0.5));

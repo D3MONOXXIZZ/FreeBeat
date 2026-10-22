@@ -41,6 +41,40 @@ class AudioStreamCandidate {
   final bool isFullLength;
   final double matchScore;
 
+  AudioStreamCandidate copyWith({
+    String? streamUrl,
+    String? format,
+    int? bitrateKbps,
+    String? sourceId,
+    String? sourceTitle,
+    String? channelOrArtist,
+    int? durationMs,
+    int? streamSizeBytes,
+    AudioOnlyStreamInfo? audioOnlyStreamInfo,
+    YoutubeExplode? ytClient,
+    String? artworkUrl,
+    String? album,
+    bool? isFullLength,
+    double? matchScore,
+  }) {
+    return AudioStreamCandidate(
+      streamUrl: streamUrl ?? this.streamUrl,
+      format: format ?? this.format,
+      bitrateKbps: bitrateKbps ?? this.bitrateKbps,
+      sourceId: sourceId ?? this.sourceId,
+      sourceTitle: sourceTitle ?? this.sourceTitle,
+      channelOrArtist: channelOrArtist ?? this.channelOrArtist,
+      durationMs: durationMs ?? this.durationMs,
+      streamSizeBytes: streamSizeBytes ?? this.streamSizeBytes,
+      audioOnlyStreamInfo: audioOnlyStreamInfo ?? this.audioOnlyStreamInfo,
+      ytClient: ytClient ?? this.ytClient,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+      album: album ?? this.album,
+      isFullLength: isFullLength ?? this.isFullLength,
+      matchScore: matchScore ?? this.matchScore,
+    );
+  }
+
   /// Returns a stream of bytes for downloading this candidate.
   Stream<List<int>> getByteStream([http.Client? client]) {
     if (ytClient != null && audioOnlyStreamInfo != null) {
@@ -310,11 +344,33 @@ class TrackMatchScorer {
     final targetWords = cleanTgt.split(' ').where((w) => w.isNotEmpty).toList();
     final candWords = cleanCand.split(' ').where((w) => w.isNotEmpty).toList();
 
+    const allowedFluff = {
+      'remaster', 'remastered', 'mix', 'edit', 'version', 'audio', 'explicit',
+      'clean', 'bonus', 'track', 'song', 'official', 'original', 'extended',
+      'video', 'music', 'lyric', 'lyrics', 'visualizer', '4k', 'hd', 'hq',
+      'season', 'episode', 'coke', 'studio', 'nescafe', 'basement', 'session',
+      'unplugged', 'produced', 'prod',
+    };
+    final allowedExtra = allowedFluff.union(targetArtistTokens).union(candArtistTokens);
+
     double titleScore = 0.0;
     if (cleanCand == cleanTgt) {
       titleScore = 1.0;
     } else if (cleanCand.startsWith(cleanTgt)) {
-      titleScore = 0.95;
+      // Candidate starts with target title. Check if remainder is just version/media fluff or artist name
+      final remainder = candWords.sublist(math.min(targetWords.length, candWords.length));
+      final nonFluffRemainder = remainder.where((w) => !allowedExtra.contains(w)).toList();
+      if (nonFluffRemainder.isEmpty) {
+        titleScore = 0.95;
+      } else if (nonFluffRemainder.length <= 1) {
+        titleScore = 0.85;
+      } else if (artistScore >= 0.80) {
+        // High artist match (e.g. official artist or show channel with featured performers/producer credits in title)
+        titleScore = 0.85;
+      } else {
+        // Substantial extra words on different artist: NOT the target song!
+        titleScore = 0.30;
+      }
     } else if (targetWords.isNotEmpty) {
       // Check word coverage with multiplicity
       var matchedCount = 0;
@@ -337,7 +393,14 @@ class TrackMatchScorer {
         }
       }
 
-      titleScore = math.min(wordRatio, tokenRatio > 0 ? tokenRatio : wordRatio).clamp(0.0, 1.0);
+      // Specificity penalty: if candidate has extra words that are not fluff or artist name
+      final extraCandWords = candPool.where((w) => !allowedExtra.contains(w)).length;
+      double specificityPenalty = 0.0;
+      if (extraCandWords > 0) {
+        specificityPenalty = (extraCandWords * 0.25).clamp(0.0, 0.60);
+      }
+
+      titleScore = (math.min(wordRatio, tokenRatio > 0 ? tokenRatio : wordRatio) - specificityPenalty).clamp(0.0, 1.0);
     }
 
     if (titleScore < 0.70) {
@@ -619,25 +682,8 @@ class MissingTrackAudioResolver {
       }
     }
 
-    // Tier 1 (PRIORITY #1): Worldwide Studio Catalog (JioSaavn full-length 320kbps master recordings)
-    try {
-      final saavnCandidate = await _resolveViaJioSaavn(
-        title: cleanTitle.isNotEmpty ? cleanTitle : title,
-        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
-        expectedDurationMs: expectedDurationMs,
-        preferredArtworkUrl: preferredArtworkUrl,
-        preferredAlbum: preferredAlbum,
-      );
-      if (saavnCandidate != null &&
-          saavnCandidate.isFullLength &&
-          saavnCandidate.durationMs >= 45000) {
-        return saavnCandidate;
-      }
-    } catch (e) {
-      debugPrint('Studio master resolution error for "$title": $e');
-    }
-
-    // Tier 2: YouTube Music InnerTube Search & Android Player Stream
+    // Tier 1 (PRIORITY #1): YouTube Music InnerTube Search & Android Player Stream
+    // Directly accesses YouTube Music's official track catalog and Android direct audio streams.
     try {
       final ytCandidate = await _resolveViaYouTubeInnerTube(
         title: cleanTitle.isNotEmpty ? cleanTitle : title,
@@ -653,6 +699,24 @@ class MissingTrackAudioResolver {
       }
     } catch (e) {
       debugPrint('YouTube InnerTube resolution error for "$title": $e');
+    }
+
+    // Tier 2: Worldwide Studio Catalog (JioSaavn full-length 320kbps master recordings)
+    try {
+      final saavnCandidate = await _resolveViaJioSaavn(
+        title: cleanTitle.isNotEmpty ? cleanTitle : title,
+        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
+        expectedDurationMs: expectedDurationMs,
+        preferredArtworkUrl: preferredArtworkUrl,
+        preferredAlbum: preferredAlbum,
+      );
+      if (saavnCandidate != null &&
+          saavnCandidate.isFullLength &&
+          saavnCandidate.durationMs >= 45000) {
+        return saavnCandidate;
+      }
+    } catch (e) {
+      debugPrint('Studio master resolution error for "$title": $e');
     }
 
     // Tier 3: YouTubeExplode Scraper Fallback
@@ -740,7 +804,7 @@ class MissingTrackAudioResolver {
               .toSet()
               .toList();
 
-          for (final vId in videoIds.take(3)) {
+          for (final vId in videoIds.take(5)) {
             final candidate = await resolveDirectYouTubeUrl(
               vId,
               expectedDurationMs: expectedDurationMs,
@@ -750,7 +814,17 @@ class MissingTrackAudioResolver {
             if (candidate != null &&
                 candidate.isFullLength &&
                 candidate.durationMs >= 45000) {
-              return candidate;
+              final eval = TrackMatchScorer.evaluate(
+                targetTitle: title,
+                targetArtist: artist,
+                candidateTitle: candidate.sourceTitle,
+                candidateArtist: candidate.channelOrArtist,
+                targetDurationMs: expectedDurationMs,
+                candidateDurationMs: candidate.durationMs,
+              );
+              if (eval.isMatch) {
+                return candidate.copyWith(matchScore: eval.score);
+              }
             }
           }
         }
@@ -823,10 +897,30 @@ class MissingTrackAudioResolver {
 
             final songName =
                 item['song']?.toString() ?? item['title']?.toString() ?? title;
-            final primaryArtists = moreInfo?['primary_artists']?.toString() ??
-                item['primary_artists']?.toString() ??
-                item['singers']?.toString() ??
-                artist;
+
+            // Extract genuine artist from artistMap or primary_artists (never fake or default to query artist)
+            String candidateArtist = '';
+            final artistMap = moreInfo?['artistMap'] as Map<String, dynamic>?;
+            final primaryList = artistMap?['primary_artists'] as List<dynamic>?;
+            if (primaryList != null && primaryList.isNotEmpty) {
+              candidateArtist = primaryList
+                  .map((a) => (a is Map ? a['name']?.toString() : null) ?? '')
+                  .where((name) => name.isNotEmpty)
+                  .join(', ');
+            }
+            if (candidateArtist.isEmpty) {
+              final rawPri = (moreInfo?['primary_artists'] ?? item['primary_artists'])?.toString();
+              if (rawPri != null && rawPri.isNotEmpty && rawPri.toLowerCase() != 'null') {
+                candidateArtist = rawPri;
+              }
+            }
+            if (candidateArtist.isEmpty) {
+              final rawSingers = (moreInfo?['singers'] ?? item['singers'])?.toString();
+              if (rawSingers != null && rawSingers.isNotEmpty && rawSingers.toLowerCase() != 'null') {
+                candidateArtist = rawSingers;
+              }
+            }
+            final primaryArtists = candidateArtist;
 
             // Evaluate candidate against target track using the precision scoring engine
             final eval = TrackMatchScorer.evaluate(
@@ -858,7 +952,7 @@ class MissingTrackAudioResolver {
                 bitrateKbps: 320,
                 sourceId: 'saavn_${itemId.isNotEmpty ? itemId : songName.hashCode}',
                 sourceTitle: songName,
-                channelOrArtist: primaryArtists,
+                channelOrArtist: primaryArtists.isNotEmpty ? primaryArtists : artist,
                 durationMs: itemDur * 1000,
                 artworkUrl: artwork,
                 album: albumName,
