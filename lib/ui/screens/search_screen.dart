@@ -111,6 +111,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     Expanded(
                       child: Container(
                         height: 52,
+                        clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
                           color: cs.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(100),
@@ -127,6 +128,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                           decoration: InputDecoration(
+                            filled: false,
+                            fillColor: Colors.transparent,
                             hintText: 'Search songs, artists, FLAC, WMA...',
                             hintStyle: TextStyle(
                               fontSize: 14,
@@ -149,6 +152,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   )
                                 : null,
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 14,

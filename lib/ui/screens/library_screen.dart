@@ -19,6 +19,7 @@ import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/pending_import_track_tile.dart';
+import '../widgets/platform_app_icons.dart';
 import '../widgets/playlist_import_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
@@ -1273,13 +1274,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
 
             // ─────────────────────────────────────────────────────────────────
-            // 2. Material You Library Search Bar
+            // 2. Material You Library Search Bar (Zero Sharp Corners)
             // ─────────────────────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                 child: Container(
                   height: 48,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHighest.withValues(alpha: 0.70),
                     borderRadius: BorderRadius.circular(100),
@@ -1306,6 +1308,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     ),
                     decoration: InputDecoration(
                       isDense: true,
+                      filled: false,
+                      fillColor: Colors.transparent,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       hintText: _segment == 'playlists'
                           ? 'Search playlists in library...'
@@ -1337,6 +1341,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             )
                           : null,
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
                     ),
                   ),
                 ),
@@ -2729,6 +2737,7 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
     return SpringPressScale(
       onTap: onTap,
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: cs.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(24),
@@ -2750,122 +2759,7 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
           children: [
             Row(
               children: [
-                // Spotify badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1DB954).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(
-                      color: const Color(0xFF1DB954).withValues(alpha: 0.40),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1DB954),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      const Text(
-                        'Spotify',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1DB954),
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Apple Music badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFC3C44).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(
-                      color: const Color(0xFFFC3C44).withValues(alpha: 0.40),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFC3C44),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      const Text(
-                        'Apple Music',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFFC3C44),
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // YouTube badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF0000).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(
-                      color: const Color(0xFFFF0000).withValues(alpha: 0.40),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFF0000),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      const Text(
-                        'YouTube',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFFF0000),
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const PlatformAppIconGroup(size: 28, spacing: 8),
                 const Spacer(),
                 FilledButton.tonalIcon(
                   onPressed: onTap,

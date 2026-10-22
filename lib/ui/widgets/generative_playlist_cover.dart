@@ -208,7 +208,7 @@ class GenerativePlaylistCover extends StatelessWidget {
           child: Icon(
             _getSmartIcon(playlist.smartType),
             color: Colors.white,
-            size: size * 0.28,
+            size: size.isFinite ? size * 0.28 : 42.0,
           ),
         ),
       ),

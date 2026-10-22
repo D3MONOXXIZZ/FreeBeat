@@ -12,6 +12,7 @@ import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../screens/playlist_details_screen.dart';
 import 'material_you_album_cover.dart';
+import 'platform_app_icons.dart';
 
 /// Opens the Material 3 Expressive Playlist Importer modal.
 Future<void> showPlaylistImportModal(BuildContext context, {Playlist? targetPlaylist}) {
@@ -730,21 +731,25 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   const _PlatformPill(
                     label: 'Spotify',
                     color: Color(0xFF1DB954),
+                    icon: SpotifyAppIcon(size: 16),
                   ),
                   const SizedBox(width: 6),
                   const _PlatformPill(
                     label: 'Apple Music',
                     color: Color(0xFFFC3C44),
+                    icon: AppleMusicAppIcon(size: 16),
                   ),
                   const SizedBox(width: 6),
                   const _PlatformPill(
                     label: 'YouTube & Music',
                     color: Color(0xFFFF0000),
+                    icon: YouTubeAppIcon(size: 16),
                   ),
                   const SizedBox(width: 6),
                   _PlatformPill(
                     label: '.M3U8 / Text',
                     color: cs.primary,
+                    icon: Icon(Icons.queue_music_rounded, size: 14, color: cs.primary),
                   ),
                 ],
               ),
@@ -1336,10 +1341,15 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
 }
 
 class _PlatformPill extends StatelessWidget {
-  const _PlatformPill({required this.label, required this.color});
+  const _PlatformPill({
+    required this.label,
+    required this.color,
+    this.icon,
+  });
 
   final String label;
   final Color color;
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -1356,15 +1366,20 @@ class _PlatformPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+          if (icon != null) ...[
+            icon!,
+            const SizedBox(width: 5),
+          ] else ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
-          const SizedBox(width: 5),
+            const SizedBox(width: 5),
+          ],
           Text(
             label,
             style: TextStyle(

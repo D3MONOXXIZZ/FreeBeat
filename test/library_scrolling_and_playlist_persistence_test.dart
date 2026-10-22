@@ -249,5 +249,36 @@ void main() {
       expect(find.text('Clear Search'), findsOneWidget);
       expect(find.text('Search Online'), findsOneWidget);
     });
+
+    testWidgets('LibraryScreen search bar has clipBehavior and no filled sharp corners', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: const MaterialApp(
+            home: LibraryScreen(),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final searchTextField = tester.widget<TextField>(find.byType(TextField));
+      expect(searchTextField.decoration?.filled, isFalse);
+      expect(searchTextField.decoration?.fillColor, Colors.transparent);
+      expect(searchTextField.decoration?.border, InputBorder.none);
+
+      // Verify Playlists tab displays app icons for Spotify, Apple Music, and YouTube
+      final playlistsTab = find.textContaining('Playlists');
+      expect(playlistsTab, findsOneWidget);
+      await tester.tap(playlistsTab);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import Playlists & Tracks'), findsOneWidget);
+      // Verify app icon tooltips
+      expect(find.byTooltip('Spotify'), findsOneWidget);
+      expect(find.byTooltip('Apple Music'), findsOneWidget);
+      expect(find.byTooltip('YouTube'), findsOneWidget);
+    });
   });
 }
