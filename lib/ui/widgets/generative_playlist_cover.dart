@@ -126,34 +126,58 @@ class GenerativePlaylistCover extends StatelessWidget {
   Widget _buildContent(BuildContext context, Color seed, ColorScheme cs) {
     if (playlist.customArtworkUrl != null &&
         playlist.customArtworkUrl!.isNotEmpty) {
-      final file = File(playlist.customArtworkUrl!);
+      final art = playlist.customArtworkUrl!;
+      if (art.startsWith('http://') || art.startsWith('https://')) {
+        return Image.network(
+          art,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildTileOrGenerative(context, seed, cs),
+        );
+      }
+      final file = File(art);
       if (file.existsSync()) {
         return Image.file(file, fit: BoxFit.cover);
       }
     }
 
+    return _buildTileOrGenerative(context, seed, cs);
+  }
+
+  Widget _buildTileOrGenerative(BuildContext context, Color seed, ColorScheme cs) {
     final tracksWithArt = tracks
         .where((t) => t.artworkUrl != null && t.artworkUrl!.isNotEmpty)
-        .take(4)
         .toList();
 
-    if (tracksWithArt.length >= 4 && size >= 100) {
-      // 4-quadrant mosaic
+    // Check distinct artwork URLs across tracks
+    final uniqueArtworkUrls = tracksWithArt.map((t) => t.artworkUrl!).toSet().toList();
+
+    // Only render 4-quadrant mosaic if there are at least 4 DIFFERENT album artworks.
+    // If tracks share the same artwork (e.g. an album or single artist collection),
+    // render the single full-bleed cover rather than duplicating it 4 times!
+    if (uniqueArtworkUrls.length >= 4 && size >= 100) {
+      final distinctTracks = <Track>[];
+      final seen = <String>{};
+      for (final t in tracksWithArt) {
+        if (seen.add(t.artworkUrl!)) {
+          distinctTracks.add(t);
+          if (distinctTracks.length == 4) break;
+        }
+      }
       return Column(
         children: [
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _buildTile(tracksWithArt[0])),
-                Expanded(child: _buildTile(tracksWithArt[1])),
+                Expanded(child: _buildTile(distinctTracks[0])),
+                Expanded(child: _buildTile(distinctTracks[1])),
               ],
             ),
           ),
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _buildTile(tracksWithArt[2])),
-                Expanded(child: _buildTile(tracksWithArt[3])),
+                Expanded(child: _buildTile(distinctTracks[2])),
+                Expanded(child: _buildTile(distinctTracks[3])),
               ],
             ),
           ),

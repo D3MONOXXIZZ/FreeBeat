@@ -438,6 +438,9 @@ class PlaylistMissingTracksSyncNotifier
               playlistId,
               [existingTrack.id],
             );
+        if (existingTrack.artworkUrl != null && existingTrack.artworkUrl!.isNotEmpty) {
+          unawaited(_ref.read(playlistsProvider.notifier).updatePlaylistArtwork(playlistId, existingTrack.artworkUrl!));
+        }
 
         _updateTrackProgress(
           index,
@@ -619,6 +622,9 @@ class PlaylistMissingTracksSyncNotifier
             playlistId,
             [uploadedTrack.id],
           );
+      if (uploadedTrack.artworkUrl != null && uploadedTrack.artworkUrl!.isNotEmpty) {
+        unawaited(_ref.read(playlistsProvider.notifier).updatePlaylistArtwork(playlistId, uploadedTrack.artworkUrl!));
+      }
 
       // 4. Update Track State
       _updateTrackProgress(

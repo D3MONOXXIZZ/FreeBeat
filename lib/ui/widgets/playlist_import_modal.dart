@@ -376,12 +376,22 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
           ? _result!.title
           : _titleController.text.trim();
 
+      final playlistCover = _result!.artworkUrl ??
+          _result!.missingTracks
+              .firstWhere(
+                (m) => m.preferredArtworkUrl != null && m.preferredArtworkUrl!.isNotEmpty,
+                orElse: () => const MissingTrackItem(title: '', artist: ''),
+              )
+              .preferredArtworkUrl ??
+          (_result!.matchedTracks.isNotEmpty ? _result!.matchedTracks.first.artworkUrl : null);
+
       target = await ref.read(playlistsProvider.notifier).createPlaylist(
             title,
             description: _result!.description,
             initialTrackIds: _result!.matchedTracks.map((t) => t.id).toList(),
             syncSourceUrl: _detectedSourceUrl,
             lastSyncedAt: _detectedSourceUrl != null ? DateTime.now() : null,
+            customArtworkUrl: playlistCover,
           );
     }
 

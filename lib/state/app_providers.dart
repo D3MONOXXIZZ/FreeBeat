@@ -2615,6 +2615,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
     List<String> initialTrackIds = const [],
     String? syncSourceUrl,
     DateTime? lastSyncedAt,
+    String? customArtworkUrl,
   }) async {
     await PixelHaptics.hifiConfirm();
     final now = DateTime.now();
@@ -2630,12 +2631,29 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       colorSeedValue: colorSeed,
       syncSourceUrl: syncSourceUrl,
       lastSyncedAt: lastSyncedAt,
+      customArtworkUrl: customArtworkUrl,
     );
     state = [newPlaylist, ...state];
     if (_db != null) {
       await _db.upsertPlaylist(newPlaylist);
     }
     return newPlaylist;
+  }
+
+  Future<void> updatePlaylistArtwork(String playlistId, String artworkUrl) async {
+    if (artworkUrl.isEmpty) return;
+    state = state.map((p) {
+      if (p.id == playlistId) {
+        if (p.customArtworkUrl == null || p.customArtworkUrl!.isEmpty) {
+          final updated = p.copyWith(customArtworkUrl: artworkUrl);
+          if (_db != null) {
+            _db.upsertPlaylist(updated);
+          }
+          return updated;
+        }
+      }
+      return p;
+    }).toList();
   }
 
   Future<void> updatePlaylistSyncSource(

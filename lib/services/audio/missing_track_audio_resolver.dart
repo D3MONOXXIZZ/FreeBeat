@@ -198,6 +198,22 @@ class TrackMatchScorer {
         .trim();
   }
 
+  static String cleanArtist(String s) {
+    var cleaned = s.trim();
+    if (cleaned.toLowerCase().endsWith(' - topic')) {
+      cleaned = cleaned.substring(0, cleaned.length - ' - topic'.length).trim();
+    } else if (cleaned.toLowerCase().endsWith(' topic')) {
+      cleaned = cleaned.substring(0, cleaned.length - ' topic'.length).trim();
+    }
+    if (cleaned.toLowerCase().endsWith('vevo')) {
+      cleaned = cleaned.substring(0, cleaned.length - 4).trim();
+    }
+    if (cleaned.toLowerCase().endsWith(' official')) {
+      cleaned = cleaned.substring(0, cleaned.length - ' official'.length).trim();
+    }
+    return cleanString(cleaned);
+  }
+
   static Set<String> tokenize(String s) {
     const stopWords = {
       'the',
@@ -214,6 +230,30 @@ class TrackMatchScorer {
       'to'
     };
     return cleanString(s)
+        .split(' ')
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty && !stopWords.contains(w) && w.length > 1)
+        .toSet();
+  }
+
+  static Set<String> tokenizeRaw(String s) {
+    const stopWords = {
+      'the',
+      'a',
+      'an',
+      'and',
+      'feat',
+      'ft',
+      'with',
+      'by',
+      'of',
+      'in',
+      'on',
+      'to'
+    };
+    return s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), ' ')
         .split(' ')
         .map((w) => w.trim())
         .where((w) => w.isNotEmpty && !stopWords.contains(w) && w.length > 1)
@@ -295,10 +335,11 @@ class TrackMatchScorer {
     final targetArtistTokens = tokenize(targetArtist);
     final candArtistTokens = tokenize(candidateArtist);
     final candTitleTokens = tokenize(candidateTitle);
-    final combinedCandTokens = candArtistTokens.union(candTitleTokens);
+    final rawCandTitleTokens = tokenizeRaw(candidateTitle);
+    final combinedCandTokens = candArtistTokens.union(candTitleTokens).union(rawCandTitleTokens);
 
     final cleanTargetArtist = cleanString(targetArtist);
-    final cleanCandArtist = cleanString(candidateArtist);
+    final cleanCandArtist = cleanArtist(candidateArtist);
     final cleanPrimaryArtist = cleanString(primaryTargetArtist);
 
     // Primary artist tokens MUST appear in candidate artist or candidate video title/channel
@@ -324,6 +365,10 @@ class TrackMatchScorer {
       final intersection = targetArtistTokens.intersection(combinedCandTokens);
       if (intersection.isNotEmpty) {
         artistScore = (intersection.length / targetArtistTokens.length).clamp(0.0, 1.0);
+      }
+      if (cleanCandArtist == cleanPrimaryArtist ||
+          (primaryArtistTokens.isNotEmpty && primaryArtistTokens.difference(combinedCandTokens).isEmpty)) {
+        artistScore = math.max(artistScore, 0.90);
       }
     }
 

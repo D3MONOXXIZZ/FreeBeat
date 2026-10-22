@@ -108,11 +108,26 @@ class TrackAudioTaggerService {
       request.headers['Accept'] = '*/*';
       final response = await _http.send(request).timeout(const Duration(seconds: 25));
 
-      if (response.statusCode != 200 && response.statusCode != 206) {
-        throw Exception('Audio stream request failed with HTTP ${response.statusCode}');
+      http.StreamedResponse activeResponse = response;
+      if (response.statusCode == 403 && candidate.sourceId.length == 11) {
+        final fallbackUrl = await _resolveAndroidPlayerUrl(candidate.sourceId);
+        if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+          final fallbackReq = http.Request('GET', Uri.parse(fallbackUrl));
+          fallbackReq.headers['User-Agent'] =
+              'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+          fallbackReq.headers['Accept'] = '*/*';
+          final fallbackRes = await _http.send(fallbackReq).timeout(const Duration(seconds: 25));
+          if (fallbackRes.statusCode == 200 || fallbackRes.statusCode == 206) {
+            activeResponse = fallbackRes;
+          }
+        }
       }
 
-      final byteStream = response.stream;
+      if (activeResponse.statusCode != 200 && activeResponse.statusCode != 206) {
+        throw Exception('Audio stream request failed with HTTP ${activeResponse.statusCode}');
+      }
+
+      final byteStream = activeResponse.stream;
 
       await for (final chunk in byteStream.timeout(const Duration(seconds: 25))) {
         sink.add(chunk);
@@ -232,6 +247,45 @@ class TrackAudioTaggerService {
       dominantColorValue: dominantColor,
       syncedLyrics: lyrics,
     );
+  }
+
+  Future<String?> _resolveAndroidPlayerUrl(String videoId) async {
+    try {
+      final playerUri = Uri.parse('https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
+      final playerResp = await _http.post(
+        playerUri,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+        },
+        body: jsonEncode({
+          'context': {
+            'client': {
+              'clientName': 'ANDROID',
+              'clientVersion': '20.10.38',
+              'userAgent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+              'hl': 'en',
+              'timeZone': 'UTC',
+              'utcOffsetMinutes': 0,
+              'osName': 'Android',
+              'osVersion': '11',
+            },
+          },
+          'videoId': videoId,
+        }),
+      ).timeout(const Duration(seconds: 5));
+
+      if (playerResp.statusCode == 200) {
+        final data = jsonDecode(playerResp.body) as Map<String, dynamic>;
+        final streamingData = data['streamingData'] as Map<String, dynamic>?;
+        final formats = streamingData?['formats'] as List<dynamic>? ?? [];
+        if (formats.isNotEmpty) {
+          final fmt = formats.firstWhere((f) => f['itag'] == 18, orElse: () => formats.first);
+          return fmt['url'] as String?;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   static String _sanitizeFilename(String name) {

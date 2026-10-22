@@ -15,6 +15,7 @@ class PlaylistImportResult {
     List<MissingTrackItem>? missingTracks,
     required this.totalParsed,
     this.sourceType = 'text',
+    this.artworkUrl,
   }) : missingTracks = missingTracks ??
             unmatchedTrackNames.map(MissingTrackItem.fromString).toList();
 
@@ -25,6 +26,7 @@ class PlaylistImportResult {
   final List<MissingTrackItem> missingTracks;
   final int totalParsed;
   final String sourceType; // 'spotify', 'apple', 'youtube', 'm3u', 'text', 'csv'
+  final String? artworkUrl;
 
   int get matchedCount => matchedTracks.length;
   int get unmatchedCount => unmatchedTrackNames.length;
@@ -320,9 +322,10 @@ class PlaylistImportService {
 
     String title = 'Spotify Playlist';
     String description = 'Imported from Spotify';
+    String? playlistArtworkUrl;
     final List<_RawTrackEntry> entries = [];
 
-    // 3. Query Spotify oEmbed for exact clean playlist title
+    // 3. Query Spotify oEmbed for exact clean playlist title & cover art
     if (entityId.isNotEmpty) {
       try {
         final oembedUri = Uri.parse(
@@ -333,6 +336,9 @@ class PlaylistImportService {
           final oembedJson = jsonDecode(oembedRes.body) as Map<String, dynamic>;
           if (oembedJson['title'] != null && oembedJson['title'].toString().isNotEmpty) {
             title = _unescapeHtml(oembedJson['title'].toString());
+          }
+          if (oembedJson['thumbnail_url'] != null) {
+            playlistArtworkUrl = oembedJson['thumbnail_url']?.toString();
           }
         }
       } catch (_) {}
@@ -373,6 +379,12 @@ class PlaylistImportService {
               final json = jsonDecode(nextDataMatch.group(1)!) as Map<String, dynamic>;
               final entity = json['props']?['pageProps']?['state']?['data']?['entity'];
               if (entity is Map<String, dynamic>) {
+                if (entity['images'] is List && (entity['images'] as List).isNotEmpty) {
+                  playlistArtworkUrl ??= entity['images'][0]['url']?.toString();
+                }
+                if (entity['coverArt'] is Map && entity['coverArt']['sources'] is List && (entity['coverArt']['sources'] as List).isNotEmpty) {
+                  playlistArtworkUrl ??= entity['coverArt']['sources'][0]['url']?.toString();
+                }
                 final rawName = entity['name']?.toString();
                 if (rawName != null &&
                     rawName.isNotEmpty &&
@@ -490,6 +502,7 @@ class PlaylistImportService {
       description: description,
       libraryTracks: libraryTracks,
       sourceType: 'spotify',
+      artworkUrl: playlistArtworkUrl,
     );
   }
 
@@ -500,9 +513,10 @@ class PlaylistImportService {
   ) async {
     String title = 'Apple Music Playlist';
     String description = 'Imported from Apple Music';
+    String? playlistArtworkUrl;
     final List<_RawTrackEntry> entries = [];
 
-    // 1. Query Apple Music oEmbed for exact clean playlist title
+    // 1. Query Apple Music oEmbed for exact clean playlist title & cover art
     try {
       final oembedUri = Uri.parse(
         'https://music.apple.com/api/oembed?url=${Uri.encodeComponent(cleanUrl)}&t=${DateTime.now().millisecondsSinceEpoch}',
@@ -518,6 +532,9 @@ class PlaylistImportService {
         final oembedJson = jsonDecode(oembedRes.body) as Map<String, dynamic>;
         if (oembedJson['title'] != null && oembedJson['title'].toString().isNotEmpty) {
           title = _unescapeHtml(oembedJson['title'].toString());
+        }
+        if (oembedJson['thumbnail_url'] != null) {
+          playlistArtworkUrl = oembedJson['thumbnail_url']?.toString();
         }
       }
     } catch (_) {}
@@ -633,6 +650,7 @@ class PlaylistImportService {
       description: description,
       libraryTracks: libraryTracks,
       sourceType: 'apple',
+      artworkUrl: playlistArtworkUrl,
     );
   }
 
@@ -822,6 +840,7 @@ class PlaylistImportService {
     if (listId != null) {
       String title = 'YouTube Playlist';
       String description = 'Imported from YouTube';
+      String? playlistArtworkUrl;
       final List<_RawTrackEntry> entries = [];
 
       final yt = YoutubeExplode();
@@ -829,6 +848,7 @@ class PlaylistImportService {
         final playlist = await yt.playlists.get(listId);
         title = playlist.title;
         description = playlist.description;
+        playlistArtworkUrl = playlist.thumbnails.highResUrl;
 
         await for (final video in yt.playlists.getVideos(listId).take(200)) {
           final cleaned = _cleanYouTubeTrackInfo(video.title, video.author);
@@ -862,6 +882,7 @@ class PlaylistImportService {
         description: description,
         libraryTracks: libraryTracks,
         sourceType: 'youtube',
+        artworkUrl: playlistArtworkUrl,
       );
     }
 
@@ -1022,11 +1043,20 @@ class PlaylistImportService {
     required String description,
     required List<Track> libraryTracks,
     required String sourceType,
+    String? artworkUrl,
   }) {
     final List<Track> matched = [];
     final List<String> unmatched = [];
     final List<MissingTrackItem> missingTrackItems = [];
     final Set<String> matchedIds = {};
+
+    final effectiveArtwork = artworkUrl ??
+        entries
+            .firstWhere(
+              (e) => e.artworkUrl != null && e.artworkUrl!.isNotEmpty,
+              orElse: () => const _RawTrackEntry(title: '', artist: ''),
+            )
+            .artworkUrl;
 
     for (final entry in entries) {
       Track? best;
@@ -1080,6 +1110,7 @@ class PlaylistImportService {
       missingTracks: missingTrackItems,
       totalParsed: entries.length,
       sourceType: sourceType,
+      artworkUrl: effectiveArtwork,
     );
   }
 
