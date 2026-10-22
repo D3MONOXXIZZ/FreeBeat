@@ -9,6 +9,7 @@ import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../services/playlist/playlist_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
+import '../widgets/expressive_shapes.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
@@ -179,161 +180,188 @@ class _PlaylistDetailsScreenState
     return '$minutes:$seconds';
   }
 
-  Widget _buildDownloadRow(
+  Widget _buildActionPillsRow(
     BuildContext context,
     ColorScheme cs,
+    Playlist livePlaylist,
     List<Track> playlistTracks,
   ) {
-    if (playlistTracks.isEmpty) return const SizedBox.shrink();
-
     final queueMgr = ref.watch(downloadQueueManagerProvider);
     final pinnedCount = playlistTracks.where((t) => t.isPinnedOffline).length;
-    final allPinned = pinnedCount == playlistTracks.length;
+    final allPinned = playlistTracks.isNotEmpty && pinnedCount == playlistTracks.length;
     final anyInQueue = playlistTracks.any((t) =>
         queueMgr.queue.any((q) =>
             q.track.id == t.id &&
             (q.status == DownloadStatus.downloading ||
                 q.status == DownloadStatus.queued)));
 
+    // 1. Download Pill
+    final Widget downloadPill;
     if (allPinned) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: OutlinedButton.icon(
-          onPressed: () {
-            PixelHaptics.tick();
-            showDialog<void>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: cs.surfaceContainerHigh,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                title: const Text('Remove Downloads',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-                content: Text(
-                  'Remove all ${playlistTracks.length} offline tracks in "${widget.playlist.title}" from device storage? The songs will remain in your library.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Keep'),
-                  ),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      ref
-                          .read(tracksCatalogProvider.notifier)
-                          .unpinTracksOffline(
-                            playlistTracks.map((t) => t.id).toList(),
-                          );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Removed offline tracks.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    child: const Text('Remove'),
-                  ),
-                ],
-              ),
-            );
-          },
-          icon: Icon(Icons.download_done_rounded, color: cs.primary, size: 18),
-          label: Text(
-            'Downloaded Offline (${playlistTracks.length})',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: cs.primary,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
-            side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+      downloadPill = _SmallActionPill(
+        icon: Icon(Icons.download_done_rounded, color: cs.primary, size: 16),
+        label: 'Downloaded',
+        tooltip: 'Downloaded Offline ($pinnedCount tracks). Tap to remove.',
+        isActive: true,
+        activeColor: cs.primary,
+        onPressed: () {
+          PixelHaptics.tick();
+          _showRemoveDownloadsDialog(playlistTracks);
+        },
+      );
+    } else if (anyInQueue) {
+      downloadPill = _SmallActionPill(
+        icon: SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
           ),
         ),
+        label: '$pinnedCount/${playlistTracks.length}',
+        tooltip: 'Downloading ($pinnedCount / ${playlistTracks.length}). Tap to cancel.',
+        isActive: true,
+        activeColor: cs.secondary,
+        onPressed: () {
+          PixelHaptics.tick();
+          for (final t in playlistTracks) {
+            queueMgr.cancel(t.id);
+          }
+        },
+      );
+    } else {
+      downloadPill = _SmallActionPill(
+        icon: Icon(Icons.download_rounded, color: cs.onSurfaceVariant, size: 16),
+        label: 'Download',
+        tooltip: 'Download Playlist (${playlistTracks.length} tracks)',
+        onPressed: playlistTracks.isEmpty
+            ? null
+            : () {
+                PixelHaptics.hifiConfirm();
+                ref
+                    .read(tracksCatalogProvider.notifier)
+                    .pinTracksOffline(playlistTracks.map((t) => t.id).toList());
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Downloading ${playlistTracks.length} tracks from "${widget.playlist.title}"...',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
       );
     }
 
-    if (anyInQueue) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: cs.secondaryContainer.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Downloading ($pinnedCount / ${playlistTracks.length})...',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: cs.onSecondaryContainer,
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.cancel_rounded, size: 18),
-                onPressed: () {
-                  PixelHaptics.tick();
-                  for (final t in playlistTracks) {
-                    queueMgr.cancel(t.id);
-                  }
-                },
-              ),
-            ],
+    // 2. Import Pill
+    final importPill = _SmallActionPill(
+      icon: Icon(Icons.playlist_add_rounded, color: cs.onSurfaceVariant, size: 17),
+      label: 'Import',
+      tooltip: 'Import Songs (Spotify, Apple Music, YouTube, M3U)',
+      onPressed: livePlaylist.isSmart
+          ? null
+          : () {
+              PixelHaptics.tick();
+              showPlaylistImportModal(
+                context,
+                targetPlaylist: livePlaylist,
+              );
+            },
+    );
+
+    // 3. Sync Pill
+    final Widget syncPill;
+    if (_isSyncing) {
+      syncPill = _SmallActionPill(
+        icon: SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
           ),
         ),
+        label: 'Syncing',
+        tooltip: 'Syncing playlist tracks...',
+        isActive: true,
+        activeColor: cs.primary,
+        onPressed: null,
+      );
+    } else if (livePlaylist.syncSourceUrl != null) {
+      final isSpotify = livePlaylist.syncSourceUrl!.contains('spotify');
+      syncPill = _SmallActionPill(
+        icon: Icon(
+          Icons.sync_rounded,
+          color: isSpotify ? const Color(0xFF1DB954) : cs.primary,
+          size: 16,
+        ),
+        label: 'Sync',
+        tooltip: 'Sync with ${isSpotify ? 'Spotify' : 'Source'} • ${_formatLastSynced(livePlaylist.lastSyncedAt)}',
+        isActive: true,
+        activeColor: isSpotify ? const Color(0xFF1DB954) : cs.primary,
+        onPressed: () => _handleSyncPlaylist(livePlaylist),
+      );
+    } else {
+      syncPill = _SmallActionPill(
+        icon: Icon(Icons.sync_rounded, color: cs.onSurfaceVariant, size: 16),
+        label: 'Sync',
+        tooltip: 'Link to Spotify or streaming source for 1-Tap Sync',
+        onPressed: livePlaylist.isSmart ? null : () => _handleSyncPlaylist(livePlaylist),
       );
     }
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: OutlinedButton.icon(
-        onPressed: () {
-          PixelHaptics.hifiConfirm();
-          ref
-              .read(tracksCatalogProvider.notifier)
-              .pinTracksOffline(playlistTracks.map((t) => t.id).toList());
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Downloading ${playlistTracks.length} tracks from "${widget.playlist.title}"...',
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        },
-        icon: const Icon(Icons.download_for_offline_outlined, size: 18),
-        label: Text(
-          'Download Playlist (${playlistTracks.length} tracks)',
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      child: Row(
+        children: [
+          Expanded(child: downloadPill),
+          const SizedBox(width: 8),
+          Expanded(child: importPill),
+          const SizedBox(width: 8),
+          Expanded(child: syncPill),
+        ],
+      ),
+    );
+  }
+
+  void _showRemoveDownloadsDialog(List<Track> playlistTracks) {
+    final cs = Theme.of(context).colorScheme;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cs.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
         ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+        title: const Text('Remove Downloads',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text(
+          'Remove all ${playlistTracks.length} offline tracks in "${widget.playlist.title}" from device storage? The songs will remain in your library.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep'),
           ),
-        ),
+          FilledButton.tonal(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref
+                  .read(tracksCatalogProvider.notifier)
+                  .unpinTracksOffline(
+                    playlistTracks.map((t) => t.id).toList(),
+                  );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Removed offline tracks.'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('Remove'),
+          ),
+        ],
       ),
     );
   }
@@ -676,55 +704,154 @@ class _PlaylistDetailsScreenState
               },
             ),
             actions: [
-              if (!livePlaylist.isSmart)
-                IconButton(
-                  icon: _isSyncing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.sync_rounded),
-                  tooltip: livePlaylist.syncSourceUrl != null
-                      ? 'Sync with ${livePlaylist.syncSourceUrl!.contains('spotify') ? 'Spotify' : 'Source'} (${_formatLastSynced(livePlaylist.lastSyncedAt)})'
-                      : 'Sync Playlist with Spotify',
-                  onPressed: _isSyncing ? null : () => _handleSyncPlaylist(livePlaylist),
-                ),
-              if (!livePlaylist.isSmart)
-                IconButton(
-                  icon: const Icon(Icons.playlist_add_rounded),
-                  tooltip: 'Import Songs',
-                  onPressed: () => showPlaylistImportModal(
-                    context,
-                    targetPlaylist: livePlaylist,
+              Theme(
+                data: Theme.of(context).copyWith(
+                  popupMenuTheme: PopupMenuThemeData(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    elevation: 6,
+                    color: cs.surfaceContainerHigh,
                   ),
                 ),
-              if (!livePlaylist.isSmart)
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: 'Edit Playlist',
-                  onPressed: () => _showRenameDialog(livePlaylist),
-                ),
-              IconButton(
-                icon: const Icon(Icons.qr_code_2_rounded),
-                tooltip: 'Share & QR Code',
-                onPressed: () => showPlaylistQrModal(
-                  context,
-                  livePlaylist,
-                  playlistTracks,
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.menu_rounded, size: 26),
+                  tooltip: 'Playlist Options',
+                  onSelected: (value) {
+                    PixelHaptics.tick();
+                    switch (value) {
+                      case 'sync':
+                        _handleSyncPlaylist(livePlaylist);
+                        break;
+                      case 'import':
+                        showPlaylistImportModal(
+                          context,
+                          targetPlaylist: livePlaylist,
+                        );
+                        break;
+                      case 'edit':
+                        _showRenameDialog(livePlaylist);
+                        break;
+                      case 'qr':
+                        showPlaylistQrModal(
+                          context,
+                          livePlaylist,
+                          playlistTracks,
+                        );
+                        break;
+                      case 'export_m3u8':
+                        _exportM3u8(livePlaylist, playlistTracks);
+                        break;
+                      case 'delete':
+                        _confirmDeletePlaylist(livePlaylist);
+                        break;
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    if (!livePlaylist.isSmart) ...[
+                      PopupMenuItem(
+                        value: 'sync',
+                        enabled: !_isSyncing,
+                        child: Row(
+                          children: [
+                            Icon(Icons.sync_rounded, color: cs.primary, size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                livePlaylist.syncSourceUrl != null
+                                    ? 'Sync (${livePlaylist.syncSourceUrl!.contains('spotify') ? 'Spotify' : 'Source'})'
+                                    : 'Link & Sync with Spotify',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'import',
+                        child: Row(
+                          children: [
+                            Icon(Icons.playlist_add_rounded, color: cs.primary, size: 20),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Import Songs',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined, color: cs.primary, size: 20),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Edit Playlist',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    PopupMenuItem(
+                      value: 'qr',
+                      child: Row(
+                        children: [
+                          Icon(Icons.qr_code_2_rounded, color: cs.primary, size: 20),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Share & QR Code',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'export_m3u8',
+                      child: Row(
+                        children: [
+                          Icon(Icons.file_download_outlined, color: cs.primary, size: 20),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Export .M3U8',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!livePlaylist.isSmart) ...[
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline_rounded, color: cs.error, size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Delete Playlist',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.file_download_outlined),
-                tooltip: 'Export .M3U8',
-                onPressed: () => _exportM3u8(livePlaylist, playlistTracks),
-              ),
-              if (!livePlaylist.isSmart)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  tooltip: 'Delete Playlist',
-                  onPressed: () => _confirmDeletePlaylist(livePlaylist),
-                ),
               const SizedBox(width: 8),
             ],
           ),
@@ -845,86 +972,8 @@ class _PlaylistDetailsScreenState
                       ),
                     ],
                   ),
-                  _buildDownloadRow(context, cs, playlistTracks),
-                  if (!livePlaylist.isSmart) ...[
-                    const SizedBox(height: 10),
-                    if (livePlaylist.syncSourceUrl != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: FilledButton.tonalIcon(
-                          onPressed: _isSyncing
-                              ? null
-                              : () => _handleSyncPlaylist(livePlaylist),
-                          icon: _isSyncing
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                )
-                              : const Icon(Icons.sync_rounded, size: 18),
-                          label: Text(
-                            _isSyncing
-                                ? 'Syncing...'
-                                : 'Sync with ${livePlaylist.syncSourceUrl!.contains('spotify') ? 'Spotify' : 'Source'} • ${_formatLastSynced(livePlaylist.lastSyncedAt)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12.5,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 10, horizontal: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: () => _handleSyncPlaylist(livePlaylist),
-                          icon: const Icon(Icons.sync_rounded, size: 18),
-                          label: const Text(
-                            'Link to Spotify for 1-Tap Sync',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 10, horizontal: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                        ),
-                      ),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        showPlaylistImportModal(
-                          context,
-                          targetPlaylist: livePlaylist,
-                        );
-                      },
-                      icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                      label: const Text(
-                        'Import Songs (Spotify / Apple Music / Text / M3U)',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                  ],
+                  // 4. Download, Import, and Sync Small Action Pills
+                  _buildActionPillsRow(context, cs, livePlaylist, playlistTracks),
                 ],
               ),
             ),
@@ -1131,5 +1180,75 @@ class _PlaylistDetailsScreenState
     ],
   ),
 );
+  }
+}
+
+/// Compact, uniform-size action pill for playlist download, import, and sync.
+class _SmallActionPill extends StatelessWidget {
+  const _SmallActionPill({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    this.onPressed,
+    this.isActive = false,
+    this.activeColor,
+  });
+
+  final Widget icon;
+  final String label;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool isActive;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final effectiveColor = activeColor ?? cs.primary;
+    final isEnabled = onPressed != null;
+
+    return Tooltip(
+      message: tooltip,
+      child: Opacity(
+        opacity: isEnabled ? 1.0 : 0.45,
+        child: SpringPressScale(
+          onTap: onPressed,
+          child: Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: isActive
+                  ? effectiveColor.withValues(alpha: 0.14)
+                  : cs.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(
+                color: isActive
+                    ? effectiveColor.withValues(alpha: 0.45)
+                    : cs.outlineVariant.withValues(alpha: 0.35),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                icon,
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isActive ? effectiveColor : cs.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
