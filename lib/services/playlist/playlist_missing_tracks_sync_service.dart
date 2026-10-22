@@ -207,6 +207,7 @@ class PlaylistMissingTracksSyncNotifier
 
   void cancelSync() {
     _isCancelled = true;
+    if (!mounted) return;
     state = state.copyWith(
       isSyncing: false,
       pendingAuthPrompt: () => null,
@@ -223,6 +224,7 @@ class PlaylistMissingTracksSyncNotifier
     required String playlistId,
     required String errorMessage,
   }) async {
+    if (!mounted) return CloudAuthDecision.cancel;
     if (state.fallbackToLocalStorageApproved) {
       return CloudAuthDecision.saveToLocalStorage;
     }
@@ -245,6 +247,7 @@ class PlaylistMissingTracksSyncNotifier
   }
 
   void confirmAuthFallbackToLocalStorage() {
+    if (!mounted) return;
     state = state.copyWith(
       pendingAuthPrompt: () => null,
       fallbackToLocalStorageApproved: true,
@@ -256,6 +259,7 @@ class PlaylistMissingTracksSyncNotifier
   }
 
   void retryAuthWithFreshToken(String newToken) {
+    if (!mounted) return;
     state = state.copyWith(
       pendingAuthPrompt: () => null,
       currentStatusText: 'Cloud credentials updated. Retrying upload...',
@@ -325,6 +329,7 @@ class PlaylistMissingTracksSyncNotifier
         .map((item) => SyncTrackProgress(item: item))
         .toList();
 
+    if (!mounted) return;
     state = PlaylistMissingTracksSyncState(
       isSyncing: true,
       activePlaylistId: playlistId,
@@ -348,14 +353,22 @@ class PlaylistMissingTracksSyncNotifier
     var nextTrackIndex = 0;
     final activeFutures = <Future<void>>{};
 
-    while ((nextTrackIndex < missingTracks.length || activeFutures.isNotEmpty) && !_isCancelled) {
-      while (activeFutures.length < maxConcurrency && nextTrackIndex < missingTracks.length && !_isCancelled) {
+    while ((nextTrackIndex < missingTracks.length || activeFutures.isNotEmpty) &&
+        !_isCancelled &&
+        mounted) {
+      while (activeFutures.length < maxConcurrency &&
+          nextTrackIndex < missingTracks.length &&
+          !_isCancelled &&
+          mounted) {
         final idx = nextTrackIndex++;
         final trackItem = missingTracks[idx];
 
-        state = state.copyWith(
-          currentStatusText: 'Processing track ${idx + 1} of ${missingTracks.length}: "${trackItem.displayName}"...',
-        );
+        if (mounted) {
+          state = state.copyWith(
+            currentStatusText:
+                'Processing track ${idx + 1} of ${missingTracks.length}: "${trackItem.displayName}"...',
+          );
+        }
 
         late Future<void> workerFuture;
         workerFuture = (() async {
@@ -377,9 +390,11 @@ class PlaylistMissingTracksSyncNotifier
                 error: e.toString(),
               ),
             );
-            state = state.copyWith(
-              failedCount: state.failedCount + 1,
-            );
+            if (mounted) {
+              state = state.copyWith(
+                failedCount: state.failedCount + 1,
+              );
+            }
           } finally {
             activeFutures.remove(workerFuture);
           }
@@ -393,12 +408,14 @@ class PlaylistMissingTracksSyncNotifier
       }
     }
 
-    state = state.copyWith(
-      isSyncing: false,
-      currentStatusText: _isCancelled
-          ? 'Sync cancelled'
-          : 'Sync complete (${state.completedCount} uploaded, ${state.failedCount} failed)',
-    );
+    if (mounted) {
+      state = state.copyWith(
+        isSyncing: false,
+        currentStatusText: _isCancelled
+            ? 'Sync cancelled'
+            : 'Sync complete (${state.completedCount} uploaded, ${state.failedCount} failed)',
+      );
+    }
 
     if (!_isCancelled && state.completedCount > 0) {
       await PixelHaptics.hifiConfirm();
@@ -663,6 +680,7 @@ class PlaylistMissingTracksSyncNotifier
     int index,
     SyncTrackProgress Function(SyncTrackProgress prev) updater,
   ) {
+    if (!mounted) return;
     final list = List<SyncTrackProgress>.from(state.trackProgresses);
     if (index >= 0 && index < list.length) {
       list[index] = updater(list[index]);

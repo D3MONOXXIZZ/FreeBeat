@@ -72,21 +72,55 @@ class PlaylistImportService {
       }
     }
 
-    // 2. Title matches and artist overlaps
+    // 2. Exact title match with artist token overlap or containment
+    final qArtistTokens = cleanQArtist
+        .split(' ')
+        .where((w) => w.length >= 2)
+        .toSet();
+
+    for (final t in libraryTracks) {
+      final tTitle = _normalize(t.title);
+      if (tTitle == cleanQTitle) {
+        final tArtist = _normalize(t.artist);
+        if (cleanQArtist.isEmpty || tArtist.isEmpty) {
+          return t;
+        }
+        if (tArtist == cleanQArtist ||
+            tArtist.contains(cleanQArtist) ||
+            cleanQArtist.contains(tArtist)) {
+          return t;
+        }
+        final tArtistTokens = tArtist
+            .split(' ')
+            .where((w) => w.length >= 2)
+            .toSet();
+        if (qArtistTokens.intersection(tArtistTokens).isNotEmpty) {
+          return t;
+        }
+      }
+    }
+
+    // 3. Title matches and artist overlaps
     for (final t in libraryTracks) {
       final tTitle = _normalize(t.title);
       final tArtist = _normalize(t.artist);
+      final tArtistTokens = tArtist
+          .split(' ')
+          .where((w) => w.length >= 2)
+          .toSet();
       if ((tTitle == cleanQTitle ||
               tTitle.contains(cleanQTitle) ||
               cleanQTitle.contains(tTitle)) &&
           (cleanQArtist.isEmpty ||
+              tArtist.isEmpty ||
               tArtist.contains(cleanQArtist) ||
-              cleanQArtist.contains(tArtist))) {
+              cleanQArtist.contains(tArtist) ||
+              qArtistTokens.intersection(tArtistTokens).isNotEmpty)) {
         return t;
       }
     }
 
-    // 3. Exact title match
+    // 4. Exact title match
     for (final t in libraryTracks) {
       final tTitle = _normalize(t.title);
       if (tTitle == cleanQTitle) {
@@ -94,7 +128,7 @@ class PlaylistImportService {
       }
     }
 
-    // 4. Substring title match
+    // 5. Substring title match
     for (final t in libraryTracks) {
       final tTitle = _normalize(t.title);
       if (tTitle.length > 3 &&
@@ -454,6 +488,30 @@ class PlaylistImportService {
                   }
                 }
 
+                // For playlists, query Spotify Pathfinder GraphQL with pagination
+                // to fetch ALL tracks (bypassing the embed SSR 100-track truncation).
+                if (entityType == 'playlist') {
+                  String? accessToken;
+                  final session = json['props']?['pageProps']?['state']?['settings']?['session'];
+                  if (session is Map && session['accessToken'] != null) {
+                    accessToken = session['accessToken']?.toString();
+                  }
+                  if (accessToken == null || accessToken.isEmpty) {
+                    final tokenMatch = RegExp(r'"accessToken":"([^"]+)"').firstMatch(html);
+                    if (tokenMatch != null) {
+                      accessToken = tokenMatch.group(1);
+                    }
+                  }
+
+                  if (accessToken != null && accessToken.isNotEmpty) {
+                    final fullTracks = await _fetchSpotifyPathfinderTracks(entityId, accessToken);
+                    if (fullTracks.isNotEmpty) {
+                      entries.clear();
+                      entries.addAll(fullTracks);
+                    }
+                  }
+                }
+
                 // Single Track Page support: if entity represents an individual track
                 if (entries.isEmpty && (entityType == 'track' || entity['type'] == 'track')) {
                   final tName = entity['name']?.toString() ?? entity['title']?.toString() ?? '';
@@ -580,6 +638,131 @@ class PlaylistImportService {
       sourceType: 'spotify',
       artworkUrl: playlistArtworkUrl,
     );
+  }
+
+  /// Fetches complete tracks for a Spotify playlist using Spotify's internal Pathfinder
+  /// GraphQL API with pagination, ensuring playlists beyond 100 tracks (e.g. 121+ tracks)
+  /// are imported completely and losslessly.
+  Future<List<_RawTrackEntry>> _fetchSpotifyPathfinderTracks(
+    String playlistId,
+    String accessToken,
+  ) async {
+    final List<_RawTrackEntry> result = [];
+    int offset = 0;
+    const int limit = 100;
+    int totalCount = 100;
+
+    try {
+      while (offset < totalCount && offset < 10000) {
+        final pathfinderUrl = Uri.parse(
+          'https://api-partner.spotify.com/pathfinder/v1/query',
+        ).replace(
+          queryParameters: {
+            'operationName': 'fetchPlaylist',
+            'variables': jsonEncode({
+              'uri': 'spotify:playlist:$playlistId',
+              'offset': offset,
+              'limit': limit,
+            }),
+            'extensions': jsonEncode({
+              'persistedQuery': {
+                'version': 1,
+                'sha256Hash':
+                    '91d4c2bc3e0cd1bc672281c4f1f59f43ff55ba726ca04a45810d99bd091f3f0e',
+              }
+            }),
+          },
+        );
+
+        final res = await _http.get(
+          pathfinderUrl,
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+          },
+        ).timeout(const Duration(seconds: 10));
+
+        if (res.statusCode != 200) {
+          break;
+        }
+
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final content = data['data']?['playlistV2']?['content'];
+        if (content == null) break;
+
+        final reportedTotal = content['totalCount'] as int?;
+        if (reportedTotal != null) {
+          totalCount = reportedTotal;
+        }
+
+        final items = content['items'] as List?;
+        if (items == null || items.isEmpty) break;
+
+        for (final item in items) {
+          final itemData = item['itemV2']?['data'];
+          if (itemData is Map) {
+            final tName = itemData['name']?.toString() ?? '';
+            final artistList = itemData['artists']?['items'] as List?;
+            final tArtist = artistList
+                    ?.map((a) => a['profile']?['name']?.toString())
+                    .where((n) => n != null && n.isNotEmpty)
+                    .join(', ') ??
+                '';
+            final durMs = (itemData['trackDuration']?['totalMilliseconds']
+                    as num?)
+                ?.toInt();
+            final uriStr = itemData['uri']?.toString() ?? '';
+            String? trackWebUrl;
+            if (uriStr.startsWith('spotify:track:')) {
+              final trackId = uriStr.split(':').last;
+              trackWebUrl = 'https://open.spotify.com/track/$trackId';
+            }
+
+            final albumName =
+                itemData['albumOfTrack']?['name']?.toString();
+            final coverSources =
+                itemData['albumOfTrack']?['coverArt']?['sources'] as List?;
+            String? artwork;
+            if (coverSources != null && coverSources.isNotEmpty) {
+              final sorted = List<dynamic>.from(coverSources)
+                ..sort((a, b) {
+                  final ha = (a is Map
+                          ? (a['height'] as num?)?.toInt()
+                          : 0) ??
+                      0;
+                  final hb = (b is Map
+                          ? (b['height'] as num?)?.toInt()
+                          : 0) ??
+                      0;
+                  return hb.compareTo(ha);
+                });
+              artwork = sorted.first['url']?.toString();
+            }
+
+            if (tName.isNotEmpty) {
+              result.add(
+                _RawTrackEntry(
+                  title: _unescapeHtml(tName),
+                  artist: _unescapeHtml(tArtist),
+                  durationMs: durMs,
+                  artworkUrl: artwork,
+                  album: albumName != null ? _unescapeHtml(albumName) : null,
+                  urlOrPath: trackWebUrl,
+                ),
+              );
+            }
+          }
+        }
+
+        offset += limit;
+      }
+    } catch (e) {
+      debugPrint('Spotify Pathfinder pagination note: $e');
+    }
+
+    return result;
   }
 
   Future<PlaylistImportResult> _importAppleMusic(
@@ -1026,7 +1209,7 @@ class PlaylistImportService {
         description = playlist.description;
         playlistArtworkUrl = playlist.thumbnails.highResUrl;
 
-        await for (final video in yt.playlists.getVideos(listId).take(200)) {
+        await for (final video in yt.playlists.getVideos(listId).take(5000)) {
           final cleaned = _cleanYouTubeTrackInfo(video.title, video.author);
           entries.add(_RawTrackEntry(
             title: cleaned.title,

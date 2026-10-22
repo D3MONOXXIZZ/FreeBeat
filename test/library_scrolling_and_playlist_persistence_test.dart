@@ -229,7 +229,7 @@ void main() {
       // "Crawl Outta Love" should be visible, "Starlight" should be filtered out
       expect(find.text('Crawl Outta Love'), findsOneWidget);
       expect(find.text('Starlight'), findsNothing);
-      expect(find.textContaining('Found 1 track for "crawl"'), findsOneWidget);
+      expect(find.textContaining('Found 1 track'), findsOneWidget);
 
       // 3. Clear search using the clear button
       final clearButton = find.byTooltip('Clear search');

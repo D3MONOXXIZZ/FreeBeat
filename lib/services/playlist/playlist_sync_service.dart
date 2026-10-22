@@ -106,9 +106,25 @@ class PlaylistSyncService {
         }
       }
 
-      // 4. Find truly NEW missing tracks not already in the playlist or matched
+      // 4. Find truly NEW missing tracks not already in the playlist or matched.
+      // Defensively check against allLibraryTracks in case an item was already imported into the library.
       final newMissing = <MissingTrackItem>[];
       for (final item in importResult.missingTracks) {
+        final libraryMatch = PlaylistImportService.findBestMatch(
+          item.title,
+          item.artist,
+          allLibraryTracks,
+        );
+        if (libraryMatch != null) {
+          final libKey = '${_normalize(libraryMatch.title)}:::${_normalize(libraryMatch.artist)}';
+          if (!existingTrackIds.contains(libraryMatch.id) && !existingKeys.contains(libKey)) {
+            newMatched.add(libraryMatch);
+            existingTrackIds.add(libraryMatch.id);
+            existingKeys.add(libKey);
+          }
+          continue;
+        }
+
         final key = '${_normalize(item.title)}:::${_normalize(item.artist)}';
         if (!existingKeys.contains(key)) {
           newMissing.add(item);
