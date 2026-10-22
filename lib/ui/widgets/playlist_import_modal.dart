@@ -746,6 +746,12 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     icon: YouTubeAppIcon(size: 16),
                   ),
                   const SizedBox(width: 6),
+                  const _PlatformPill(
+                    label: 'Deezer',
+                    color: Color(0xFFA238FF),
+                    icon: DeezerAppIcon(size: 16),
+                  ),
+                  const SizedBox(width: 6),
                   _PlatformPill(
                     label: '.M3U8 / Text',
                     color: cs.primary,

@@ -14,7 +14,6 @@ import 'track_details_screen.dart';
 import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
-import '../widgets/playlist_import_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 
 enum _HomeCategoryFilter {
@@ -917,29 +916,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     widget.onOpenNowPlaying();
                   }
                 },
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => showPlaylistImportModal(context),
-                  icon: const Icon(Icons.download_rounded, size: 16),
-                  label: const Text('Import Playlist'),
-                  style: TextButton.styleFrom(
-                    backgroundColor: cs.surfaceContainerHigh,
-                    foregroundColor: cs.onSurfaceVariant,
-                    shape: const StadiumBorder(),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
-                    ),
-                  ),
-                ),
               ),
             ),
           ),

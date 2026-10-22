@@ -2129,58 +2129,39 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               )
             else if (filtered.isNotEmpty) ...[
-              // Track List Header with Count & Multi-Select / Select All controls
+              // Track List Header with Play / Select controls on the Left and Track Counter on the Right
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 16, 6),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 20, 6),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          _isMultiSelect
-                              ? '${_selectedTrackIds.length} of ${filtered.length} selected'
-                              : (query.isNotEmpty
-                                  ? 'Found ${filtered.length} ${filtered.length == 1 ? "track" : "tracks"} for "$_searchQuery"'
-                                  : '${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: query.isNotEmpty
-                                ? cs.primary
-                                : cs.onSurfaceVariant,
+                      if (_isMultiSelect) ...[
+                        TextButton.icon(
+                          onPressed: () => _toggleSelectAll(filtered),
+                          icon: Icon(
+                            isAllFilteredSelected
+                                ? Icons.deselect_rounded
+                                : Icons.select_all_rounded,
+                            size: 18,
+                          ),
+                          label: Text(
+                            isAllFilteredSelected
+                                ? 'Deselect All'
+                                : 'Select All',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
                           ),
                         ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isMultiSelect) ...[
-                            TextButton.icon(
-                              onPressed: () => _toggleSelectAll(filtered),
-                              icon: Icon(
-                                isAllFilteredSelected
-                                    ? Icons.deselect_rounded
-                                    : Icons.select_all_rounded,
-                                size: 18,
-                              ),
-                              label: Text(
-                                isAllFilteredSelected
-                                    ? 'Deselect All'
-                                    : 'Select All',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              style: TextButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 10),
-                              ),
-                            ),
-                          ] else ...[
+                      ] else ...[
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             FilledButton.icon(
                               onPressed: () {
                                 if (filtered.isNotEmpty) {
@@ -2223,7 +2204,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               ),
                             ),
                           ],
-                        ],
+                        ),
+                      ],
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          _isMultiSelect
+                              ? '${_selectedTrackIds.length} of ${filtered.length} selected'
+                              : (query.isNotEmpty
+                                  ? 'Found ${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}'
+                                  : '${filtered.length} ${filtered.length == 1 ? "track" : "tracks"}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: query.isNotEmpty
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ],
                   ),

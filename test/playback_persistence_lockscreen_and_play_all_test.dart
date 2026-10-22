@@ -187,12 +187,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify "Play All" button is present in track list header next to "Select"
+    // Verify "Play All" button is present on the left and track counter is on the right
     final playAllFinder = find.widgetWithText(FilledButton, 'Play All');
     expect(playAllFinder, findsOneWidget);
 
     final selectFinder = find.widgetWithText(TextButton, 'Select');
     expect(selectFinder, findsOneWidget);
+
+    final trackCounterFinder = find.text('3 tracks');
+    expect(trackCounterFinder, findsOneWidget);
+
+    // Play All is to the left of the track counter
+    expect(
+      tester.getTopLeft(playAllFinder).dx < tester.getTopLeft(trackCounterFinder).dx,
+      isTrue,
+    );
 
     // Tap "Play All"
     await tester.tap(playAllFinder);
