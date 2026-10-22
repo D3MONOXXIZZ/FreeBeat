@@ -7,6 +7,7 @@ import '../../state/app_providers.dart';
 import '../audio/missing_track_audio_resolver.dart';
 import '../audio/track_audio_tagger_service.dart';
 import '../cloud/universal_cloud_upload_service.dart';
+import '../engine/track_resolution_gateway.dart';
 import '../haptics/pixel_haptics.dart';
 
 /// Representation of an unresolved missing track entry.
@@ -183,16 +184,22 @@ class PlaylistMissingTracksSyncNotifier
     MissingTrackAudioResolver? resolver,
     TrackAudioTaggerService? tagger,
     UniversalCloudUploadService? uploader,
+    TrackResolutionGateway? resolutionGateway,
   })  : _ref = ref,
         _resolver = resolver ?? MissingTrackAudioResolver(),
         _tagger = tagger ?? TrackAudioTaggerService(),
         _uploader = uploader ?? UniversalCloudUploadService(),
+        _resolutionGateway = resolutionGateway ??
+            TrackResolutionGateway(
+              resolver: resolver,
+            ),
         super(const PlaylistMissingTracksSyncState());
 
   final Ref _ref;
   final MissingTrackAudioResolver _resolver;
   final TrackAudioTaggerService _tagger;
   final UniversalCloudUploadService _uploader;
+  final TrackResolutionGateway _resolutionGateway;
 
   bool _isCancelled = false;
   Completer<CloudAuthDecision>? _authDecisionCompleter;
@@ -467,14 +474,14 @@ class PlaylistMissingTracksSyncNotifier
       final gate = Completer<void>();
       _activeResolveGate = gate;
 
-      AudioStreamCandidate? candidate;
+      ResolvedAudioBundle? bundle;
       try {
-        // 1. Resolve Audio Stream prioritizing YouTube and full tracks (no 30s previews)
-        candidate = await _resolver.resolveTrackAudio(
+        // 1. Resolve Audio Stream via Quality-Max Gateway (320kbps Studio Masters or YouTube Music)
+        bundle = await _resolutionGateway.resolveAudioBundle(
           title: item.title,
           artist: item.artist,
           expectedDurationMs: item.expectedDurationMs,
-          sourceUrl: item.sourceUrl,
+          spotifyUrlOrUri: item.sourceUrl,
           preferredArtworkUrl: item.preferredArtworkUrl,
           preferredAlbum: item.album,
         );
@@ -483,11 +490,13 @@ class PlaylistMissingTracksSyncNotifier
         if (!gate.isCompleted) gate.complete();
       }
 
-      if (candidate == null) {
+      if (bundle == null) {
         throw Exception('No stream candidate found for "${item.displayName}"');
       }
 
       if (_isCancelled) return null;
+
+      final candidate = bundle.candidate;
 
       // 2. Download and Tag Audio
       _updateTrackProgress(index, (p) => p.copyWith(status: SyncTrackStatus.downloading));
@@ -497,10 +506,10 @@ class PlaylistMissingTracksSyncNotifier
 
       final preparedAudio = await _tagger.downloadAndPrepareAudio(
         candidate: candidate,
-        targetTitle: item.title,
-        targetArtist: item.artist,
-        targetAlbum: item.album,
-        preferredArtworkUrl: item.preferredArtworkUrl,
+        targetTitle: bundle.title,
+        targetArtist: bundle.artist,
+        targetAlbum: bundle.album,
+        preferredArtworkUrl: bundle.artworkUrl ?? item.preferredArtworkUrl,
         sourceUrl: item.sourceUrl,
         onProgress: (frac) {
           final pct = (frac * 100).toInt();

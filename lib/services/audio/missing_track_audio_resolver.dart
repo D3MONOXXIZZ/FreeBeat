@@ -682,7 +682,28 @@ class MissingTrackAudioResolver {
       }
     }
 
-    // Tier 1 (PRIORITY #1): YouTube Music InnerTube Search & Android Player Stream
+    // Tier 1: Verified 320kbps Studio Masters (Quality-Max Engine)
+    // When a target track exists in the worldwide studio catalog with strict artist
+    // and title verification (score >= 0.85), deliver the authentic 320 kbps studio recording.
+    try {
+      final saavnCandidate = await _resolveViaJioSaavn(
+        title: cleanTitle.isNotEmpty ? cleanTitle : title,
+        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
+        expectedDurationMs: expectedDurationMs,
+        preferredArtworkUrl: preferredArtworkUrl,
+        preferredAlbum: preferredAlbum,
+      );
+      if (saavnCandidate != null &&
+          saavnCandidate.isFullLength &&
+          saavnCandidate.durationMs >= 45000 &&
+          saavnCandidate.matchScore >= 0.85) {
+        return saavnCandidate;
+      }
+    } catch (e) {
+      debugPrint('Studio master resolution error for "$title": $e');
+    }
+
+    // Tier 2: YouTube Music InnerTube Search & Android Player Stream
     // Directly accesses YouTube Music's official track catalog and Android direct audio streams.
     try {
       final ytCandidate = await _resolveViaYouTubeInnerTube(
@@ -699,24 +720,6 @@ class MissingTrackAudioResolver {
       }
     } catch (e) {
       debugPrint('YouTube InnerTube resolution error for "$title": $e');
-    }
-
-    // Tier 2: Worldwide Studio Catalog (JioSaavn full-length 320kbps master recordings)
-    try {
-      final saavnCandidate = await _resolveViaJioSaavn(
-        title: cleanTitle.isNotEmpty ? cleanTitle : title,
-        artist: cleanArtist.isNotEmpty ? cleanArtist : artist,
-        expectedDurationMs: expectedDurationMs,
-        preferredArtworkUrl: preferredArtworkUrl,
-        preferredAlbum: preferredAlbum,
-      );
-      if (saavnCandidate != null &&
-          saavnCandidate.isFullLength &&
-          saavnCandidate.durationMs >= 45000) {
-        return saavnCandidate;
-      }
-    } catch (e) {
-      debugPrint('Studio master resolution error for "$title": $e');
     }
 
     // Tier 3: YouTubeExplode Scraper Fallback
