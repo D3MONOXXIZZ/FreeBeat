@@ -127,6 +127,29 @@ void main() {
       // Verify MiniPlayerDock is present and visible
       expect(find.byType(MiniPlayerDock), findsOneWidget);
       expect(find.text('Crawl Outta Love'), findsWidgets);
+
+      // Verify both backward (skip_previous) and forward (skip_next) buttons exist on MiniPlayerDock
+      expect(
+        find.descendant(
+          of: find.byType(MiniPlayerDock),
+          matching: find.byIcon(Icons.skip_previous_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(MiniPlayerDock),
+          matching: find.byIcon(Icons.skip_next_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(MiniPlayerDock),
+          matching: find.byIcon(Icons.play_arrow_rounded),
+        ),
+        findsOneWidget,
+      );
     });
   });
 

@@ -462,10 +462,12 @@ class ArtistDetailsScreen extends ConsumerWidget {
       ),
       if (hasActiveTrack)
         Positioned(
-          left: 16,
-          right: 16,
+          left: 0,
+          right: 0,
           bottom: MediaQuery.of(context).padding.bottom + 12,
-          child: const MiniPlayerDock(),
+          child: const Center(
+            child: MiniPlayerDock(),
+          ),
         ),
     ],
   ),

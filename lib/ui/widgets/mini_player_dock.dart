@@ -12,7 +12,7 @@ class MiniPlayerDock extends ConsumerWidget {
   const MiniPlayerDock({
     super.key,
     this.width,
-    this.fullWidth = true,
+    this.fullWidth = false,
     this.onTap,
     this.onOpenDspStudio,
   });
@@ -63,8 +63,8 @@ class MiniPlayerDock extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
 
     final pillWidget = SizedBox(
-      width: fullWidth ? double.infinity : (width ?? 310),
-      height: 52,
+      width: fullWidth ? double.infinity : (width ?? 320),
+      height: 50,
       child: SpringPressScale(
         onTap: () => _openNowPlaying(context),
         child: Container(
@@ -93,14 +93,14 @@ class MiniPlayerDock extends ConsumerWidget {
                     children: [
                       MaterialYouAlbumCover(
                         track: track,
-                        size: 36,
+                        size: 34,
                         borderRadius: 100,
                         showQualityBadge: false,
                         showSourceBadge: false,
                         isPlaying: isPlaying,
                         showPlayingAnimation: false,
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -111,7 +111,7 @@ class MiniPlayerDock extends ConsumerWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 13,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -129,6 +129,24 @@ class MiniPlayerDock extends ConsumerWidget {
                         ),
                       ),
 
+                      // Backward / Skip Previous Button
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous_rounded),
+                        color: cs.onSurfaceVariant,
+                        iconSize: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        tooltip: 'Previous',
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          ref.read(playbackProvider.notifier).skipPrevious();
+                        },
+                      ),
+                      const SizedBox(width: 2),
+
                       // Play / Pause Circle Button
                       FilledButton(
                         onPressed: () {
@@ -139,7 +157,7 @@ class MiniPlayerDock extends ConsumerWidget {
                         style: FilledButton.styleFrom(
                           shape: const CircleBorder(),
                           padding: EdgeInsets.zero,
-                          minimumSize: const Size(34, 34),
+                          minimumSize: const Size(32, 32),
                           backgroundColor: cs.primaryContainer,
                           foregroundColor: cs.onPrimaryContainer,
                         ),
@@ -147,20 +165,22 @@ class MiniPlayerDock extends ConsumerWidget {
                           isPlaying
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          size: 20,
+                          size: 19,
                         ),
                       ),
+                      const SizedBox(width: 2),
 
-                      // Skip Next Button
+                      // Forward / Skip Next Button
                       IconButton(
                         icon: const Icon(Icons.skip_next_rounded),
                         color: cs.onSurfaceVariant,
                         iconSize: 20,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
-                          minWidth: 30,
-                          minHeight: 30,
+                          minWidth: 28,
+                          minHeight: 28,
                         ),
+                        tooltip: 'Next',
                         onPressed: () {
                           PixelHaptics.tick();
                           ref.read(playbackProvider.notifier).skipNext();

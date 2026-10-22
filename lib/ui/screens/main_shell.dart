@@ -149,6 +149,24 @@ class _MainShellState extends ConsumerState<MainShell> {
                         ),
                       ),
 
+                      // Backward / Skip Previous Button
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous_rounded),
+                        color: cs.onSurfaceVariant,
+                        iconSize: 19,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 26,
+                          minHeight: 26,
+                        ),
+                        tooltip: 'Previous',
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          ref.read(playbackProvider.notifier).skipPrevious();
+                        },
+                      ),
+                      const SizedBox(width: 2),
+
                       // Play / Pause Circle Button
                       FilledButton(
                         onPressed: () {
@@ -170,6 +188,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                           size: 19,
                         ),
                       ),
+                      const SizedBox(width: 2),
 
                       // Skip Next Button
                       IconButton(
@@ -178,9 +197,10 @@ class _MainShellState extends ConsumerState<MainShell> {
                         iconSize: 19,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(
-                          minWidth: 28,
-                          minHeight: 28,
+                          minWidth: 26,
+                          minHeight: 26,
                         ),
+                        tooltip: 'Next',
                         onPressed: () {
                           PixelHaptics.tick();
                           ref.read(playbackProvider.notifier).skipNext();
