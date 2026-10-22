@@ -152,6 +152,317 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
   }
 
+  Future<void> _pickCloudFolder() async {
+    PixelHaptics.tick();
+    final authService = ref.read(nativeCloudAuthServiceProvider);
+    final accounts = ref.read(cloudAccountsProvider);
+    final safAccount = accounts.firstWhere(
+      (a) => a.providerType == CloudProviderType.androidSaf,
+      orElse: () => const CloudAccount(
+        id: 'cloud_folder_saf',
+        providerType: CloudProviderType.androidSaf,
+        displayName: 'Cloud & Storage Folders',
+        endpointOrFolder: 'Cloud Music Folder',
+      ),
+    );
+    final progressNotifier = ref.read(importProgressProvider.notifier);
+    final picked = await authService.pickFolder(
+      account: safAccount,
+      batchSize: 10,
+      onBatchStarted: (batchFilenames, batchStartIndex, totalFiles) {
+        progressNotifier.startBatch(
+          batchFilenames: batchFilenames,
+          batchStartIndex: batchStartIndex,
+          totalFiles: totalFiles,
+        );
+      },
+      onProgress: (current, total, track) {
+        progressNotifier.update(
+          current: current,
+          total: total,
+          name: track?.title ?? '',
+          track: track,
+        );
+      },
+      onBatchCompleted: (batchTracks) async {
+        await ref.read(tracksCatalogProvider.notifier).addIndexedTracks(batchTracks);
+      },
+    );
+    if (picked.isNotEmpty) {
+      await PixelHaptics.hifiConfirm();
+      progressNotifier.complete();
+      ref.read(tracksCatalogProvider.notifier).enrichLibraryArtwork(picked);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Imported ${picked.length} tracks from folder into Library'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        );
+      }
+    } else {
+      progressNotifier.clearPending();
+    }
+  }
+
+  void _showAddMusicOptionsSheet() {
+    PixelHaptics.sheetExpand();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final textTheme = Theme.of(ctx).textTheme;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            MediaQuery.of(ctx).padding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.add_to_photos_rounded,
+                      color: cs.onPrimaryContainer,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add to Library',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        Text(
+                          'Import music from links, cloud folders, or files',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Option 1: Import from Link (Tracks, Albums, Playlists)
+              _buildAddOptionTile(
+                context: ctx,
+                icon: Icons.link_rounded,
+                iconBgColor: cs.primaryContainer,
+                iconColor: cs.onPrimaryContainer,
+                title: 'Import from Link',
+                subtitle:
+                    'Import individual tracks, full albums, or playlists from Spotify, Apple Music, or YouTube',
+                badgeText: 'Spotify / Apple / YT',
+                badgeColor: cs.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showPlaylistImportModal(context);
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // Option 2: Import Folder from Cloud / Storage
+              _buildAddOptionTile(
+                context: ctx,
+                icon: Icons.cloud_sync_rounded,
+                iconBgColor: cs.secondaryContainer,
+                iconColor: cs.onSecondaryContainer,
+                title: 'Import Folder from Cloud',
+                subtitle:
+                    'Scan an entire audio folder from Google Drive, OneDrive, Dropbox, or SD Card',
+                badgeText: 'Cloud Folder',
+                badgeColor: cs.secondary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickCloudFolder();
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // Option 3: Pick Audio Files
+              _buildAddOptionTile(
+                context: ctx,
+                icon: Icons.audio_file_rounded,
+                iconBgColor: cs.tertiaryContainer,
+                iconColor: cs.onTertiaryContainer,
+                title: 'Pick Audio Files',
+                subtitle:
+                    'Select individual audio files (.mp3, .flac, .m4a, .wav, .opus) from device or cloud',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickLocalFiles();
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // Option 4: New Playlist
+              _buildAddOptionTile(
+                context: ctx,
+                icon: Icons.playlist_add_rounded,
+                iconBgColor: cs.surfaceContainerHighest,
+                iconColor: cs.onSurface,
+                title: 'New Playlist',
+                subtitle: 'Create an empty custom playlist',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showCreatePlaylistDialog();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAddOptionTile({
+    required BuildContext context,
+    required IconData icon,
+    required Color iconBgColor,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    String? badgeText,
+    Color? badgeColor,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          PixelHaptics.tick();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (badgeText != null && badgeColor != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: badgeColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(100),
+                              border: Border.all(
+                                color: badgeColor.withValues(alpha: 0.35),
+                                width: 0.7,
+                              ),
+                            ),
+                            child: Text(
+                              badgeText,
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: badgeColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant,
+                        height: 1.25,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showCreatePlaylistDialog() {
     PixelHaptics.tick();
     final titleController = TextEditingController();
@@ -992,16 +1303,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         elevation: 4,
                         backgroundColor: cs.primaryContainer,
                         foregroundColor: cs.onPrimaryContainer,
-                        tooltip: _segment == 'playlists'
-                            ? 'New Playlist'
-                            : 'Add Music',
-                        onPressed: _segment == 'playlists'
-                            ? _showCreatePlaylistDialog
-                            : _pickLocalFiles,
-                        child: Icon(
-                          _segment == 'playlists'
-                              ? Icons.playlist_add_rounded
-                              : Icons.add_rounded,
+                        tooltip: 'Add to Library',
+                        onPressed: _showAddMusicOptionsSheet,
+                        child: const Icon(
+                          Icons.add_rounded,
                           size: 26,
                         ),
                       ),
@@ -1066,16 +1371,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.add_rounded),
-                    tooltip:
-                        _segment == 'playlists' ? 'New Playlist' : 'Add Music',
-                    onPressed: () {
-                      PixelHaptics.tick();
-                      if (_segment == 'playlists') {
-                        _showCreatePlaylistDialog();
-                      } else {
-                        _pickLocalFiles();
-                      }
-                    },
+                    tooltip: 'Add to Library',
+                    onPressed: _showAddMusicOptionsSheet,
                   ),
                   IconButton(
                     icon: const Icon(Icons.search_rounded),

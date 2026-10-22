@@ -700,7 +700,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.targetPlaylist != null ? 'Import Songs into Playlist' : 'Import Playlist',
+                      widget.targetPlaylist != null ? 'Import Songs into Playlist' : 'Import Music & Playlists',
                       style: textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -708,7 +708,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                     Text(
                       widget.targetPlaylist != null
                           ? 'Adding songs to "${widget.targetPlaylist!.title}"'
-                          : 'Spotify, Apple Music, YouTube, .M3U8, or tracklists',
+                          : 'Tracks, albums, or playlists from Spotify, Apple Music, YouTube',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onSurfaceVariant,
@@ -757,7 +757,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
               maxLines: 4,
               decoration: InputDecoration(
                 hintText:
-                    'Paste a Spotify, Apple Music, or YouTube / YouTube Music link (playlist or song), or enter tracks:\nArtist - Song Title\nSong Title, Artist\n#EXTM3U ...',
+                    'Paste a Spotify, Apple Music, or YouTube link (individual track, full album, or playlist), or enter tracks:\nArtist - Song Title\nSong Title, Artist\n#EXTM3U ...',
                 hintStyle: TextStyle(
                   fontSize: 12.5,
                   color: cs.onSurfaceVariant.withValues(alpha: 0.7),
@@ -936,7 +936,11 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '${_result!.matchedCount} of ${_result!.totalParsed} tracks matched (${_result!.matchPercentage.toStringAsFixed(0)}%) in your library',
+                      _result!.totalParsed == 1
+                          ? (_result!.matchedCount > 0
+                              ? 'Track is already in your library'
+                              : 'Ready to import and download track to your library')
+                          : '${_result!.matchedCount} of ${_result!.totalParsed} tracks matched (${_result!.matchPercentage.toStringAsFixed(0)}%) in your library',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
@@ -1303,10 +1307,14 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
                       _syncMissingTracks && _result!.missingTracks.isNotEmpty
                           ? (widget.targetPlaylist != null
                               ? 'Sync Missing & Add (${_result!.totalParsed})'
-                              : 'Get Missing Tracks (${_result!.totalParsed})')
+                              : (_result!.totalParsed == 1
+                                  ? 'Import Track to Library'
+                                  : 'Get Missing Tracks (${_result!.totalParsed})'))
                           : (widget.targetPlaylist != null
                               ? 'Add to Playlist (${_result!.matchedCount})'
-                              : 'Save Playlist (${_result!.matchedCount})'),
+                              : (_result!.totalParsed == 1
+                                  ? 'Save Track to Library'
+                                  : 'Save Playlist (${_result!.matchedCount})')),
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
                       overflow: TextOverflow.ellipsis,
                     ),

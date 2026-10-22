@@ -453,6 +453,82 @@ class PlaylistImportService {
                     }
                   }
                 }
+
+                // Single Track Page support: if entity represents an individual track
+                if (entries.isEmpty && (entityType == 'track' || entity['type'] == 'track')) {
+                  final tName = entity['name']?.toString() ?? entity['title']?.toString() ?? '';
+                  String tArtist = '';
+                  if (entity['artists'] is List && (entity['artists'] as List).isNotEmpty) {
+                    tArtist = (entity['artists'] as List)
+                        .map((a) => a is Map ? a['name']?.toString() : a.toString())
+                        .where((s) => s != null && s.isNotEmpty)
+                        .join(', ');
+                  } else if (entity['subtitle'] != null) {
+                    tArtist = entity['subtitle'].toString();
+                  }
+
+                  final tDur = (entity['duration'] as num?)?.toInt() ??
+                      (entity['duration_ms'] as num?)?.toInt();
+
+                  String? artwork;
+                  if (entity['visualIdentity'] is Map &&
+                      entity['visualIdentity']['image'] is List) {
+                    final imgs = entity['visualIdentity']['image'] as List;
+                    if (imgs.isNotEmpty) {
+                      final sorted = List<dynamic>.from(imgs)..sort((a, b) {
+                        final ha = (a is Map ? (a['maxHeight'] as num?)?.toInt() : 0) ?? 0;
+                        final hb = (b is Map ? (b['maxHeight'] as num?)?.toInt() : 0) ?? 0;
+                        return hb.compareTo(ha);
+                      });
+                      artwork = sorted.first['url']?.toString();
+                    }
+                  }
+                  if (artwork == null && entity['images'] is List && (entity['images'] as List).isNotEmpty) {
+                    artwork = entity['images'][0]['url']?.toString();
+                  } else if (artwork == null &&
+                      entity['album'] is Map &&
+                      entity['album']['images'] is List &&
+                      (entity['album']['images'] as List).isNotEmpty) {
+                    artwork = entity['album']['images'][0]['url']?.toString();
+                  } else if (artwork == null &&
+                      entity['coverArt'] is Map &&
+                      entity['coverArt']['sources'] is List &&
+                      (entity['coverArt']['sources'] as List).isNotEmpty) {
+                    artwork = entity['coverArt']['sources'][0]['url']?.toString();
+                  }
+                  artwork ??= playlistArtworkUrl;
+
+                  String? previewUrl;
+                  if (entity['audioPreview'] is Map && entity['audioPreview']['url'] != null) {
+                    previewUrl = entity['audioPreview']['url']?.toString();
+                  } else if (entity['previewUrl'] != null) {
+                    previewUrl = entity['previewUrl']?.toString();
+                  }
+
+                  String? albumName;
+                  if (entity['album'] is Map && entity['album']['name'] != null) {
+                    albumName = entity['album']['name']?.toString();
+                  } else if (entity['albumName'] != null) {
+                    albumName = entity['albumName']?.toString();
+                  }
+
+                  if (tName.isNotEmpty) {
+                    entries.add(_RawTrackEntry(
+                      title: _unescapeHtml(tName),
+                      artist: _unescapeHtml(tArtist),
+                      durationMs: tDur,
+                      previewAudioUrl: previewUrl,
+                      artworkUrl: artwork,
+                      album: albumName != null ? _unescapeHtml(albumName) : null,
+                      urlOrPath: resolvedUrl,
+                    ));
+                    title = _unescapeHtml(tName);
+                    description = tArtist.isNotEmpty
+                        ? 'Track by $tArtist'
+                        : 'Imported from Spotify';
+                    playlistArtworkUrl ??= artwork;
+                  }
+                }
               }
             } catch (_) {}
           }
@@ -615,14 +691,73 @@ class PlaylistImportService {
                         durationMs: durMs,
                         previewAudioUrl: previewUrl,
                         artworkUrl: artwork,
+                        urlOrPath: t['url']?.toString(),
                       ));
                     }
+                  }
+                }
+              }
+
+              // Single Song support on Apple Music
+              if (entries.isEmpty) {
+                final type = decoded['@type']?.toString();
+                if (type == 'MusicRecording' || (trackList == null && decoded['name'] != null)) {
+                  final tName = decoded['name']?.toString() ?? '';
+                  String tArtist = '';
+                  final byArtist = decoded['byArtist'];
+                  if (byArtist is List && byArtist.isNotEmpty) {
+                    tArtist = byArtist.first['name']?.toString() ?? '';
+                  } else if (byArtist is Map) {
+                    tArtist = byArtist['name']?.toString() ?? '';
+                  } else if (decoded['author'] is Map) {
+                    tArtist = decoded['author']['name']?.toString() ?? '';
+                  }
+
+                  int? durMs;
+                  if (decoded['duration'] != null) {
+                    durMs = _parseIsoDuration(decoded['duration'].toString());
+                  }
+
+                  String? artwork;
+                  if (decoded['image'] is String) {
+                    artwork = decoded['image']?.toString();
+                  } else if (decoded['image'] is Map && decoded['image']['url'] != null) {
+                    artwork = decoded['image']['url']?.toString();
+                  }
+
+                  if (tName.isNotEmpty) {
+                    entries.add(_RawTrackEntry(
+                      title: _unescapeHtml(tName),
+                      artist: _unescapeHtml(tArtist),
+                      durationMs: durMs,
+                      artworkUrl: artwork,
+                      urlOrPath: cleanUrl,
+                    ));
+                    title = _unescapeHtml(tName);
+                    description = tArtist.isNotEmpty
+                        ? 'Song by $tArtist'
+                        : 'Imported from Apple Music';
+                    playlistArtworkUrl ??= artwork;
                   }
                 }
               }
             }
           } catch (_) {}
         }
+
+      // If user shared an individual track link with ?i=<songId>, isolate that track
+      final songIdParam = uri.queryParameters['i'];
+      if (songIdParam != null && songIdParam.isNotEmpty && entries.length > 1) {
+        final target = entries.firstWhere(
+          (e) => e.urlOrPath != null && e.urlOrPath!.contains('i=$songIdParam'),
+          orElse: () => entries.first,
+        );
+        entries
+          ..clear()
+          ..add(target);
+        title = target.title;
+        description = target.artist.isNotEmpty ? 'Song by ${target.artist}' : 'Imported from Apple Music';
+      }
 
         // Clean up title
         title = title
@@ -784,6 +919,47 @@ class PlaylistImportService {
         }
       } catch (e) {
         debugPrint('YouTube oEmbed fallback note: $e');
+      }
+    }
+
+    // 3. Fallback to InnerTube Android client player API (never blocked by web PO-tokens)
+    if (rawTitle.isEmpty) {
+      try {
+        final innerTubeRes = await _http.post(
+          Uri.parse('https://music.youtube.com/youtubei/v1/player'),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US)',
+          },
+          body: jsonEncode({
+            'videoId': videoId,
+            'context': {
+              'client': {
+                'clientName': 'ANDROID',
+                'clientVersion': '19.09.37',
+                'androidSdkVersion': 34,
+                'hl': 'en',
+                'gl': 'US',
+              }
+            }
+          }),
+        ).timeout(const Duration(seconds: 6));
+        if (innerTubeRes.statusCode == 200) {
+          final data = jsonDecode(innerTubeRes.body) as Map<String, dynamic>;
+          final vd = data['videoDetails'] as Map<String, dynamic>?;
+          if (vd != null) {
+            rawTitle = vd['title']?.toString() ?? '';
+            rawAuthor = vd['author']?.toString() ?? '';
+            final lengthSec = int.tryParse(vd['lengthSeconds']?.toString() ?? '');
+            if (lengthSec != null) durationMs = lengthSec * 1000;
+            final thumbs = vd['thumbnail']?['thumbnails'] as List?;
+            if (thumbs != null && thumbs.isNotEmpty) {
+              artworkUrl = thumbs.last['url']?.toString();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('YouTube InnerTube fallback note: $e');
       }
     }
 
