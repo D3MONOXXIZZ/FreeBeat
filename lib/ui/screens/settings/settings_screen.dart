@@ -5,6 +5,7 @@ import '../../../state/app_providers.dart';
 import 'about_settings_screen.dart';
 import 'appearance_settings_screen.dart';
 import 'audio_quality_settings_screen.dart';
+import 'battery_settings_screen.dart';
 import 'bluetooth_settings_screen.dart';
 import 'cloud_sync_settings_screen.dart';
 import 'playback_settings_screen.dart';
@@ -21,6 +22,8 @@ class SettingsScreen extends ConsumerWidget {
     final quality = ref.watch(audioQualityProvider);
     final route = ref.watch(audioRouteInfoProvider);
     final playback = ref.watch(playbackProvider);
+    final isPowerSaverActive = ref.watch(effectivePowerSaverActiveProvider);
+    final battery = ref.watch(deviceBatteryStatusProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -100,6 +103,18 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const CloudSyncSettingsScreen()),
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsNavTile(
+                  icon: Icons.battery_saver_rounded,
+                  title: 'Battery & Power Saver',
+                  subtitle: isPowerSaverActive
+                      ? 'Active • Power Saver running'
+                      : '${battery.batteryLevel}% • AMOLED dark, Wi-Fi sleep, & preload scaling',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BatterySettingsScreen()),
                   ),
                 ),
               ],

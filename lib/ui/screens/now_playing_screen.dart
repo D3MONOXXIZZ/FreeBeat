@@ -141,9 +141,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         p.pitch != 1.0 ||
         p.isLoopActive));
     final lyrics = track.syncedLyrics;
+    final isPowerSaver = ref.watch(effectivePowerSaverActiveProvider);
+    final powerSaver = ref.watch(powerSaverProvider);
+    final shouldDisableAura = isPowerSaver && powerSaver.disableBlurAndAura;
     _resolvePalette(track);
 
-    if (isPlaying) {
+    if (isPlaying && !shouldDisableAura) {
       if (!_auraAnimController.isAnimating) {
         _auraAnimController.repeat(reverse: true);
       }
@@ -259,8 +262,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         children: [
                           // Ambient Edge-Matched Glow & Gaussian Blur Backdrop
                           // Wrapped in RepaintBoundary to cache rasterization and avoid GPU lag
-                          Positioned.fill(
-                            child: AnimatedBuilder(
+                          if (!shouldDisableAura)
+                            Positioned.fill(
+                              child: AnimatedBuilder(
                               animation: _auraAnimController,
                               builder: (context, child) {
                                 final auraVal = _auraAnimController.value;

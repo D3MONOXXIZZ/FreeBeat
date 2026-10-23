@@ -87,7 +87,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
     final route = ref.watch(audioRouteInfoProvider);
     final precomputedDb = _getPrecomputedDb(dsp);
 
-    if (widget.isActive && isPlaying && _animatedSpectrum) {
+    final isPowerSaver = ref.watch(effectivePowerSaverActiveProvider);
+    final powerSaver = ref.watch(powerSaverProvider);
+    final shouldPauseVis = isPowerSaver && powerSaver.pauseVisualizers;
+
+    if (widget.isActive && isPlaying && _animatedSpectrum && !shouldPauseVis) {
       if (!_spectrumAnimController.isAnimating) {
         _spectrumAnimController.repeat(reverse: true);
       }

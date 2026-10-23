@@ -7,9 +7,14 @@ class PixelHaptics {
   static const MethodChannel _channel = MethodChannel('com.freebeat.app/dsp');
   static DateTime _lastMicroTick = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// When true (Power Saver Mode active), suppresses high-frequency micro-ticks
+  /// and motor vibrations to cut battery current spikes.
+  static bool powerSaverEnabled = false;
+
   /// Subtle micro-tick when rotating Bass/Treble/StereoX knobs, dragging 10-band EQ faders,
   /// or scrubbing the Squiggly Seekbar (`PRIMITIVE_LOW_TICK`).
   static Future<void> lowTick({double intensity = 0.45}) async {
+    if (powerSaverEnabled) return;
     final now = DateTime.now();
     if (now.difference(_lastMicroTick).inMilliseconds < 24) return;
     _lastMicroTick = now;

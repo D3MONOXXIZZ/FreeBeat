@@ -159,6 +159,7 @@ class PixelTheme {
   static ColorScheme buildDarkColorScheme({
     ColorScheme? wallpaperDynamicScheme,
     Color activeTrackSeedColor = kSeedDeepViolet,
+    bool amoledPitchBlack = false,
   }) {
     final baseScheme = wallpaperDynamicScheme ??
         ColorScheme.fromSeed(
@@ -170,20 +171,38 @@ class PixelTheme {
         activeTrackSeedColor.toARGB32() == 0xFF1DB954;
     final effectiveSeed = isStaleGreen ? kSeedDeepViolet : activeTrackSeedColor;
 
+    ColorScheme scheme = baseScheme;
+
     if (effectiveSeed != kSeedDeepViolet &&
         wallpaperDynamicScheme == null) {
       final trackScheme = ColorScheme.fromSeed(
         seedColor: effectiveSeed,
         brightness: Brightness.dark,
       );
-      return baseScheme.copyWith(
+      scheme = baseScheme.copyWith(
         primary: Color.lerp(baseScheme.primary, trackScheme.primary, 0.45),
         primaryContainer: Color.lerp(
             baseScheme.primaryContainer, trackScheme.primaryContainer, 0.45),
         tertiary: trackScheme.tertiary,
       );
     }
-    return baseScheme;
+
+    if (amoledPitchBlack) {
+      return scheme.copyWith(
+        surface: Colors.black,
+        surfaceDim: Colors.black,
+        surfaceBright: const Color(0xFF121212),
+        surfaceContainerLowest: Colors.black,
+        surfaceContainerLow: const Color(0xFF080808),
+        surfaceContainer: const Color(0xFF101010),
+        surfaceContainerHigh: const Color(0xFF181818),
+        surfaceContainerHighest: const Color(0xFF222222),
+        onSurface: Colors.white,
+        onSurfaceVariant: const Color(0xFFC4C4C4),
+      );
+    }
+
+    return scheme;
   }
 
   /// Generates the complete Material 3 Light ColorScheme explicitly derived from

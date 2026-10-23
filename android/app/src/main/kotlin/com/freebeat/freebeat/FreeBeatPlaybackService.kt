@@ -61,6 +61,8 @@ class FreeBeatPlaybackService : Service() {
         var currentVolume: Float = 1.0f
         var currentDominantColor: Int = 0xFF1E293B.toInt()
         var currentOutputDevice: String = "Phone Speaker"
+        var isPowerSaver: Boolean = false
+        var isCurrentTrackLocal: Boolean = false
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -140,6 +142,8 @@ class FreeBeatPlaybackService : Service() {
                 intent.getStringExtra("outputDevice")?.let { if (it.isNotEmpty()) currentOutputDevice = it }
                 if (intent.hasExtra("isShuffle")) isShuffle = intent.getBooleanExtra("isShuffle", isShuffle)
                 if (intent.hasExtra("repeatMode")) repeatMode = intent.getIntExtra("repeatMode", repeatMode)
+                if (intent.hasExtra("isPowerSaver")) isPowerSaver = intent.getBooleanExtra("isPowerSaver", isPowerSaver)
+                if (intent.hasExtra("isCurrentTrackLocal")) isCurrentTrackLocal = intent.getBooleanExtra("isCurrentTrackLocal", isCurrentTrackLocal)
 
                 if (isPlaying) {
                     acquireWakeLock()
@@ -188,10 +192,17 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private fun acquireWifiLock() {
+        if (isCurrentTrackLocal && isPowerSaver) {
+            releaseWifiLock()
+            return
+        }
         try {
             if (wifiLock == null) {
                 val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                wifiLock = if (isPowerSaver) {
+                    @Suppress("DEPRECATION")
+                    wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "FreeBeat:PlaybackWifiLock")
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "FreeBeat:PlaybackWifiLock")
                 } else {
                     @Suppress("DEPRECATION")

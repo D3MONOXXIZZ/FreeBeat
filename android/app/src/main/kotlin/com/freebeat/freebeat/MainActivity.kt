@@ -1,7 +1,9 @@
 package com.freebeat.freebeat
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -16,8 +18,10 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -39,6 +43,8 @@ class MainActivity : FlutterActivity() {
     private var currentSessionId: Int = 0
     private var pendingDirectoryResult: MethodChannel.Result? = null
     private var pendingFilesResult: MethodChannel.Result? = null
+    private var batteryReceiver: BroadcastReceiver? = null
+    private var powerSaverMethodChannel: MethodChannel? = null
 
     // Tier 1: Android 9+ (API 28+) Studio-Grade 10-Band DynamicsProcessing
     private var dynamicsProcessing: DynamicsProcessing? = null
@@ -122,8 +128,25 @@ class MainActivity : FlutterActivity() {
             }
         }, null)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-            .setMethodCallHandler { call, result ->
+        val dspChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        powerSaverMethodChannel = dspChannel
+
+        val batteryFilter = IntentFilter().apply {
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+        }
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                try {
+                    dspChannel.invokeMethod("onBatteryStateChanged", getBatteryStatusMap())
+                } catch (_: Throwable) {}
+            }
+        }
+        try {
+            registerReceiver(batteryReceiver, batteryFilter)
+        } catch (_: Throwable) {}
+
+        dspChannel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "attachSession" -> {
                         val sessionId = call.argument<Int>("audioSessionId") ?: 0
@@ -176,6 +199,14 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(rate.toDouble())
                     }
+                    "setPreferredRefreshRate" -> {
+                        val rate = (call.argument<Number>("rate") ?: 60.0).toFloat()
+                        setPreferredDisplayRefreshRate(rate)
+                        result.success(true)
+                    }
+                    "getBatteryStatus" -> {
+                        result.success(getBatteryStatusMap())
+                    }
                     "setHighRefreshRate" -> {
                         enableAdaptiveDisplayRefreshRate()
                         result.success(true)
@@ -222,6 +253,8 @@ class MainActivity : FlutterActivity() {
                             val outputDevice = call.argument<String>("outputDevice") ?: "Phone Speaker"
                             val isShuffle = call.argument<Boolean>("isShuffle") ?: false
                             val repeatMode = (call.argument<Number>("repeatMode") ?: 0).toInt()
+                            val isPowerSaver = call.argument<Boolean>("isPowerSaver") ?: false
+                            val isCurrentTrackLocal = call.argument<Boolean>("isCurrentTrackLocal") ?: false
 
                             val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
                                 action = FreeBeatPlaybackService.ACTION_UPDATE
@@ -237,6 +270,8 @@ class MainActivity : FlutterActivity() {
                                 putExtra("outputDevice", outputDevice)
                                 putExtra("isShuffle", isShuffle)
                                 putExtra("repeatMode", repeatMode)
+                                putExtra("isPowerSaver", isPowerSaver)
+                                putExtra("isCurrentTrackLocal", isCurrentTrackLocal)
                             }
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
@@ -262,6 +297,8 @@ class MainActivity : FlutterActivity() {
                             val outputDevice = call.argument<String>("outputDevice")
                             val isShuffle = call.argument<Boolean>("isShuffle")
                             val repeatMode = call.argument<Number>("repeatMode")?.toInt()
+                            val isPowerSaver = call.argument<Boolean>("isPowerSaver")
+                            val isCurrentTrackLocal = call.argument<Boolean>("isCurrentTrackLocal")
 
                             val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
                                 action = FreeBeatPlaybackService.ACTION_UPDATE
@@ -276,6 +313,8 @@ class MainActivity : FlutterActivity() {
                                 outputDevice?.let { putExtra("outputDevice", it) }
                                 isShuffle?.let { putExtra("isShuffle", it) }
                                 repeatMode?.let { putExtra("repeatMode", it) }
+                                isPowerSaver?.let { putExtra("isPowerSaver", it) }
+                                isCurrentTrackLocal?.let { putExtra("isCurrentTrackLocal", it) }
                             }
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
@@ -1457,9 +1496,43 @@ class MainActivity : FlutterActivity() {
         return reclaimed
     }
 
+    private fun getBatteryStatusMap(): Map<String, Any> {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isPowerSaveMode = powerManager?.isPowerSaveMode ?: false
+
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
+
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+
+        return mapOf(
+            "batteryLevel" to batteryPct,
+            "isCharging" to isCharging,
+            "isPowerSaveMode" to isPowerSaveMode
+        )
+    }
+
+    private fun setPreferredDisplayRefreshRate(rate: Float) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val params = window?.attributes ?: return
+                params.preferredRefreshRate = rate
+                window.attributes = params
+            } catch (_: Throwable) {}
+        }
+    }
+
     override fun shouldDestroyEngineWithHost(): Boolean = false
 
     override fun onDestroy() {
+        batteryReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Throwable) {}
+            batteryReceiver = null
+        }
         if (!FreeBeatPlaybackService.isServiceRunning) {
             FreeBeatPlaybackService.playerActionListener = null
         }

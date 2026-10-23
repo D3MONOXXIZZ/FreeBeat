@@ -76,6 +76,8 @@ class PowerampDspService {
     String outputDevice = 'Phone Speaker',
     bool isShuffle = false,
     int repeatMode = 0,
+    bool isPowerSaver = false,
+    bool isCurrentTrackLocal = false,
   }) async {
     try {
       await _channel.invokeMethod('startForegroundPlayback', {
@@ -91,6 +93,8 @@ class PowerampDspService {
         'outputDevice': outputDevice,
         'isShuffle': isShuffle,
         'repeatMode': repeatMode,
+        'isPowerSaver': isPowerSaver,
+        'isCurrentTrackLocal': isCurrentTrackLocal,
       });
     } catch (_) {}
   }
@@ -107,6 +111,8 @@ class PowerampDspService {
     String? outputDevice,
     bool? isShuffle,
     int? repeatMode,
+    bool? isPowerSaver,
+    bool? isCurrentTrackLocal,
   }) async {
     try {
       await _channel.invokeMethod('updatePlaybackNotification', {
@@ -121,6 +127,8 @@ class PowerampDspService {
         if (outputDevice != null) 'outputDevice': outputDevice,
         if (isShuffle != null) 'isShuffle': isShuffle,
         if (repeatMode != null) 'repeatMode': repeatMode,
+        if (isPowerSaver != null) 'isPowerSaver': isPowerSaver,
+        if (isCurrentTrackLocal != null) 'isCurrentTrackLocal': isCurrentTrackLocal,
       });
     } catch (_) {}
   }

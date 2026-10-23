@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/models/audio_quality_settings.dart';
 import '../core/models/cloud_account.dart';
 import '../core/models/playlist.dart';
+import '../core/models/power_saver_settings.dart';
 import '../core/models/poweramp_dsp_state.dart';
 import '../core/models/track.dart';
 import '../core/storage/library_database.dart';
@@ -152,6 +154,177 @@ class SystemBrightnessNotifier extends StateNotifier<Brightness> {
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Power Saver Mode & Device Battery Providers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Master Power Saver configuration notifier with SharedPreferences persistence.
+final powerSaverProvider =
+    StateNotifierProvider<PowerSaverNotifier, PowerSaverSettings>((ref) {
+  return PowerSaverNotifier();
+});
+
+class PowerSaverNotifier extends StateNotifier<PowerSaverSettings> {
+  PowerSaverNotifier() : super(const PowerSaverSettings()) {
+    _loadFromPrefs();
+  }
+
+  static const String _prefsKey = 'freebeat_power_saver_settings_v1';
+
+  Future<void> _loadFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_prefsKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        state = PowerSaverSettings.fromJson(jsonStr);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, state.toJson());
+    } catch (_) {}
+  }
+
+  void toggleMaster() {
+    state = state.copyWith(isEnabled: !state.isEnabled);
+    _saveToPrefs();
+  }
+
+  void setEnabled(bool enabled) {
+    state = state.copyWith(isEnabled: enabled);
+    _saveToPrefs();
+  }
+
+  void setAutoOnSystemSaver(bool value) {
+    state = state.copyWith(autoOnSystemSaver: value);
+    _saveToPrefs();
+  }
+
+  void setAutoBelowBatteryPercent(int percent) {
+    state = state.copyWith(autoBelowBatteryPercent: percent);
+    _saveToPrefs();
+  }
+
+  void setAmoledPitchBlack(bool value) {
+    state = state.copyWith(amoledPitchBlack: value);
+    _saveToPrefs();
+  }
+
+  void setDisableBlurAndAura(bool value) {
+    state = state.copyWith(disableBlurAndAura: value);
+    _saveToPrefs();
+  }
+
+  void setPauseVisualizers(bool value) {
+    state = state.copyWith(pauseVisualizers: value);
+    _saveToPrefs();
+  }
+
+  void setCapRefreshRate60Hz(bool value) {
+    state = state.copyWith(capRefreshRate60Hz: value);
+    _saveToPrefs();
+  }
+
+  void setSmartWifiLock(bool value) {
+    state = state.copyWith(smartWifiLock: value);
+    _saveToPrefs();
+  }
+
+  void setReducePreloadCount(bool value) {
+    state = state.copyWith(reducePreloadCount: value);
+    _saveToPrefs();
+  }
+
+  void setDisableHaptics(bool value) {
+    state = state.copyWith(disableHaptics: value);
+    _saveToPrefs();
+  }
+
+  void setThrottleBackgroundTicks(bool value) {
+    state = state.copyWith(throttleBackgroundTicks: value);
+    _saveToPrefs();
+  }
+}
+
+/// Real-time native battery state provider.
+final deviceBatteryStatusProvider =
+    StateNotifierProvider<DeviceBatteryStatusNotifier, DeviceBatteryStatus>((ref) {
+  return DeviceBatteryStatusNotifier();
+});
+
+class DeviceBatteryStatusNotifier extends StateNotifier<DeviceBatteryStatus> {
+  DeviceBatteryStatusNotifier() : super(const DeviceBatteryStatus()) {
+    _initNativeChannel();
+  }
+
+  static const MethodChannel _dspChannel = MethodChannel('com.freebeat.app/dsp');
+
+  Future<void> _initNativeChannel() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final map = await _dspChannel.invokeMethod<Map<dynamic, dynamic>>('getBatteryStatus');
+      if (map != null) {
+        _updateFromMap(Map<String, dynamic>.from(map));
+      }
+    } catch (_) {}
+
+    _dspChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onBatteryStateChanged') {
+        final args = call.arguments;
+        if (args is Map) {
+          _updateFromMap(Map<String, dynamic>.from(args));
+        }
+      }
+    });
+  }
+
+  void _updateFromMap(Map<String, dynamic> map) {
+    state = DeviceBatteryStatus(
+      batteryLevel: map['batteryLevel'] as int? ?? 100,
+      isCharging: map['isCharging'] as bool? ?? false,
+      isPowerSaveMode: map['isPowerSaveMode'] as bool? ?? false,
+    );
+  }
+
+  void updateMockState(DeviceBatteryStatus status) {
+    state = status;
+  }
+}
+
+/// Evaluates whether Power Saver Mode should actively apply across UI and Audio engine.
+final effectivePowerSaverActiveProvider = Provider<bool>((ref) {
+  final settings = ref.watch(powerSaverProvider);
+  bool isActive = false;
+  if (settings.isEnabled) {
+    isActive = true;
+  } else {
+    final battery = ref.watch(deviceBatteryStatusProvider);
+    if (settings.autoOnSystemSaver && battery.isPowerSaveMode) {
+      isActive = true;
+    } else if (settings.autoBelowBatteryPercent > 0 &&
+        battery.batteryLevel > 0 &&
+        battery.batteryLevel <= settings.autoBelowBatteryPercent &&
+        !battery.isCharging) {
+      isActive = true;
+    }
+  }
+
+  PixelHaptics.powerSaverEnabled = isActive && settings.disableHaptics;
+
+  if (Platform.isAndroid) {
+    try {
+      const channel = MethodChannel('com.freebeat.app/dsp');
+      final targetRate = (isActive && settings.capRefreshRate60Hz) ? 60.0 : 0.0;
+      channel.invokeMethod('setPreferredRefreshRate', {'rate': targetRate});
+    } catch (_) {}
+  }
+
+  return isActive;
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cloud Accounts & Unified Track Catalog State
@@ -453,6 +626,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
         await _db.removeTracks(nonAudioIds);
       }
 
+      if (!mounted) return;
       state = sanitized;
       if (_ref != null) {
         _ref.read(playbackProvider.notifier).syncWithLoadedCatalog(sanitized);
@@ -1765,7 +1939,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               return;
             }
           }
-          if (((posMs - lastEmittedPosMs).abs() >= 200 || posMs == 0) &&
+          final isPowerSaver = _ref.read(effectivePowerSaverActiveProvider);
+          final throttleMs = isPowerSaver ? 1000 : 200;
+          if (((posMs - lastEmittedPosMs).abs() >= throttleMs || posMs == 0) &&
               state.positionMs != posMs) {
             lastEmittedPosMs = posMs;
             state = state.copyWith(positionMs: posMs);
@@ -1826,6 +2002,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (t.id.isEmpty) return;
     final playing = isPlaying ?? state.isPlaying;
     final routeInfo = _ref.read(audioRouteInfoProvider);
+    final isPowerSaver = _ref.read(effectivePowerSaverActiveProvider);
+    final isLocal = (t.localCachePath != null && File(t.localCachePath!).existsSync()) ||
+        (!t.streamUrl.startsWith('http://') && !t.streamUrl.startsWith('https://'));
     try {
       final dspSvc = _ref.read(powerampDspServiceProvider);
       dspSvc.startForegroundPlayback(
@@ -1841,6 +2020,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         outputDevice: routeInfo.deviceName,
         isShuffle: state.isShuffle,
         repeatMode: state.repeatMode,
+        isPowerSaver: isPowerSaver,
+        isCurrentTrackLocal: isLocal,
       );
     } catch (_) {}
   }
@@ -2053,11 +2234,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final currentId = state.currentTrack.id;
     if (queue.isEmpty || currentId.isEmpty) return;
 
+    final isPowerSaver = _ref.read(effectivePowerSaverActiveProvider);
+    final count = isPowerSaver ? 1 : 5;
     final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
     unawaited(cacheSvc.preloadQueueTracks(
       queue,
       currentTrackId: currentId,
-      preloadCount: 5,
+      preloadCount: count,
       onTrackCached: (updatedTrack) {
         if (!mounted) return;
         _ref.read(tracksCatalogProvider.notifier).updateTrack(updatedTrack);

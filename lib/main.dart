@@ -89,6 +89,8 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
       playbackProvider.select((p) => p.currentTrack.dominantColorValue),
     ));
     final themeMode = ref.watch(themeModeProvider);
+    final isPowerSaver = ref.watch(effectivePowerSaverActiveProvider);
+    final powerSaverSettings = ref.watch(powerSaverProvider);
     // Explicitly watch systemBrightnessProvider to react to brightness state updates
     ref.watch(systemBrightnessProvider);
 
@@ -103,6 +105,7 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
         final darkColorScheme = PixelTheme.buildDarkColorScheme(
           wallpaperDynamicScheme: darkDynamic,
           activeTrackSeedColor: activeTrackSeedColor,
+          amoledPitchBlack: isPowerSaver && powerSaverSettings.amoledPitchBlack,
         );
 
         final lightTheme = PixelTheme.buildThemeFromScheme(

@@ -364,11 +364,13 @@ class PixelPlayingEqualizerAnimation extends StatefulWidget {
     this.color,
     this.size = 20,
     this.barCount = 3,
+    this.isStatic = false,
   });
 
   final Color? color;
   final double size;
   final int barCount;
+  final bool isStatic;
 
   @override
   State<PixelPlayingEqualizerAnimation> createState() =>
@@ -386,7 +388,22 @@ class _PixelPlayingEqualizerAnimationState
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 950),
-    )..repeat();
+    );
+    if (!widget.isStatic) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(PixelPlayingEqualizerAnimation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isStatic != oldWidget.isStatic) {
+      if (widget.isStatic) {
+        _controller.stop();
+      } else {
+        _controller.repeat();
+      }
+    }
   }
 
   @override
@@ -400,6 +417,29 @@ class _PixelPlayingEqualizerAnimationState
     final barColor = widget.color ?? Colors.white;
     final width = widget.size;
     final barWidth = (width / (widget.barCount * 2.2)).clamp(2.0, 4.0);
+
+    if (widget.isStatic) {
+      const staticFactors = [0.45, 0.95, 0.65, 0.80, 0.50];
+      return SizedBox(
+        width: width,
+        height: width,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(widget.barCount, (i) {
+            final factor = staticFactors[i % staticFactors.length];
+            return Container(
+              width: barWidth,
+              height: (width * factor).clamp(3.0, width),
+              decoration: BoxDecoration(
+                color: barColor,
+                borderRadius: BorderRadius.circular(100),
+              ),
+            );
+          }),
+        ),
+      );
+    }
 
     return RepaintBoundary(
       child: AnimatedBuilder(
