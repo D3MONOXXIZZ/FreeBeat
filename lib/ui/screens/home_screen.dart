@@ -1022,20 +1022,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextButton.icon(
-                      onPressed: () {
-                        PixelHaptics.tick();
-                        ref
-                            .read(cloudAccountsProvider.notifier)
-                            .loadSampleDemoAccounts();
-                        ref
-                            .read(tracksCatalogProvider.notifier)
-                            .loadSampleDemoTracks();
-                      },
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                      label: const Text('Load Demo Showcase Tracks'),
-                    ),
                   ],
                 ),
               ),

@@ -294,7 +294,7 @@ void main() {
       expect(find.textContaining('Imported Tracks'), findsNothing);
 
       // Verify connected drive has direct action buttons to import tracks and manage allowed folder
-      expect(find.text('Pick Audio Files from Google Drive'), findsOneWidget);
+      expect(find.text('Pick Audio Files'), findsOneWidget);
       expect(find.text('Allowed Folder'), findsOneWidget);
     });
 

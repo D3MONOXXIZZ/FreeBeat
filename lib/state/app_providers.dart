@@ -176,6 +176,11 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
         final decoded = jsonDecode(jsonStr) as List<dynamic>;
         final prefAccounts = decoded
             .map((item) => CloudAccount.fromMap(item as Map<String, dynamic>))
+            .where((a) =>
+                a.id != 'acc_pixel_gdrive' &&
+                a.id != 'acc_jellyfin_home' &&
+                a.id != 'acc_cloudflare_r2' &&
+                a.providerType != CloudProviderType.demoCloud)
             .toList();
         if (prefAccounts.isNotEmpty && state.isEmpty) {
           state = prefAccounts;
@@ -188,12 +193,23 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
     // 2. Synchronize and merge with SQLite database
     try {
       final loaded = await _db.loadAccounts();
-      if (loaded.isNotEmpty) {
+      final sanitizedAccounts = loaded.where((a) {
+        final isDemo = a.id == 'acc_pixel_gdrive' ||
+            a.id == 'acc_jellyfin_home' ||
+            a.id == 'acc_cloudflare_r2' ||
+            a.providerType == CloudProviderType.demoCloud;
+        if (isDemo) {
+          unawaited(_db.removeAccount(a.id));
+        }
+        return !isDemo;
+      }).toList();
+
+      if (sanitizedAccounts.isNotEmpty) {
         final mergedMap = <String, CloudAccount>{};
         for (final a in state) {
           mergedMap[a.id] = a;
         }
-        for (final a in loaded) {
+        for (final a in sanitizedAccounts) {
           mergedMap[a.id] = a;
         }
         state = mergedMap.values.toList();
@@ -219,10 +235,7 @@ class CloudAccountsNotifier extends StateNotifier<List<CloudAccount>> {
     }
   }
 
-  void loadSampleDemoAccounts() {
-    state = DemoCloudConnector.defaultShowcaseAccounts();
-    _saveToPrefs();
-  }
+  void loadSampleDemoAccounts() {}
 
   Future<void> addAccount(
     CloudAccount account,
@@ -316,6 +329,17 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       final nonAudioIds = <String>[];
       final sanitized = <Track>[];
       for (final t in loaded) {
+        // Automatically purge any legacy sample/demo showcase tracks
+        if (t.accountId == 'acc_pixel_gdrive' ||
+            t.accountId == 'acc_jellyfin_home' ||
+            t.accountId == 'acc_cloudflare_r2' ||
+            t.id == 'trk_astral_meadow' ||
+            t.id == 'trk_blue_crane' ||
+            t.id.startsWith('trk_demo_') ||
+            t.providerType == CloudProviderType.demoCloud) {
+          nonAudioIds.add(t.id);
+          continue;
+        }
         if (!isValidAudioTrack(t)) {
           nonAudioIds.add(t.id);
           continue;
@@ -437,9 +461,7 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
     }
   }
 
-  void loadSampleDemoTracks() {
-    state = DemoCloudConnector.defaultShowcaseTracks();
-  }
+  void loadSampleDemoTracks() {}
 
   Future<void> updateTrack(Track updated) async {
     state = state.map((t) => t.id == updated.id ? updated : t).toList();

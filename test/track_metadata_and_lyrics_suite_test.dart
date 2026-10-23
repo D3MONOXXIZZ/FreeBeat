@@ -352,7 +352,7 @@ void main() {
           cloudStreamProxyProvider.overrideWithValue(_FakeCloudStreamProxy()),
         ],
       );
-      container.read(tracksCatalogProvider.notifier).loadSampleDemoTracks();
+      container.read(tracksCatalogProvider.notifier).addIndexedTracks([initialTrack]);
 
       await tester.pumpWidget(
         UncontrolledProviderScope(

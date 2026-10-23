@@ -33,7 +33,7 @@ void main() {
       expect(safeAreaFinder, findsOneWidget);
 
       // Verify header rendered inside SafeArea
-      expect(find.text('Clouds & Hi-Fi Quality'), findsOneWidget);
+      expect(find.text('Cloud'), findsOneWidget);
     });
 
     testWidgets('HomeScreen SliverAppBar renders cleanly with status bar protection',

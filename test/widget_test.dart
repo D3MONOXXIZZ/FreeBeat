@@ -72,10 +72,10 @@ void main() {
       expect(find.text('TREBLE AIR'), findsOneWidget);
       expect(find.text('STEREO X'), findsOneWidget);
 
-      // 5. Navigate to Clouds tab
-      await tester.tap(find.text('Clouds'));
+      // 5. Navigate to Cloud tab
+      await tester.tap(find.text('Cloud'));
       await tester.pumpAndSettle();
-      expect(find.text('Clouds & Hi-Fi Quality'), findsOneWidget);
+      expect(find.text('Cloud'), findsWidgets);
       expect(find.text('No Cloud Accounts Connected'), findsOneWidget);
       expect(find.text('Connect a Cloud Drive'), findsOneWidget);
 

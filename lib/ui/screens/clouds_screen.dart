@@ -37,24 +37,11 @@ class CloudsScreen extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Clouds & Hi-Fi Quality',
-                    style: textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    '100% Serverless • Device Encrypted',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                    ),
-                  ),
-                ],
+              child: Text(
+                'Cloud',
+                style: textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             IconButton.filledTonal(
@@ -297,7 +284,7 @@ class CloudsScreen extends ConsumerWidget {
                                         ),
                                         style: FilledButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
-                                              vertical: 10),
+                                              horizontal: 8, vertical: 10),
                                           shape: const StadiumBorder(),
                                         ),
                                         icon: const Icon(
@@ -306,7 +293,7 @@ class CloudsScreen extends ConsumerWidget {
                                         label: Text(
                                           accounts[i].providerType ==
                                                   CloudProviderType.googleDrive
-                                              ? 'Pick Audio Files from Google Drive'
+                                              ? 'Pick Audio Files'
                                               : 'Import Tracks',
                                           style: const TextStyle(
                                               fontSize: 11.5,
@@ -327,7 +314,7 @@ class CloudsScreen extends ConsumerWidget {
                                               ),
                                               style: OutlinedButton.styleFrom(
                                                 padding: const EdgeInsets.symmetric(
-                                                    vertical: 10),
+                                                    horizontal: 8, vertical: 10),
                                                 shape: const StadiumBorder(),
                                               ),
                                               icon: const Icon(
@@ -336,7 +323,7 @@ class CloudsScreen extends ConsumerWidget {
                                               label: const Text(
                                                 'Allowed Folder',
                                                 style: TextStyle(
-                                                    fontSize: 12,
+                                                    fontSize: 11.5,
                                                     fontWeight: FontWeight.w700),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,

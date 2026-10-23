@@ -372,7 +372,7 @@ void main() {
       expect(find.textContaining('Clear Stream Cache'), findsOneWidget);
       expect(find.text('Download Queue'), findsOneWidget);
       expect(find.text('All downloads up to date'), findsOneWidget);
-      expect(find.text('Sample Data (Testing)'), findsOneWidget);
+      expect(find.text('Sample Data (Testing)'), findsNothing);
     });
 
     testWidgets('MaterialYouDownloadButton reflects pinned and queued states',

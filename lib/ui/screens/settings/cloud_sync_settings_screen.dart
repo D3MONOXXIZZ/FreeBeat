@@ -71,7 +71,7 @@ class CloudSyncSettingsScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _StatBlock(
-                          label: 'Connected Clouds',
+                          label: 'Connected Cloud',
                           value: '${accounts.length}',
                           color: cs.primary,
                         ),
@@ -401,70 +401,6 @@ class CloudSyncSettingsScreen extends ConsumerWidget {
                         );
                       },
                     ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // 5. Testing & Demo Sample Tracks
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.science_rounded, color: cs.secondary),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Sample Data (Testing)',
-                          style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Load sample audiophile FLAC tracks to preview the player, equalizer, and album art without connecting your real accounts.',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.tonalIcon(
-                    onPressed: () {
-                      PixelHaptics.hifiConfirm();
-                      ref
-                          .read(cloudAccountsProvider.notifier)
-                          .loadSampleDemoAccounts();
-                      ref
-                          .read(tracksCatalogProvider.notifier)
-                          .loadSampleDemoTracks();
-                      ref.invalidate(storageUsageFutureProvider);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Loaded sample demo tracks into Library & Clouds.',
-                          ),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                    label: const Text('Load Sample Demo Tracks'),
-                    style: FilledButton.styleFrom(
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
                 ],
               ),
             ),

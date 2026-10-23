@@ -429,7 +429,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                       NavPillDestination(
                         icon: Icons.cloud_outlined,
                         selectedIcon: Icons.cloud_done_rounded,
-                        label: 'Clouds',
+                        label: 'Cloud',
                       ),
                     ],
                   ),

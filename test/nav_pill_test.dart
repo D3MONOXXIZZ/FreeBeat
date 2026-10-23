@@ -38,7 +38,7 @@ void main() {
                     NavPillDestination(
                       icon: Icons.cloud_outlined,
                       selectedIcon: Icons.cloud_done_rounded,
-                      label: 'Clouds',
+                      label: 'Cloud',
                     ),
                   ],
                 ),
@@ -53,7 +53,7 @@ void main() {
     expect(find.text('Your Mix'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
     expect(find.text('Smart EQ'), findsOneWidget);
-    expect(find.text('Clouds'), findsOneWidget);
+    expect(find.text('Cloud'), findsOneWidget);
 
     // Initially "Your Mix" is selected
     expect(selectedIndex, 0);
@@ -64,8 +64,8 @@ void main() {
 
     expect(selectedIndex, 1);
 
-    // Tap on "Clouds"
-    await tester.tap(find.text('Clouds'));
+    // Tap on "Cloud"
+    await tester.tap(find.text('Cloud'));
     await tester.pumpAndSettle();
 
     expect(selectedIndex, 3);

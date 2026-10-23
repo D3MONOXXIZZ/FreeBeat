@@ -226,7 +226,7 @@ void main() {
       expect(find.text('Add Cloud & Media Drive'), findsOneWidget);
       expect(find.text('Google Drive'), findsWidgets);
       expect(find.text('Cloud Sign-In'), findsOneWidget);
-      expect(find.text('Pick Audio Files from Google Drive'), findsNothing);
+      expect(find.text('Pick Audio Files'), findsNothing);
       expect(find.text('Import Folder'), findsNothing);
       expect(find.text('Microsoft OneDrive'), findsWidgets);
       expect(find.text('Dropbox'), findsWidgets);
