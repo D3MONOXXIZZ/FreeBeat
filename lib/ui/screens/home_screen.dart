@@ -15,6 +15,7 @@ import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/remove_track_dialog.dart';
+import '../widgets/track_metadata_editor_modal.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -160,6 +161,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onTap: () {
                     Navigator.of(ctx).pop();
                     showAddToPlaylistModal(context, track);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_note_rounded),
+                  title: const Text('Edit Metadata & Artwork',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Title, artist, album, genre, year & cover art'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    showTrackMetadataEditorModal(context, track);
                   },
                 ),
                 ListTile(

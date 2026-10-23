@@ -20,6 +20,7 @@ import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
 import 'track_details_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
+import '../widgets/track_metadata_editor_modal.dart';
 
 /// Full-Screen Google Pixel Material 3 Expressive Now Playing Screen.
 /// Strictly implements Screen 2 in Figma inspiration:
@@ -842,6 +843,16 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     onTap: () {
                       Navigator.of(ctx).pop();
                       showAddToPlaylistModal(context, track);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.edit_note_rounded),
+                    title: const Text('Edit Metadata & Artwork',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Title, artist, album, genre, year & cover art'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showTrackMetadataEditorModal(context, track);
                     },
                   ),
                   const Divider(height: 1),

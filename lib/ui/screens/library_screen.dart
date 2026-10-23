@@ -23,6 +23,7 @@ import '../widgets/platform_app_icons.dart';
 import '../widgets/playlist_import_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
+import '../widgets/track_metadata_editor_modal.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -525,6 +526,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     onTap: () {
                       Navigator.of(ctx).pop();
                       showAddToPlaylistModal(context, track);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.edit_note_rounded),
+                    title: const Text('Edit Metadata & Artwork',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Title, artist, album, genre, year & cover art'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showTrackMetadataEditorModal(context, track);
                     },
                   ),
                   ListTile(

@@ -11,6 +11,7 @@ import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
+import '../widgets/track_metadata_editor_modal.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
 import 'track_details_screen.dart';
@@ -720,6 +721,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 onTap: () {
                   Navigator.pop(ctx);
                   showAddToPlaylistModal(context, track);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_note_rounded),
+                title: const Text('Edit Metadata & Artwork',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Title, artist, album, genre, year & cover art'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showTrackMetadataEditorModal(context, track);
                 },
               ),
               ListTile(

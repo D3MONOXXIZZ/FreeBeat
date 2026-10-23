@@ -7,6 +7,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/remove_track_dialog.dart';
+import '../widgets/track_metadata_editor_modal.dart';
 import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
 
@@ -74,6 +75,12 @@ class TrackDetailsScreen extends ConsumerWidget {
           SliverAppBar.large(
             title: const Text('Track Details'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.edit_note_rounded),
+                tooltip: 'Edit Metadata & Artwork',
+                onPressed: () =>
+                    showTrackMetadataEditorModal(context, liveTrack),
+              ),
               IconButton(
                 icon: Icon(
                   liveTrack.isFavorite

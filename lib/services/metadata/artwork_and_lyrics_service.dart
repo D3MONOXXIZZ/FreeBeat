@@ -8,6 +8,48 @@ import '../../core/models/track.dart';
 import 'artwork_extractor.dart';
 import 'artwork_palette_extractor.dart';
 
+/// Represents a lyric candidate returned by LRCLIB online search.
+class OnlineLyricResult {
+  const OnlineLyricResult({
+    required this.id,
+    required this.trackName,
+    required this.artistName,
+    required this.albumName,
+    required this.durationSeconds,
+    this.syncedLyrics,
+    this.plainLyrics,
+  });
+
+  final int id;
+  final String trackName;
+  final String artistName;
+  final String albumName;
+  final int durationSeconds;
+  final String? syncedLyrics;
+  final String? plainLyrics;
+
+  bool get hasSyncedLyrics =>
+      syncedLyrics != null && syncedLyrics!.trim().isNotEmpty;
+
+  List<LyricLine> get parsedSyncedLyrics =>
+      hasSyncedLyrics ? ArtworkAndLyricsService.parseLrcContent(syncedLyrics!) : const [];
+}
+
+/// Represents an album cover candidate returned by online search.
+class OnlineArtworkResult {
+  const OnlineArtworkResult({
+    required this.artworkUrl,
+    required this.title,
+    required this.artist,
+    required this.album,
+  });
+
+  final String artworkUrl;
+  final String title;
+  final String artist;
+  final String album;
+}
+
 /// Enriches missing high-resolution album art via embedded file tag extraction,
 /// iTunes Search API fallback, and fetches millisecond-accurate time-synced `.lrc`
 /// lyrics via LRCLIB / cloud sidecars.
@@ -68,6 +110,126 @@ class ArtworkAndLyricsService {
       }
     } catch (_) {}
     return track.syncedLyrics;
+  }
+
+  /// Searches LRCLIB (`https://lrclib.net/api/search`) for lyrics matching [query].
+  Future<List<OnlineLyricResult>> searchOnlineLyrics({
+    required String query,
+  }) async {
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return const [];
+    try {
+      final uri = Uri.https('lrclib.net', '/api/search', {
+        'q': cleanQuery,
+      });
+      final resp =
+          await _client.get(uri).timeout(const Duration(seconds: 8));
+      if (resp.statusCode == 200) {
+        final list = jsonDecode(resp.body) as List<dynamic>? ?? [];
+        return list.map((item) {
+          final m = item as Map<String, dynamic>;
+          return OnlineLyricResult(
+            id: m['id'] as int? ?? 0,
+            trackName: m['trackName'] as String? ?? 'Unknown Track',
+            artistName: m['artistName'] as String? ?? 'Unknown Artist',
+            albumName: m['albumName'] as String? ?? '',
+            durationSeconds: (m['duration'] as num?)?.round() ?? 0,
+            syncedLyrics: m['syncedLyrics'] as String?,
+            plainLyrics: m['plainLyrics'] as String?,
+          );
+        }).toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  /// Searches iTunes API for multiple high-res album artworks matching [query].
+  Future<List<OnlineArtworkResult>> searchOnlineArtwork({
+    required String query,
+    int limit = 20,
+  }) async {
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) return const [];
+    try {
+      final uri = Uri.https('itunes.apple.com', '/search', {
+        'term': cleanQuery,
+        'media': 'music',
+        'entity': 'song',
+        'limit': limit.toString(),
+      });
+      final resp =
+          await _client.get(uri).timeout(const Duration(seconds: 8));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>? ?? [];
+        final out = <OnlineArtworkResult>[];
+        final seen = <String>{};
+        for (final item in results) {
+          final m = item as Map<String, dynamic>;
+          final art100 = m['artworkUrl100'] as String?;
+          if (art100 != null && art100.isNotEmpty) {
+            final highRes = art100.replaceAll('100x100bb', '1400x1400bb');
+            if (seen.add(highRes)) {
+              out.add(
+                OnlineArtworkResult(
+                  artworkUrl: highRes,
+                  title: m['trackName'] as String? ?? '',
+                  artist: m['artistName'] as String? ?? '',
+                  album: m['collectionName'] as String? ?? '',
+                ),
+              );
+            }
+          }
+        }
+        return out;
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  /// Downloads a remote artwork URL and caches it permanently in the app's album_art folder.
+  Future<String?> downloadAndCacheArtwork(String remoteUrl, String trackId) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final artDir = Directory(p.join(appDir.path, 'album_art'));
+      if (!artDir.existsSync()) {
+        artDir.createSync(recursive: true);
+      }
+      final sanitizedId = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final targetFile = File(
+          p.join(artDir.path, '${sanitizedId}_${DateTime.now().millisecondsSinceEpoch}.jpg'));
+
+      final resp = await _client
+          .get(Uri.parse(remoteUrl))
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200 && resp.bodyBytes.length > 500) {
+        await targetFile.writeAsBytes(resp.bodyBytes);
+        return targetFile.path;
+      }
+    } catch (_) {}
+    return remoteUrl;
+  }
+
+  /// Copies a user-picked local image file into the app's persistent album_art folder.
+  Future<String?> copyLocalImageToAppStorage(
+      String sourcePath, String trackId) async {
+    try {
+      final source = File(sourcePath);
+      if (!source.existsSync()) return null;
+      final appDir = await getApplicationDocumentsDirectory();
+      final artDir = Directory(p.join(appDir.path, 'album_art'));
+      if (!artDir.existsSync()) {
+        artDir.createSync(recursive: true);
+      }
+      final ext =
+          p.extension(sourcePath).isEmpty ? '.jpg' : p.extension(sourcePath);
+      final sanitizedId = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final targetFile = File(
+          p.join(artDir.path, '${sanitizedId}_${DateTime.now().millisecondsSinceEpoch}$ext'));
+      await source.copy(targetFile.path);
+      return targetFile.path;
+    } catch (_) {}
+    return sourcePath;
   }
 
   /// Returns true if the artist string is missing, generic, or an Android/cloud package/URI string.

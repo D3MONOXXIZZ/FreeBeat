@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'cloud_account.dart';
 
@@ -35,6 +36,9 @@ class Track {
     this.isFavorite = false,
     this.playCount = 0,
     this.syncedLyrics = const [],
+    this.genre,
+    this.year,
+    this.lyricsOffsetMs = 0,
   });
 
   final String id;
@@ -59,6 +63,9 @@ class Track {
   final bool isFavorite;
   final int playCount;
   final List<LyricLine> syncedLyrics;
+  final String? genre;
+  final int? year;
+  final int lyricsOffsetMs;
 
   Color get dominantColor => Color(dominantColorValue);
 
@@ -113,6 +120,9 @@ class Track {
     bool? isFavorite,
     int? playCount,
     List<LyricLine>? syncedLyrics,
+    String? genre,
+    int? year,
+    int? lyricsOffsetMs,
   }) {
     return Track(
       id: id ?? this.id,
@@ -137,6 +147,9 @@ class Track {
       isFavorite: isFavorite ?? this.isFavorite,
       playCount: playCount ?? this.playCount,
       syncedLyrics: syncedLyrics ?? this.syncedLyrics,
+      genre: genre ?? this.genre,
+      year: year ?? this.year,
+      lyricsOffsetMs: lyricsOffsetMs ?? this.lyricsOffsetMs,
     );
   }
 
@@ -163,10 +176,34 @@ class Track {
       'localCachePath': localCachePath,
       'isFavorite': isFavorite ? 1 : 0,
       'playCount': playCount,
+      'genre': genre,
+      'year': year,
+      'lyricsOffsetMs': lyricsOffsetMs,
+      'syncedLyricsJson': syncedLyrics.isNotEmpty
+          ? jsonEncode(syncedLyrics
+              .map((l) => {'timestampMs': l.timestampMs, 'text': l.text})
+              .toList())
+          : null,
     };
   }
 
   factory Track.fromMap(Map<String, dynamic> map) {
+    List<LyricLine> lyrics = const [];
+    if (map['syncedLyricsJson'] != null &&
+        (map['syncedLyricsJson'] as String).isNotEmpty) {
+      try {
+        final decoded =
+            jsonDecode(map['syncedLyricsJson'] as String) as List<dynamic>;
+        lyrics = decoded.map((item) {
+          final m = item as Map<String, dynamic>;
+          return LyricLine(
+            timestampMs: m['timestampMs'] as int? ?? 0,
+            text: m['text'] as String? ?? '',
+          );
+        }).toList();
+      } catch (_) {}
+    }
+
     return Track(
       id: map['id'] as String,
       accountId: map['accountId'] as String,
@@ -189,6 +226,10 @@ class Track {
       localCachePath: map['localCachePath'] as String?,
       isFavorite: (map['isFavorite'] as int? ?? 0) == 1,
       playCount: map['playCount'] as int? ?? 0,
+      syncedLyrics: lyrics,
+      genre: map['genre'] as String?,
+      year: map['year'] as int?,
+      lyricsOffsetMs: map['lyricsOffsetMs'] as int? ?? 0,
     );
   }
 }

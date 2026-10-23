@@ -36,7 +36,7 @@ class LibraryDatabase {
       final fullPath = p.join(dbPath, 'freebeat_catalog.db');
       _db = await openDatabase(
         fullPath,
-        version: 5,
+        version: 6,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE cloud_accounts (
@@ -74,7 +74,11 @@ class LibraryDatabase {
               isPinnedOffline INTEGER DEFAULT 0,
               localCachePath TEXT,
               isFavorite INTEGER DEFAULT 0,
-              playCount INTEGER DEFAULT 0
+              playCount INTEGER DEFAULT 0,
+              genre TEXT,
+              year INTEGER,
+              lyricsOffsetMs INTEGER DEFAULT 0,
+              syncedLyricsJson TEXT
             )
           ''');
           await db.execute('''
@@ -162,9 +166,13 @@ class LibraryDatabase {
           if (oldVersion < 5) {
             await _ensureAllPlaylistColumnsExist(db);
           }
+          if (oldVersion < 6) {
+            await _ensureAllTrackColumnsExist(db);
+          }
         },
       );
       await _ensureAllPlaylistColumnsExist(_db!);
+      await _ensureAllTrackColumnsExist(_db!);
       if (!_initCompleter!.isCompleted) {
         _initCompleter!.complete();
       }
@@ -203,6 +211,30 @@ class LibraryDatabase {
           try {
             await db.execute(
                 'ALTER TABLE playlists ADD COLUMN ${entry.key} ${entry.value}');
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> _ensureAllTrackColumnsExist(Database db) async {
+    try {
+      final info = await db.rawQuery('PRAGMA table_info(tracks)');
+      final existingColumns =
+          info.map((r) => r['name']?.toString().toLowerCase()).toSet();
+
+      final requiredColumns = <String, String>{
+        'genre': 'TEXT',
+        'year': 'INTEGER',
+        'lyricsoffsetms': 'INTEGER DEFAULT 0',
+        'syncedlyricsjson': 'TEXT',
+      };
+
+      for (final entry in requiredColumns.entries) {
+        if (!existingColumns.contains(entry.key)) {
+          try {
+            await db.execute(
+                'ALTER TABLE tracks ADD COLUMN ${entry.key} ${entry.value}');
           } catch (_) {}
         }
       }

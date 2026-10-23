@@ -27,6 +27,7 @@ import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 import '../services/metadata/artwork_and_lyrics_service.dart';
 import '../services/metadata/range_tag_parser.dart';
+import '../services/metadata/track_tag_writer_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core Infrastructure Providers
@@ -74,6 +75,10 @@ final cloudStreamProxyProvider = Provider<CloudStreamProxy>((ref) {
 final artworkAndLyricsServiceProvider =
     Provider<ArtworkAndLyricsService>((ref) {
   return ArtworkAndLyricsService();
+});
+
+final trackTagWriterServiceProvider = Provider<TrackTagWriterService>((ref) {
+  return const TrackTagWriterService();
 });
 
 final cloudAudioCacheServiceProvider =
@@ -1370,9 +1375,10 @@ class PlaybackViewState {
   int get activeLyricIndex {
     final lyrics = currentTrack.syncedLyrics;
     if (lyrics.isEmpty) return -1;
+    final effectivePositionMs = positionMs + currentTrack.lyricsOffsetMs;
     int idx = 0;
     for (int i = 0; i < lyrics.length; i++) {
-      if (positionMs >= lyrics[i].timestampMs) {
+      if (effectivePositionMs >= lyrics[i].timestampMs) {
         idx = i;
       } else {
         break;
@@ -2116,6 +2122,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } else {
       state = state.copyWith(queue: newQueue);
     }
+  }
+
+  void setLyricsOffsetMs(int offsetMs) {
+    if (state.currentTrack.id.isEmpty) return;
+    final updated = state.currentTrack.copyWith(lyricsOffsetMs: offsetMs);
+    state = state.copyWith(currentTrack: updated);
+    _ref.read(tracksCatalogProvider.notifier).updateTrack(updated);
+  }
+
+  void updateCurrentTrackLyrics(List<LyricLine> lyrics) {
+    if (state.currentTrack.id.isEmpty) return;
+    final updated = state.currentTrack.copyWith(syncedLyrics: lyrics);
+    state = state.copyWith(currentTrack: updated);
+    _ref.read(tracksCatalogProvider.notifier).updateTrack(updated);
   }
 
   Future<void> playTrack(Track track, {List<Track>? newQueue}) async {
