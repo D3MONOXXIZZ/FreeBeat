@@ -1502,6 +1502,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   bool _sleepTimerEndAfterTrack = false;
   bool _isInitializingPlayer = false;
   bool _playerInitFailed = false;
+  ConcatenatingAudioSource? _playlistSource;
+  String? _loadedQueueSignature;
 
   int _lastSavedPosMs = -1;
   int _lastSavedPosTimestamp = 0;
@@ -1713,8 +1715,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         final playing = playerState.playing;
         final proc = playerState.processingState;
         if (proc == ProcessingState.completed) {
-          skipNext();
-        } else if (state.isPlaying != playing) {
+          if (_playlistSource != null && !_audioPlayer!.hasNext && state.repeatMode == 0) {
+            state = state.copyWith(isPlaying: false);
+            _syncForegroundNotification(isPlaying: false);
+            _savePlaybackState();
+          } else {
+            skipNext();
+          }
+        } else if (state.isPlaying != playing &&
+            proc != ProcessingState.loading &&
+            proc != ProcessingState.buffering) {
           state = state.copyWith(isPlaying: playing);
           try {
             _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
@@ -1723,6 +1733,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
                 );
           } catch (_) {}
           _savePlaybackState();
+        }
+      });
+
+      player.currentIndexStream.listen((index) {
+        if (!mounted || index == null) return;
+        if (index >= 0 && index < state.queue.length) {
+          final nextTrack = state.queue[index];
+          if (nextTrack.id != state.currentTrack.id) {
+            state = state.copyWith(
+              currentTrack: nextTrack,
+              positionMs: 0,
+            );
+            _syncForegroundNotification(track: nextTrack, isPlaying: true);
+            _savePlaybackState();
+            _savePlaybackPosition(force: true);
+            unawaited(_preloadUpcomingQueueTracks());
+          }
         }
       });
 
@@ -1840,7 +1867,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         );
         if (_audioPlayer != null) {
           await _audioPlayer!.setVolume(1.0);
-          if (_audioPlayer!.audioSource == null) {
+          final needsReload = _audioPlayer!.audioSource == null ||
+              _audioPlayer!.playerState.processingState == ProcessingState.idle ||
+              _audioPlayer!.playerState.processingState == ProcessingState.completed;
+          if (needsReload) {
             final trackToPlay = state.currentTrack.id.isNotEmpty
                 ? state.currentTrack
                 : (state.queue.isNotEmpty ? state.queue.first : PlaybackViewState.emptyTrack);
@@ -1848,10 +1878,25 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
               if (state.currentTrack.id != trackToPlay.id) {
                 state = state.copyWith(currentTrack: trackToPlay);
               }
-              await _loadAndPlayTrack(trackToPlay, initialPositionMs: state.positionMs);
+              final idx = state.queue.indexWhere((t) => t.id == trackToPlay.id);
+              if (idx != -1) {
+                await _loadAndPlayPlaylist(state.queue, initialIndex: idx, initialPositionMs: state.positionMs);
+              } else {
+                await _loadAndPlayTrack(trackToPlay, initialPositionMs: state.positionMs);
+              }
             }
           } else {
-            await _audioPlayer!.play();
+            try {
+              await _audioPlayer!.play();
+            } catch (playErr) {
+              debugPrint('Direct play error, falling back to reload: $playErr');
+              final idx = state.queue.indexWhere((t) => t.id == state.currentTrack.id);
+              if (idx != -1) {
+                await _loadAndPlayPlaylist(state.queue, initialIndex: idx, initialPositionMs: state.positionMs);
+              } else {
+                await _loadAndPlayTrack(state.currentTrack, initialPositionMs: state.positionMs);
+              }
+            }
           }
         }
       } catch (e) {
@@ -1859,6 +1904,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
       _syncForegroundNotification(isPlaying: true);
       _savePlaybackState();
+      unawaited(_preloadUpcomingQueueTracks());
     } else {
       _progressTicker?.cancel();
       try {
@@ -1868,6 +1914,155 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _savePlaybackPosition(force: true);
       _savePlaybackState();
     }
+  }
+
+  Future<AudioSource> _createAudioSource(Track track) async {
+    final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+    final cachedPath = await cacheSvc.getCachedFilePath(track);
+
+    // 0. Transcode check (WMA, AIFF, etc.)
+    final pathLower = (cachedPath ?? track.localCachePath ?? track.streamUrl).toLowerCase();
+    if (UniversalAudioTranscoderService.requiresTranscoding(track, pathLower)) {
+      try {
+        final transcoder = _ref.read(universalAudioTranscoderServiceProvider);
+        String? src = cachedPath ?? track.localCachePath;
+        if (src == null || !File(src).existsSync()) {
+          src = track.streamUrl;
+        }
+        if (src.isNotEmpty) {
+          final transcoded = await transcoder.transcodeToWav(track: track, sourcePath: src);
+          if (transcoded != null && File(transcoded).existsSync()) {
+            return AudioSource.file(transcoded, tag: track);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 1. Cached offline on disk
+    if (cachedPath != null && File(cachedPath).existsSync()) {
+      return AudioSource.file(cachedPath, tag: track);
+    }
+    if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
+      return AudioSource.file(track.localCachePath!, tag: track);
+    }
+
+    // 2. Local device storage file
+    if (!track.streamUrl.startsWith('http://') &&
+        !track.streamUrl.startsWith('https://') &&
+        !track.streamUrl.startsWith('content://')) {
+      if (File(track.streamUrl).existsSync()) {
+        return AudioSource.file(track.streamUrl, tag: track);
+      }
+    }
+
+    // 3. Android SAF content URI
+    if (track.streamUrl.startsWith('content://')) {
+      return AudioSource.uri(Uri.parse(track.streamUrl), tag: track);
+    }
+
+    // 4. Remote cloud stream through loopback proxy (127.0.0.1)
+    final proxy = _ref.read(cloudStreamProxyProvider);
+    final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
+    final playbackUrl = proxy.buildPlaybackUrl(track, quality);
+
+    if (playbackUrl.startsWith('http://127.0.0.1')) {
+      return AudioSource.uri(Uri.parse(playbackUrl), tag: track);
+    } else {
+      Map<String, String>? headers;
+      if (track.providerType == CloudProviderType.googleDrive) {
+        final secrets = await _ref
+            .read(credentialStoreProvider)
+            .readSecrets(track.accountId);
+        final token = secrets['accessToken'] ?? '';
+        if (token.isNotEmpty) {
+          headers = {'Authorization': 'Bearer $token'};
+        }
+      }
+      return AudioSource.uri(Uri.parse(playbackUrl), headers: headers, tag: track);
+    }
+  }
+
+  Future<void> _loadAndPlayPlaylist(
+    List<Track> queue, {
+    required int initialIndex,
+    int? initialPositionMs,
+  }) async {
+    if (_audioPlayer == null || queue.isEmpty) return;
+
+    final initPos = (initialPositionMs != null &&
+            initialPositionMs > 0 &&
+            initialIndex >= 0 &&
+            initialIndex < queue.length &&
+            initialPositionMs < (queue[initialIndex].durationMs - 2000))
+        ? Duration(milliseconds: initialPositionMs)
+        : null;
+
+    final queueSig = queue.map((t) => t.id).join(',');
+
+    // If the same playlist is already loaded in ExoPlayer, just seek to the track index gaplessly!
+    if (_playlistSource != null &&
+        _loadedQueueSignature == queueSig &&
+        _audioPlayer!.audioSource != null &&
+        _audioPlayer!.playerState.processingState != ProcessingState.idle) {
+      try {
+        await _audioPlayer!.seek(initPos ?? Duration.zero, index: initialIndex);
+        await _audioPlayer!.setVolume(1.0);
+        await _audioPlayer!.play();
+        unawaited(_preloadUpcomingQueueTracks());
+        return;
+      } catch (e) {
+        debugPrint('Seek within playlist failed, rebuilding: $e');
+      }
+    }
+
+    // Build the ConcatenatingAudioSource for gapless playback
+    final sources = <AudioSource>[];
+    for (final t in queue) {
+      sources.add(await _createAudioSource(t));
+    }
+
+    _playlistSource = ConcatenatingAudioSource(
+      children: sources,
+      useLazyPreparation: false, // Pre-buffers upcoming track for 0ms GAPLESS playback!
+    );
+    _loadedQueueSignature = queueSig;
+
+    // Apply repeat and shuffle
+    final loopMode = state.repeatMode == 2
+        ? LoopMode.one
+        : (state.repeatMode == 1 ? LoopMode.all : LoopMode.off);
+    try {
+      await _audioPlayer!.setLoopMode(loopMode);
+      await _audioPlayer!.setShuffleModeEnabled(state.isShuffle);
+    } catch (_) {}
+
+    await _audioPlayer!.setAudioSource(
+      _playlistSource!,
+      initialIndex: initialIndex.clamp(0, sources.length - 1),
+      initialPosition: initPos,
+    );
+    await _audioPlayer!.setVolume(1.0);
+    await _audioPlayer!.play();
+
+    // Preload at least 5 upcoming songs in the queue into stream cache
+    unawaited(_preloadUpcomingQueueTracks());
+  }
+
+  Future<void> _preloadUpcomingQueueTracks() async {
+    final queue = state.queue;
+    final currentId = state.currentTrack.id;
+    if (queue.isEmpty || currentId.isEmpty) return;
+
+    final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
+    unawaited(cacheSvc.preloadQueueTracks(
+      queue,
+      currentTrackId: currentId,
+      preloadCount: 5,
+      onTrackCached: (updatedTrack) {
+        if (!mounted) return;
+        _ref.read(tracksCatalogProvider.notifier).updateTrack(updatedTrack);
+      },
+    ));
   }
 
   Future<void> _loadAndPlayTrack(Track track, {int? initialPositionMs}) async {
@@ -2201,10 +2396,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     await _ensureAudioPlayerInitialized();
     try {
       if (_audioPlayer != null) {
-        await _loadAndPlayTrack(effectiveTrack);
+        final idx = queueToUse.indexWhere((t) => t.id == effectiveTrack.id);
+        await _loadAndPlayPlaylist(queueToUse, initialIndex: idx >= 0 ? idx : 0);
       }
-    } catch (_) {}
+    } catch (_) {
+      try {
+        if (_audioPlayer != null) {
+          await _loadAndPlayTrack(effectiveTrack);
+        }
+      } catch (_) {}
+    }
     _syncForegroundNotification(track: effectiveTrack, isPlaying: true);
+    unawaited(_preloadUpcomingQueueTracks());
 
     if (effectiveTrack.artworkUrl == null ||
         effectiveTrack.artworkUrl!.isEmpty) {
@@ -2249,6 +2452,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       return;
     }
 
+    if (_playlistSource != null && _audioPlayer != null && _audioPlayer!.hasNext) {
+      try {
+        await _audioPlayer!.seekToNext();
+        return;
+      } catch (_) {}
+    }
+
     final idx = state.queue.indexWhere((t) => t.id == state.currentTrack.id);
     if (idx != -1 && idx < state.queue.length - 1) {
       await playTrack(state.queue[idx + 1]);
@@ -2271,6 +2481,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       await seekToMs(0);
       return;
     }
+    if (_playlistSource != null && _audioPlayer != null && _audioPlayer!.hasPrevious) {
+      try {
+        await _audioPlayer!.seekToPrevious();
+        return;
+      } catch (_) {}
+    }
     final idx = state.queue.indexWhere((t) => t.id == state.currentTrack.id);
     if (idx > 0) {
       await playTrack(state.queue[idx - 1]);
@@ -2283,6 +2499,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     PixelHaptics.tick();
     final newShuffle = !state.isShuffle;
     state = state.copyWith(isShuffle: newShuffle);
+    if (_audioPlayer != null) {
+      try {
+        _audioPlayer!.setShuffleModeEnabled(newShuffle);
+      } catch (_) {}
+    }
     try {
       _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
             isShuffle: newShuffle,
@@ -2295,6 +2516,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     PixelHaptics.tick();
     final newRepeat = (state.repeatMode + 1) % 3;
     state = state.copyWith(repeatMode: newRepeat);
+    if (_audioPlayer != null) {
+      final loopMode = newRepeat == 2
+          ? LoopMode.one
+          : (newRepeat == 1 ? LoopMode.all : LoopMode.off);
+      try {
+        _audioPlayer!.setLoopMode(loopMode);
+      } catch (_) {}
+    }
     try {
       _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
             repeatMode: newRepeat,

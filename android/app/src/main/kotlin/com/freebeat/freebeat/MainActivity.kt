@@ -238,7 +238,11 @@ class MainActivity : FlutterActivity() {
                                 putExtra("isShuffle", isShuffle)
                                 putExtra("repeatMode", repeatMode)
                             }
-                            androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                            if (FreeBeatPlaybackService.isServiceRunning) {
+                                startService(serviceIntent)
+                            } else {
+                                androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                            }
                             result.success(true)
                         } catch (e: Throwable) {
                             android.util.Log.e("MainActivity", "Failed startForegroundPlayback: ${e.message}", e)
@@ -276,7 +280,11 @@ class MainActivity : FlutterActivity() {
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
                             } else {
+                                if (FreeBeatPlaybackService.isServiceRunning) {
+                                startService(serviceIntent)
+                            } else {
                                 androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                            }
                             }
                             result.success(true)
                         } catch (e: Throwable) {
@@ -539,7 +547,7 @@ class MainActivity : FlutterActivity() {
             }
 
         FreeBeatPlaybackService.playerActionListener = { action, extras ->
-            runOnUiThread {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
                 try {
                     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
                         .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
@@ -1449,8 +1457,12 @@ class MainActivity : FlutterActivity() {
         return reclaimed
     }
 
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
     override fun onDestroy() {
-        FreeBeatPlaybackService.playerActionListener = null
+        if (!FreeBeatPlaybackService.isServiceRunning) {
+            FreeBeatPlaybackService.playerActionListener = null
+        }
         clearDisplayRefreshRateOverrides()
         releaseEffects()
         super.onDestroy()

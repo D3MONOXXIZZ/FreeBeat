@@ -8,9 +8,14 @@ import 'package:freebeat/ui/screens/clouds_screen.dart';
 import 'package:freebeat/ui/screens/home_screen.dart';
 import 'package:freebeat/ui/screens/main_shell.dart';
 import 'package:freebeat/ui/screens/poweramp_dsp_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
 
   group('Speaker Audio, Status Bar, Batch Import, and Refresh Rate Tests', () {
     testWidgets('CloudsScreen is safely protected from status bar collision',

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../../core/models/audio_quality_settings.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -162,6 +163,19 @@ class CloudStreamProxy {
         }
       }
 
+      // If the track is cached or preloaded on disk, serve it directly with full byte-range support!
+      final localFile = await _findPreloadedFile(track);
+      if (localFile != null && localFile.existsSync()) {
+        await _serveLocalFile(
+          request,
+          localFile,
+          track,
+          requestedStart: startByte,
+          requestedEnd: endByte,
+        );
+        return;
+      }
+
       final spec = await connector.resolveStream(
         track,
         account,
@@ -202,6 +216,64 @@ class CloudStreamProxy {
     } catch (_) {
       try {
         request.response.statusCode = HttpStatus.badGateway;
+        await request.response.close();
+      } catch (_) {}
+    }
+  }
+
+  Future<File?> _findPreloadedFile(Track track) async {
+    if (track.localCachePath != null && track.localCachePath!.isNotEmpty) {
+      final f = File(track.localCachePath!);
+      if (f.existsSync() && f.lengthSync() > 1024) return f;
+    }
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final cacheDir = Directory(p.join(appDir.path, 'cached_music'));
+      if (cacheDir.existsSync()) {
+        final sanitizedId = track.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        for (final entry in cacheDir.listSync()) {
+          if (entry is File) {
+            final base = p.basenameWithoutExtension(entry.path);
+            if (base == sanitizedId && entry.lengthSync() > 1024) {
+              return entry;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _serveLocalFile(
+    HttpRequest request,
+    File file,
+    Track track, {
+    int? requestedStart,
+    int? requestedEnd,
+  }) async {
+    try {
+      final fileLength = await file.length();
+      int start = requestedStart ?? 0;
+      int end = requestedEnd ?? (fileLength - 1);
+      if (start >= fileLength) start = 0;
+      if (end >= fileLength) end = fileLength - 1;
+
+      final isPartial = (requestedStart != null || requestedEnd != null);
+      request.response.statusCode = isPartial ? HttpStatus.partialContent : HttpStatus.ok;
+      request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+      if (isPartial) {
+        request.response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$fileLength');
+        request.response.headers.set(HttpHeaders.contentLengthHeader, (end - start + 1).toString());
+      } else {
+        request.response.headers.set(HttpHeaders.contentLengthHeader, fileLength.toString());
+      }
+      request.response.headers.set(HttpHeaders.contentTypeHeader, _getMimeTypeForTrack(track));
+      request.response.bufferOutput = false;
+
+      await request.response.addStream(file.openRead(start, end + 1));
+      await request.response.close();
+    } catch (_) {
+      try {
         await request.response.close();
       } catch (_) {}
     }

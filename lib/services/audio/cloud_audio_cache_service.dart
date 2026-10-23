@@ -279,6 +279,58 @@ class CloudAudioCacheService extends ChangeNotifier {
     }
   }
 
+  final Set<String> _preloadingTrackIds = {};
+
+  /// Preloads up to [preloadCount] (at least 5) upcoming tracks in the queue into local stream cache.
+  Future<void> preloadQueueTracks(
+    List<Track> queue, {
+    required String currentTrackId,
+    int preloadCount = 5,
+    void Function(Track updatedTrack)? onTrackCached,
+  }) async {
+    if (queue.isEmpty || currentTrackId.isEmpty) return;
+    final currIdx = queue.indexWhere((t) => t.id == currentTrackId);
+    if (currIdx == -1) return;
+
+    final upcoming = <Track>[];
+    for (int i = 1; i <= preloadCount && i < queue.length; i++) {
+      final targetIdx = (currIdx + i) % queue.length;
+      upcoming.add(queue[targetIdx]);
+    }
+    if (upcoming.isEmpty) return;
+
+    for (final track in upcoming) {
+      if (_preloadingTrackIds.contains(track.id)) continue;
+      // If already a local file or already cached on disk, skip
+      if (!track.streamUrl.startsWith('http://') &&
+          !track.streamUrl.startsWith('https://') &&
+          File(track.streamUrl).existsSync()) {
+        continue;
+      }
+      if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
+        continue;
+      }
+      final existing = await getCachedFilePath(track);
+      if (existing != null && File(existing).existsSync()) {
+        continue;
+      }
+
+      _preloadingTrackIds.add(track.id);
+      try {
+        await cacheTrack(
+          track,
+          markPinnedOffline: false,
+          onComplete: (updated) {
+            onTrackCached?.call(updated);
+          },
+        );
+      } catch (_) {
+      } finally {
+        _preloadingTrackIds.remove(track.id);
+      }
+    }
+  }
+
   /// Removes cached file from disk.
   Future<void> removeCachedTrack(Track track) async {
     try {

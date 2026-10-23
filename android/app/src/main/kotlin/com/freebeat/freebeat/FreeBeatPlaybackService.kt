@@ -18,6 +18,7 @@ import android.graphics.Shader
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -63,6 +64,7 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var mediaSession: MediaSessionCompat? = null
 
     override fun onCreate() {
@@ -71,6 +73,7 @@ class FreeBeatPlaybackService : Service() {
         createNotificationChannel()
         initMediaSession()
         acquireWakeLock()
+        acquireWifiLock()
         updateNotification()
     }
 
@@ -84,8 +87,7 @@ class FreeBeatPlaybackService : Service() {
                 isPlaying = !isPlaying
                 if (isPlaying) {
                     acquireWakeLock()
-                } else {
-                    releaseWakeLock()
+                    acquireWifiLock()
                 }
                 dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to isPlaying))
                 updateNotification()
@@ -141,8 +143,9 @@ class FreeBeatPlaybackService : Service() {
 
                 if (isPlaying) {
                     acquireWakeLock()
+                    acquireWifiLock()
                 } else {
-                    releaseWakeLock()
+                    releaseWifiLock()
                 }
 
                 val metadataChanged = (currentTitle != oldTitle ||
@@ -181,6 +184,47 @@ class FreeBeatPlaybackService : Service() {
     private fun releaseWakeLock() {
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
+        }
+    }
+
+    private fun acquireWifiLock() {
+        try {
+            if (wifiLock == null) {
+                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "FreeBeat:PlaybackWifiLock")
+                } else {
+                    @Suppress("DEPRECATION")
+                    wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FreeBeat:PlaybackWifiLock")
+                }
+                wifiLock?.setReferenceCounted(false)
+            }
+            if (wifiLock?.isHeld != true) {
+                wifiLock?.acquire()
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun buildServicePendingIntent(requestCode: Int, serviceAction: String): PendingIntent {
+        val intent = Intent(this, FreeBeatPlaybackService::class.java).apply { action = serviceAction }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(
+                this, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            PendingIntent.getService(
+                this, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         }
     }
 
@@ -228,6 +272,10 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private fun dispatchPlayerAction(action: String, extras: Map<String, Any> = emptyMap()) {
+        acquireWakeLock()
+        if (action == "onPlayPause" || extras["isPlaying"] == true) {
+            acquireWifiLock()
+        }
         val listener = playerActionListener
         if (listener != null) {
             listener.invoke(action, extras)
@@ -257,13 +305,14 @@ class FreeBeatPlaybackService : Service() {
                 override fun onPlay() {
                     isPlaying = true
                     acquireWakeLock()
+                    acquireWifiLock()
                     dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to true))
                     updateNotification()
                 }
 
                 override fun onPause() {
                     isPlaying = false
-                    releaseWakeLock()
+                    releaseWifiLock()
                     dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to false))
                     updateNotification()
                 }
@@ -398,36 +447,12 @@ class FreeBeatPlaybackService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val playPauseIntent = PendingIntent.getService(
-                this, 1,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_PLAY_PAUSE },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val nextIntent = PendingIntent.getService(
-                this, 2,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_NEXT },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val prevIntent = PendingIntent.getService(
-                this, 3,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_PREV },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val shuffleIntent = PendingIntent.getService(
-                this, 4,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_SHUFFLE },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val repeatIntent = PendingIntent.getService(
-                this, 5,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_REPEAT },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val stopIntent = PendingIntent.getService(
-                this, 6,
-                Intent(this, FreeBeatPlaybackService::class.java).apply { action = ACTION_STOP },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val playPauseIntent = buildServicePendingIntent(1, ACTION_PLAY_PAUSE)
+            val nextIntent = buildServicePendingIntent(2, ACTION_NEXT)
+            val prevIntent = buildServicePendingIntent(3, ACTION_PREV)
+            val shuffleIntent = buildServicePendingIntent(4, ACTION_SHUFFLE)
+            val repeatIntent = buildServicePendingIntent(5, ACTION_REPEAT)
+            val stopIntent = buildServicePendingIntent(6, ACTION_STOP)
 
             // 4. Standard MediaStyle Notification for Android SystemUI Media Carousel
             // In Android 11, 12, 13, 14, 15, SystemUI intercepts this standard MediaStyle notification
@@ -679,6 +704,7 @@ class FreeBeatPlaybackService : Service() {
 
     private fun stopPlaybackService() {
         releaseWakeLock()
+        releaseWifiLock()
         mediaSession?.isActive = false
         mediaSession?.release()
         mediaSession = null
