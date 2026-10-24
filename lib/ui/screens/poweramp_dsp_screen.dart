@@ -1319,9 +1319,11 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 min: 0,
                 max: 12000,
                 divisions: 24,
-                onChanged: (v) => ref
-                    .read(audioQualityProvider.notifier)
-                    .setCrossfadeDuration(v.round()),
+                onChanged: (v) {
+                  final ms = v.round();
+                  ref.read(audioQualityProvider.notifier).setCrossfadeDuration(ms);
+                  ref.read(playbackProvider.notifier).setCrossfadeSeconds((ms / 1000).round());
+                },
               ),
               const SizedBox(height: 12),
               const Text(

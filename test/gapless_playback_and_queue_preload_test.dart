@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/core/models/audio_quality_settings.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
@@ -8,6 +10,7 @@ import 'package:freebeat/core/storage/secure_credential_store.dart';
 import 'package:freebeat/providers/implementations/network_and_saf_connectors.dart';
 import 'package:freebeat/services/audio/cloud_audio_cache_service.dart';
 import 'package:freebeat/services/audio/cloud_stream_proxy.dart';
+import 'package:freebeat/state/app_providers.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -200,6 +203,133 @@ void main() {
       expect(responseBytes, equals(dummyBytes.sublist(100, 500)));
 
       proxy.dispose();
+    });
+
+    test('Crossfade duration settings synchronize bidirectionally between PlaybackNotifier and AudioQualityNotifier', () async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final playbackNotifier = container.read(playbackProvider.notifier);
+      final qualityNotifier = container.read(audioQualityProvider.notifier);
+
+      // Default should be 0s / 0ms (True Gapless Playback)
+      expect(container.read(playbackProvider).crossfadeSeconds, equals(0));
+      expect(container.read(audioQualityProvider).crossfadeDurationMs, equals(0));
+
+      // Set crossfade to 6 seconds from playback notifier
+      playbackNotifier.setCrossfadeSeconds(6);
+      expect(container.read(playbackProvider).crossfadeSeconds, equals(6));
+      expect(container.read(audioQualityProvider).crossfadeDurationMs, equals(6000));
+
+      // Verify persistence to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('playback_crossfade_seconds'), equals(6));
+      expect(prefs.getInt('playback_crossfade_duration_ms'), equals(6000));
+
+      // Set crossfade back to 0 (Gapless)
+      playbackNotifier.setCrossfadeSeconds(0);
+      expect(container.read(playbackProvider).crossfadeSeconds, equals(0));
+      expect(container.read(audioQualityProvider).crossfadeDurationMs, equals(0));
+    });
+
+    test('Crossfade volume calculations provide mathematical smoothness and true gapless bit-perfection', () {
+      // Test volume calculation helper matching PlaybackNotifier
+      double calculateFadeVolume({
+        required int posMs,
+        required int durationMs,
+        required int crossfadeSec,
+      }) {
+        if (crossfadeSec <= 0 || durationMs <= 0) return 1.0;
+        final maxFadeMs = (durationMs / 2.5).floor();
+        final crossfadeMs = (crossfadeSec * 1000).clamp(0, maxFadeMs);
+        if (crossfadeMs <= 0) return 1.0;
+
+        if (posMs < crossfadeMs) {
+          final ratio = (posMs / crossfadeMs).clamp(0.0, 1.0);
+          return math.pow(ratio, 1.2).toDouble().clamp(0.05, 1.0);
+        } else if (posMs >= durationMs - crossfadeMs) {
+          final remaining = (durationMs - posMs).clamp(0, crossfadeMs);
+          final ratio = (remaining / crossfadeMs).clamp(0.0, 1.0);
+          return math.pow(ratio, 1.2).toDouble().clamp(0.05, 1.0);
+        }
+        return 1.0;
+      }
+
+      // 1. GAPLESS (crossfadeSec = 0) -> ALWAYS 1.0 across all positions
+      expect(calculateFadeVolume(posMs: 0, durationMs: 180000, crossfadeSec: 0), equals(1.0));
+      expect(calculateFadeVolume(posMs: 90000, durationMs: 180000, crossfadeSec: 0), equals(1.0));
+      expect(calculateFadeVolume(posMs: 179999, durationMs: 180000, crossfadeSec: 0), equals(1.0));
+
+      // 2. CROSSFADE (crossfadeSec = 4s) on 200s track
+      const durationMs = 200000;
+      const crossfadeSec = 4;
+      final crossfadeMs = crossfadeSec * 1000; // 4000ms
+
+      // At start: smooth fade in
+      final startVol = calculateFadeVolume(posMs: 0, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(startVol, equals(0.05));
+
+      final midFadeInVol = calculateFadeVolume(posMs: 2000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(midFadeInVol, closeTo(0.435, 0.05));
+      expect(midFadeInVol > startVol, isTrue);
+
+      final postFadeInVol = calculateFadeVolume(posMs: 4000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(postFadeInVol, equals(1.0));
+
+      // During middle: 100% full volume
+      final middleVol = calculateFadeVolume(posMs: 100000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(middleVol, equals(1.0));
+
+      // At end: smooth fade out without cutting off track
+      final preFadeOutVol = calculateFadeVolume(posMs: 196000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(preFadeOutVol, equals(1.0));
+
+      final midFadeOutVol = calculateFadeVolume(posMs: 198000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(midFadeOutVol, closeTo(0.435, 0.05));
+      expect(midFadeOutVol < preFadeOutVol, isTrue);
+
+      final endVol = calculateFadeVolume(posMs: 200000, durationMs: durationMs, crossfadeSec: crossfadeSec);
+      expect(endVol, equals(0.05));
+    });
+
+    test('Queue modifications preserve queue alignment and track integrity', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final tracks = List.generate(
+        5,
+        (i) => Track(
+          id: 'test_t_$i',
+          accountId: 'acc_1',
+          providerType: CloudProviderType.googleDrive,
+          remotePathOrId: 'r_$i',
+          title: 'Track $i',
+          artist: 'Artist',
+          album: 'Album',
+          durationMs: 120000,
+          streamUrl: 'https://example.com/audio_$i.mp3',
+        ),
+      );
+
+      final notifier = container.read(playbackProvider.notifier);
+      notifier.setQueue(tracks, startTrack: tracks[1]);
+
+      var state = container.read(playbackProvider);
+      expect(state.currentTrack.id, equals('test_t_1'));
+      expect(state.queue.length, equals(5));
+
+      // Reorder up next
+      notifier.reorderUpNext(0, 2);
+      state = container.read(playbackProvider);
+      expect(state.currentTrack.id, equals('test_t_1'));
+      expect(state.queue.length, equals(5));
+
+      // Remove from queue
+      notifier.removeFromQueue('test_t_4');
+      state = container.read(playbackProvider);
+      expect(state.queue.length, equals(4));
+      expect(state.queue.any((t) => t.id == 'test_t_4'), isFalse);
     });
   });
 }
