@@ -427,8 +427,8 @@ class CloudAudioCacheService extends ChangeNotifier {
 
   /// Clears only unpinned streaming cache, temporary transcoded audio files,
   /// and any native file_picker / temporary caches.
-  /// Strictly preserves all user-pinned offline downloads.
-  Future<int> clearStreamCache(List<Track> catalogTracks) async {
+  /// Strictly preserves all user-pinned offline downloads and any currently playing track.
+  Future<int> clearStreamCache(List<Track> catalogTracks, {String? activeTrackId}) async {
     int reclaimedBytes = 0;
     try {
       final cacheDir = await _getCacheDirectory();
@@ -442,12 +442,18 @@ class CloudAudioCacheService extends ChangeNotifier {
           .map((t) => t.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_'))
           .toSet();
 
+      final activeSanitizedId = (activeTrackId != null && activeTrackId.isNotEmpty)
+          ? activeTrackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')
+          : null;
+
       if (cacheDir.existsSync()) {
         for (final entity in cacheDir.listSync()) {
           if (entity is File) {
             final baseName = p.basenameWithoutExtension(entity.path);
             final isPinned = pinnedPaths.contains(entity.path) || pinnedIds.contains(baseName);
-            if (!isPinned) {
+            final isActive = activeSanitizedId != null &&
+                (baseName == activeSanitizedId || entity.path.contains(activeSanitizedId));
+            if (!isPinned && !isActive) {
               final len = entity.lengthSync();
               try {
                 entity.deleteSync();
@@ -501,6 +507,13 @@ class CloudAudioCacheService extends ChangeNotifier {
           }
         } catch (_) {}
       }
+
+      // Evict progress for deleted tracks from memory
+      final activeId = activeTrackId ?? '';
+      _progressMap.removeWhere((id, progress) {
+        final isPinned = catalogTracks.any((t) => t.id == id && t.isPinnedOffline);
+        return !isPinned && id != activeId;
+      });
 
       notifyListeners();
     } catch (_) {}

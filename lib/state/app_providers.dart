@@ -616,6 +616,13 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
           }
         }
 
+        // 4. If localCachePath points to a non-existent file on disk, clear it so streaming falls back smoothly
+        if (clean.localCachePath != null &&
+            clean.localCachePath!.isNotEmpty &&
+            !File(clean.localCachePath!).existsSync()) {
+          clean = clean.copyWith(clearLocalCachePath: true, isPinnedOffline: false);
+        }
+
         if (clean != t) {
           await _db.upsertTracks([clean]);
         }
@@ -698,6 +705,63 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
       final importProgress = _ref.read(importProgressProvider);
       if (!importProgress.isImporting) {
         _enrichMissingArtwork(validTracks);
+      }
+    }
+  }
+
+  /// Purges dead localCachePaths and restores ephemeral cache streamUrls when cache is cleared.
+  /// Prevents previously cached tracks from becoming unplayable.
+  Future<void> purgeDeletedLocalCachePaths() async {
+    final updatedList = <Track>[];
+    final changedTracks = <Track>[];
+
+    for (final t in state) {
+      var clean = t;
+      // 1. If localCachePath points to a deleted file, clear it so proxy and audio player stream on demand
+      if (clean.localCachePath != null &&
+          clean.localCachePath!.isNotEmpty &&
+          !File(clean.localCachePath!).existsSync()) {
+        clean = clean.copyWith(
+          clearLocalCachePath: true,
+          isPinnedOffline: false,
+        );
+      }
+
+      // 2. If streamUrl was an ephemeral or temporary cache file that no longer exists:
+      if (!clean.streamUrl.startsWith('http://') &&
+          !clean.streamUrl.startsWith('https://') &&
+          !clean.streamUrl.startsWith('content://')) {
+        if (!File(clean.streamUrl).existsSync()) {
+          if (clean.remotePathOrId.startsWith('content://')) {
+            clean = clean.copyWith(
+              streamUrl: clean.remotePathOrId,
+              clearLocalCachePath: true,
+              isPinnedOffline: false,
+            );
+          } else if (clean.remotePathOrId.startsWith('http://') ||
+              clean.remotePathOrId.startsWith('https://')) {
+            clean = clean.copyWith(
+              streamUrl: clean.remotePathOrId,
+              clearLocalCachePath: true,
+              isPinnedOffline: false,
+            );
+          }
+        }
+      }
+
+      if (clean != t) {
+        changedTracks.add(clean);
+      }
+      updatedList.add(clean);
+    }
+
+    if (changedTracks.isNotEmpty) {
+      if (_db != null) {
+        await _db.upsertTracks(changedTracks);
+      }
+      state = updatedList;
+      if (_ref != null) {
+        await _ref.read(playbackProvider.notifier).syncWithLoadedCatalog(updatedList);
       }
     }
   }
@@ -1880,7 +1944,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         );
         _syncForegroundNotification(track: current, isPlaying: false);
       } else {
-        state = state.copyWith(queue: restoredQueue);
+        final updatedCurrent = restoredQueue.firstWhere(
+          (t) => t.id == state.currentTrack.id,
+          orElse: () => state.currentTrack,
+        );
+        state = state.copyWith(
+          queue: restoredQueue,
+          currentTrack: updatedCurrent,
+        );
       }
     } catch (e) {
       debugPrint('Error syncing playback with catalog: $e');
@@ -2442,22 +2513,59 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   }
 
   Future<AudioSource> _createAudioSource(Track track) async {
+    Track effectiveTrack = track;
+
+    // Self-healing: if localCachePath points to a file deleted when clearing cache, clear it immediately
+    if (effectiveTrack.localCachePath != null &&
+        effectiveTrack.localCachePath!.isNotEmpty &&
+        !File(effectiveTrack.localCachePath!).existsSync()) {
+      effectiveTrack = effectiveTrack.copyWith(
+        clearLocalCachePath: true,
+        isPinnedOffline: false,
+      );
+      unawaited(_ref.read(tracksCatalogProvider.notifier).updateTrack(effectiveTrack));
+    }
+
+    // Self-healing: if streamUrl points to an ephemeral or cache file that was deleted:
+    if (!effectiveTrack.streamUrl.startsWith('http://') &&
+        !effectiveTrack.streamUrl.startsWith('https://') &&
+        !effectiveTrack.streamUrl.startsWith('content://')) {
+      if (!File(effectiveTrack.streamUrl).existsSync()) {
+        if (effectiveTrack.remotePathOrId.startsWith('content://')) {
+          effectiveTrack = effectiveTrack.copyWith(
+            streamUrl: effectiveTrack.remotePathOrId,
+            clearLocalCachePath: true,
+            isPinnedOffline: false,
+          );
+          unawaited(_ref.read(tracksCatalogProvider.notifier).updateTrack(effectiveTrack));
+        } else if (effectiveTrack.remotePathOrId.startsWith('http://') ||
+            effectiveTrack.remotePathOrId.startsWith('https://')) {
+          effectiveTrack = effectiveTrack.copyWith(
+            streamUrl: effectiveTrack.remotePathOrId,
+            clearLocalCachePath: true,
+            isPinnedOffline: false,
+          );
+          unawaited(_ref.read(tracksCatalogProvider.notifier).updateTrack(effectiveTrack));
+        }
+      }
+    }
+
     final cacheSvc = _ref.read(cloudAudioCacheServiceProvider);
-    final cachedPath = await cacheSvc.getCachedFilePath(track);
+    final cachedPath = await cacheSvc.getCachedFilePath(effectiveTrack);
 
     // 0. Transcode check (WMA, AIFF, etc.)
-    final pathLower = (cachedPath ?? track.localCachePath ?? track.streamUrl).toLowerCase();
-    if (UniversalAudioTranscoderService.requiresTranscoding(track, pathLower)) {
+    final pathLower = (cachedPath ?? effectiveTrack.localCachePath ?? effectiveTrack.streamUrl).toLowerCase();
+    if (UniversalAudioTranscoderService.requiresTranscoding(effectiveTrack, pathLower)) {
       try {
         final transcoder = _ref.read(universalAudioTranscoderServiceProvider);
-        String? src = cachedPath ?? track.localCachePath;
+        String? src = cachedPath ?? effectiveTrack.localCachePath;
         if (src == null || !File(src).existsSync()) {
-          src = track.streamUrl;
+          src = effectiveTrack.streamUrl;
         }
-        if (src.isNotEmpty) {
-          final transcoded = await transcoder.transcodeToWav(track: track, sourcePath: src);
+        if (src.isNotEmpty && File(src).existsSync()) {
+          final transcoded = await transcoder.transcodeToWav(track: effectiveTrack, sourcePath: src);
           if (transcoded != null && File(transcoded).existsSync()) {
-            return AudioSource.file(transcoded, tag: track);
+            return AudioSource.file(transcoded, tag: effectiveTrack);
           }
         }
       } catch (_) {}
@@ -2465,48 +2573,50 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
     // 1. Cached offline on disk
     if (cachedPath != null && File(cachedPath).existsSync()) {
-      return AudioSource.file(cachedPath, tag: track);
+      return AudioSource.file(cachedPath, tag: effectiveTrack);
     }
-    if (track.localCachePath != null && File(track.localCachePath!).existsSync()) {
-      return AudioSource.file(track.localCachePath!, tag: track);
+    if (effectiveTrack.localCachePath != null && File(effectiveTrack.localCachePath!).existsSync()) {
+      return AudioSource.file(effectiveTrack.localCachePath!, tag: effectiveTrack);
     }
 
     // 2. Local device storage file
-    if (!track.streamUrl.startsWith('http://') &&
-        !track.streamUrl.startsWith('https://') &&
-        !track.streamUrl.startsWith('content://')) {
-      if (File(track.streamUrl).existsSync()) {
-        return AudioSource.file(track.streamUrl, tag: track);
+    if (!effectiveTrack.streamUrl.startsWith('http://') &&
+        !effectiveTrack.streamUrl.startsWith('https://') &&
+        !effectiveTrack.streamUrl.startsWith('content://')) {
+      if (File(effectiveTrack.streamUrl).existsSync()) {
+        return AudioSource.file(effectiveTrack.streamUrl, tag: effectiveTrack);
+      } else if (effectiveTrack.remotePathOrId.startsWith('content://')) {
+        return AudioSource.uri(Uri.parse(effectiveTrack.remotePathOrId), tag: effectiveTrack);
       } else {
-        return AudioSource.uri(Uri.file(track.streamUrl), tag: track);
+        return AudioSource.uri(Uri.file(effectiveTrack.streamUrl), tag: effectiveTrack);
       }
     }
 
     // 3. Android SAF content URI
-    if (track.streamUrl.startsWith('content://')) {
-      return AudioSource.uri(Uri.parse(track.streamUrl), tag: track);
+    if (effectiveTrack.streamUrl.startsWith('content://')) {
+      return AudioSource.uri(Uri.parse(effectiveTrack.streamUrl), tag: effectiveTrack);
     }
 
     // 4. Remote cloud stream through loopback proxy (127.0.0.1)
     final proxy = _ref.read(cloudStreamProxyProvider);
     final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
-    proxy.registerTrack(track);
-    final playbackUrl = proxy.buildPlaybackUrl(track, quality);
+    proxy.registerTrack(effectiveTrack);
+    final playbackUrl = proxy.buildPlaybackUrl(effectiveTrack, quality);
 
     if (playbackUrl.startsWith('http://127.0.0.1')) {
-      return AudioSource.uri(Uri.parse(playbackUrl), tag: track);
+      return AudioSource.uri(Uri.parse(playbackUrl), tag: effectiveTrack);
     } else {
       Map<String, String>? headers;
-      if (track.providerType == CloudProviderType.googleDrive) {
+      if (effectiveTrack.providerType == CloudProviderType.googleDrive) {
         final secrets = await _ref
             .read(credentialStoreProvider)
-            .readSecrets(track.accountId);
+            .readSecrets(effectiveTrack.accountId);
         final token = secrets['accessToken'] ?? '';
         if (token.isNotEmpty) {
           headers = {'Authorization': 'Bearer $token'};
         }
       }
-      return AudioSource.uri(Uri.parse(playbackUrl), headers: headers, tag: track);
+      return AudioSource.uri(Uri.parse(playbackUrl), headers: headers, tag: effectiveTrack);
     }
   }
 

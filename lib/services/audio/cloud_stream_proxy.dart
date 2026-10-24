@@ -8,6 +8,7 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../core/storage/secure_credential_store.dart';
 import '../../providers/implementations/network_and_saf_connectors.dart';
+import '../auth/native_cloud_auth_service.dart';
 
 /// Rule A3: Authenticated Local Loopback Stream & Offline Cache Proxy (`127.0.0.1`).
 /// Binds strictly to `InternetAddress.loopbackIPv4`, injects rolling cloud OAuth/SigV4/WebDAV
@@ -183,7 +184,7 @@ class CloudStreamProxy {
         return;
       }
 
-      final spec = await connector.resolveStream(
+      var spec = await connector.resolveStream(
         track,
         account,
         secrets,
@@ -192,10 +193,36 @@ class CloudStreamProxy {
         endByte: endByte,
       );
 
-      final upstreamReq = http.Request('GET', Uri.parse(spec.url));
+      var upstreamReq = http.Request('GET', Uri.parse(spec.url));
       upstreamReq.headers.addAll(spec.headers);
 
-      final upstreamResp = await _upstreamClient.send(upstreamReq);
+      var upstreamResp = await _upstreamClient.send(upstreamReq);
+
+      // Proactive Token Refresh: Handle 401 Unauthorized or 403 Forbidden with automatic recovery
+      if (upstreamResp.statusCode == 401 || upstreamResp.statusCode == 403) {
+        if (track.providerType == CloudProviderType.googleDrive) {
+          try {
+            final authService = NativeCloudAuthService();
+            final freshToken = await authService.getFreshGoogleAccessToken();
+            if (freshToken != null && freshToken.isNotEmpty) {
+              final newSecrets = Map<String, String>.from(secrets)..['accessToken'] = freshToken;
+              await credentialStore.saveSecrets(account.id, newSecrets);
+              spec = await connector.resolveStream(
+                track,
+                account,
+                newSecrets,
+                targetQuality: _activeTier,
+                startByte: startByte,
+                endByte: endByte,
+              );
+              upstreamReq = http.Request('GET', Uri.parse(spec.url));
+              upstreamReq.headers.addAll(spec.headers);
+              upstreamResp = await _upstreamClient.send(upstreamReq);
+            }
+          } catch (_) {}
+        }
+      }
+
       request.response.statusCode = upstreamResp.statusCode;
       request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
 

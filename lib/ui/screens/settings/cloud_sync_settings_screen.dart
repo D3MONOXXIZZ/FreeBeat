@@ -232,7 +232,12 @@ class CloudSyncSettingsScreen extends ConsumerWidget {
                   OutlinedButton.icon(
                     onPressed: () async {
                       PixelHaptics.hifiConfirm();
-                      final reclaimed = await cacheSvc.clearStreamCache(tracks);
+                      final activeTrack = ref.read(playbackProvider).currentTrack;
+                      final reclaimed = await cacheSvc.clearStreamCache(
+                        tracks,
+                        activeTrackId: activeTrack.id.isNotEmpty ? activeTrack.id : null,
+                      );
+                      await ref.read(tracksCatalogProvider.notifier).purgeDeletedLocalCachePaths();
                       ref.invalidate(storageUsageFutureProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
