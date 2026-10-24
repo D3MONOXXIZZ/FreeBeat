@@ -211,7 +211,6 @@ void main() {
       addTearDown(container.dispose);
 
       final playbackNotifier = container.read(playbackProvider.notifier);
-      final qualityNotifier = container.read(audioQualityProvider.notifier);
 
       // Default should be 0s / 0ms (True Gapless Playback)
       expect(container.read(playbackProvider).crossfadeSeconds, equals(0));
@@ -264,7 +263,6 @@ void main() {
       // 2. CROSSFADE (crossfadeSec = 4s) on 200s track
       const durationMs = 200000;
       const crossfadeSec = 4;
-      final crossfadeMs = crossfadeSec * 1000; // 4000ms
 
       // At start: smooth fade in
       final startVol = calculateFadeVolume(posMs: 0, durationMs: durationMs, crossfadeSec: crossfadeSec);
