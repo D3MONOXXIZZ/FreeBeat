@@ -642,7 +642,7 @@ class MainActivity : FlutterActivity() {
                     true // Hardware Limiter enabled
                 ).build()
 
-                val dp = DynamicsProcessing(0, sessionId, config)
+                val dp = DynamicsProcessing(1000, sessionId, config)
                 // Initialize default flat 0dB pass-through bands immediately upon session attachment
                 for (i in 0 until 10) {
                     val cutoff = if (i < 9) (isoBandFrequencies[i] + isoBandFrequencies[i + 1]) / 2f else 20000f
@@ -654,6 +654,20 @@ class MainActivity : FlutterActivity() {
                 dp.enabled = false // Keep bypassed until non-flat parameters or limiter are requested
                 dynamicsProcessing = dp
                 dspEngineMode = "DynamicsProcessing 64-bit Hardware (10-Band)"
+
+                try {
+                    virtualizer = Virtualizer(1000, sessionId).apply {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            val mode = if (isBluetoothOutputActive) {
+                                Virtualizer.VIRTUALIZATION_MODE_BINAURAL
+                            } else {
+                                Virtualizer.VIRTUALIZATION_MODE_TRANSAURAL
+                            }
+                            try { forceVirtualizationMode(mode) } catch (_: Throwable) {}
+                        }
+                        enabled = false
+                    }
+                } catch (_: Throwable) {}
             } catch (e: Throwable) {
                 // Rule B1: OEM firmware fallback if DynamicsProcessing is restricted
                 dynamicsProcessing = null
@@ -666,8 +680,21 @@ class MainActivity : FlutterActivity() {
 
     private fun initFallbackEqualizer(sessionId: Int) {
         try {
-            legacyEqualizer = Equalizer(0, sessionId).apply { enabled = false }
+            legacyEqualizer = Equalizer(1000, sessionId).apply { enabled = false }
             loudnessEnhancer = LoudnessEnhancer(sessionId).apply { enabled = false }
+            try {
+                virtualizer = Virtualizer(1000, sessionId).apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        val mode = if (isBluetoothOutputActive) {
+                            Virtualizer.VIRTUALIZATION_MODE_BINAURAL
+                        } else {
+                            Virtualizer.VIRTUALIZATION_MODE_TRANSAURAL
+                        }
+                        try { forceVirtualizationMode(mode) } catch (_: Throwable) {}
+                    }
+                    enabled = false
+                }
+            } catch (_: Throwable) {}
             dspEngineMode = "Android Hardware Equalizer + LoudnessEnhancer (OEM Fallback)"
         } catch (_: Throwable) {
             dspEngineMode = "Software Biquad Float64 DSP"
@@ -682,6 +709,9 @@ class MainActivity : FlutterActivity() {
         val bassGain = (args["bassGain"] as? Number)?.toFloat() ?: 0f
         val trebleGain = (args["trebleGain"] as? Number)?.toFloat() ?: 0f
         val stereoExpansion = (args["stereoExpansion"] as? Number)?.toFloat() ?: 0f
+        val balance = (args["balance"] as? Number)?.toFloat() ?: 0f
+        val monoMix = args["monoMix"] as? Boolean ?: false
+        val reverbPresetId = (args["reverbPresetId"] as? Number)?.toInt() ?: 0
         val bandGainsRaw = args["bandGainsDb"] as? List<*>
         val bandFreqsRaw = args["bandFreqsHz"] as? List<*>
 
@@ -699,12 +729,18 @@ class MainActivity : FlutterActivity() {
             try { loudnessEnhancer?.enabled = false } catch (_: Throwable) {}
             try { virtualizer?.enabled = false } catch (_: Throwable) {}
             try { bassBoost?.enabled = false } catch (_: Throwable) {}
+            try { presetReverb?.enabled = false } catch (_: Throwable) {}
             return
         }
+
+        val effectiveStereoExpansion = if (monoMix) 0f else stereoExpansion.coerceIn(0f, 1f)
 
         val isDspFlat = Math.abs(preampDb) < 0.01f &&
             Math.abs(bassGain) < 0.01f &&
             Math.abs(trebleGain) < 0.01f &&
+            Math.abs(balance) < 0.01f &&
+            effectiveStereoExpansion < 0.01f &&
+            reverbPresetId == 0 &&
             bandGains.all { Math.abs(it) < 0.01f }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && dynamicsProcessing != null) {
@@ -713,16 +749,33 @@ class MainActivity : FlutterActivity() {
                 val shouldEnableDp = eqEnabled && (!isDspFlat || limiterEnabled)
 
                 if (shouldEnableDp) {
-                    dp.setInputGainAllChannelsTo(if (eqEnabled) preampDb else 0f)
+                    val basePreamp = if (eqEnabled) preampDb else 0f
+                    val leftAtten = if (balance > 0f) -balance * 36f else 0f
+                    val rightAtten = if (balance < 0f) balance * 36f else 0f
+                    dp.setInputGainbyChannel(0, basePreamp + leftAtten)
+                    dp.setInputGainbyChannel(1, basePreamp + rightAtten)
 
                     for (i in 0 until 10) {
                         val lowShelfBonus = if (i <= 2) bassGain * 8f * (1f - i * 0.28f) else 0f
                         val highShelfBonus = if (i >= 7) trebleGain * 8f * ((i - 6) * 0.3f) else 0f
-                        val totalBandGain = if (eqEnabled) (bandGains[i] + lowShelfBonus + highShelfBonus) else 0f
+                        val baseBandGain = if (eqEnabled) (bandGains[i] + lowShelfBonus + highShelfBonus) else 0f
+
+                        var leftSpatialBonus = 0f
+                        var rightSpatialBonus = 0f
+                        if (effectiveStereoExpansion > 0.005f) {
+                            when (i) {
+                                6 -> { leftSpatialBonus = effectiveStereoExpansion * 1.8f; rightSpatialBonus = -effectiveStereoExpansion * 1.0f }
+                                7 -> { leftSpatialBonus = -effectiveStereoExpansion * 1.0f; rightSpatialBonus = effectiveStereoExpansion * 2.2f }
+                                8 -> { leftSpatialBonus = effectiveStereoExpansion * 2.5f; rightSpatialBonus = -effectiveStereoExpansion * 0.8f }
+                                9 -> { leftSpatialBonus = -effectiveStereoExpansion * 0.8f; rightSpatialBonus = effectiveStereoExpansion * 2.8f }
+                            }
+                        }
 
                         val cutoffFreq = if (i < 9) (bandFreqs[i] + bandFreqs[i + 1]) / 2f else 20000f
-                        val eqBand = DynamicsProcessing.EqBand(eqEnabled, cutoffFreq, totalBandGain)
-                        dp.setPreEqBandAllChannelsTo(i, eqBand)
+                        val leftEqBand = DynamicsProcessing.EqBand(eqEnabled, cutoffFreq, baseBandGain + leftSpatialBonus)
+                        val rightEqBand = DynamicsProcessing.EqBand(eqEnabled, cutoffFreq, baseBandGain + rightSpatialBonus)
+                        dp.setPreEqBandByChannelIndex(0, i, leftEqBand)
+                        dp.setPreEqBandByChannelIndex(1, i, rightEqBand)
                     }
 
                     // Rule B2: Bluetooth Inter-Sample Peak (-0.5 dBFS) vs Wired (-0.1 dBFS) Hardware Limiter
@@ -760,26 +813,58 @@ class MainActivity : FlutterActivity() {
             } catch (_: Throwable) {}
         }
 
-        // Apply Stereo X Width Expansion & BassBoost only when activated
+        // Apply Stereo X Width Expansion, BassBoost (fallback only), and Reverb
         try {
-            if (stereoExpansion > 0.001f) {
+            if (effectiveStereoExpansion > 0.001f) {
                 if (virtualizer == null && currentSessionId > 0) {
-                    try { virtualizer = Virtualizer(0, currentSessionId) } catch (_: Throwable) {}
+                    try { virtualizer = Virtualizer(1000, currentSessionId) } catch (_: Throwable) {}
                 }
-                virtualizer?.enabled = true
-                virtualizer?.setStrength((stereoExpansion * 1000).roundToInt().toShort().coerceIn(0, 1000))
+                virtualizer?.let { v ->
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            val mode = if (isBluetoothOutputActive) {
+                                Virtualizer.VIRTUALIZATION_MODE_BINAURAL
+                            } else {
+                                Virtualizer.VIRTUALIZATION_MODE_TRANSAURAL
+                            }
+                            v.forceVirtualizationMode(mode)
+                        }
+                    } catch (_: Throwable) {}
+                    try {
+                        v.enabled = true
+                        v.setStrength((effectiveStereoExpansion * 1000).roundToInt().toShort().coerceIn(0, 1000))
+                    } catch (_: Throwable) {}
+                }
             } else {
                 virtualizer?.enabled = false
             }
 
-            if (bassGain > 0.001f) {
-                if (bassBoost == null && currentSessionId > 0) {
-                    try { bassBoost = BassBoost(0, currentSessionId) } catch (_: Throwable) {}
+            if (dynamicsProcessing == null) {
+                if (bassGain > 0.001f) {
+                    if (bassBoost == null && currentSessionId > 0) {
+                        try { bassBoost = BassBoost(1000, currentSessionId) } catch (_: Throwable) {}
+                    }
+                    bassBoost?.enabled = true
+                    bassBoost?.setStrength((bassGain * 1000).roundToInt().toShort().coerceIn(0, 1000))
+                } else {
+                    bassBoost?.enabled = false
                 }
-                bassBoost?.enabled = true
-                bassBoost?.setStrength((bassGain * 1000).roundToInt().toShort().coerceIn(0, 1000))
             } else {
                 bassBoost?.enabled = false
+            }
+
+            if (reverbPresetId > 0) {
+                if (presetReverb == null && currentSessionId > 0) {
+                    try { presetReverb = PresetReverb(1000, currentSessionId) } catch (_: Throwable) {}
+                }
+                presetReverb?.let { pr ->
+                    try {
+                        pr.preset = reverbPresetId.toShort()
+                        pr.enabled = true
+                    } catch (_: Throwable) {}
+                }
+            } else {
+                presetReverb?.enabled = false
             }
         } catch (_: Throwable) {}
     }

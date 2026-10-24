@@ -36,8 +36,27 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
   ColorScheme? _cachedCs;
   List<Color>? _cachedBarColors;
 
+  bool _eqCurveMatches(PowerampDspState a, PowerampDspState b) {
+    if (a.eqEnabled != b.eqEnabled ||
+        a.toneEnabled != b.toneEnabled ||
+        a.preampDb != b.preampDb ||
+        a.bassGain != b.bassGain ||
+        a.trebleGain != b.trebleGain) {
+      return false;
+    }
+    if (a.bands.length != b.bands.length) return false;
+    for (int i = 0; i < a.bands.length; i++) {
+      if (a.bands[i].gainDb != b.bands[i].gainDb ||
+          a.bands[i].frequencyHz != b.bands[i].frequencyHz ||
+          a.bands[i].qFactor != b.bands[i].qFactor) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   List<double> _getPrecomputedDb(PowerampDspState dsp) {
-    if (_cachedDsp == dsp && _cachedPrecomputedDb != null) {
+    if (_cachedDsp != null && _eqCurveMatches(_cachedDsp!, dsp) && _cachedPrecomputedDb != null) {
       return _cachedPrecomputedDb!;
     }
     _cachedDsp = dsp;
@@ -938,11 +957,100 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                   PowerampRotaryKnob(
                     value: dsp.stereoExpansion,
                     label: 'STEREO X',
-                    subtitle: 'Spatial Width',
-                    accentColor: cs.tertiary,
-                    onChanged: notifier.setStereoExpansion,
+                    subtitle: dsp.monoMix ? 'Bypassed (Mono)' : 'Spatial Width',
+                    accentColor: dsp.monoMix ? cs.outline : cs.tertiary,
+                    onChanged: dsp.monoMix ? (_) {} : notifier.setStereoExpansion,
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Dedicated Mono Audio Mix Card (Separated from all other options)
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: dsp.monoMix
+                  ? cs.primary.withValues(alpha: 0.5)
+                  : cs.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: dsp.monoMix
+                      ? cs.primary.withValues(alpha: 0.15)
+                      : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.merge_type_rounded,
+                  color: dsp.monoMix ? cs.primary : cs.onSurfaceVariant,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Mono Mix',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: dsp.monoMix
+                                ? cs.primary.withValues(alpha: 0.2)
+                                : cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            dsp.monoMix ? 'Mono (1.0)' : 'Stereo (2.0)',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: dsp.monoMix ? cs.primary : cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Combines Left and Right stereo channels into a single mono audio signal for single-earbud or accessible listening.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Transform.scale(
+                scale: 0.88,
+                child: Switch(
+                  value: dsp.monoMix,
+                  onChanged: notifier.toggleMonoMix,
+                ),
               ),
             ],
           ),
@@ -1163,60 +1271,36 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          'L/R Balance (${dsp.balance == 0 ? "Center" : dsp.balance.toStringAsFixed(2)})',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
+                  Row(
+                    children: [
+                      Text(
+                        'L/R Balance (${dsp.balance.abs() < 0.02 ? "Center" : (dsp.balance < 0 ? "L " : "R ") + dsp.balance.abs().toStringAsFixed(2)})',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
-                        if (dsp.balance.abs() > 0.04) ...[
-                          const SizedBox(width: 6),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () {
-                              PixelHaptics.centerDetentSnap();
-                              notifier.setBalance(0.0);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              child: Text(
-                                'Reset',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.primary,
-                                ),
+                      ),
+                      if (dsp.balance.abs() > 0.04) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            PixelHaptics.centerDetentSnap();
+                            notifier.setBalance(0.0);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            child: Text(
+                              'Reset',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: cs.primary,
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Mono Mix',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Transform.scale(
-                        scale: 0.85,
-                        child: Switch(
-                          value: dsp.monoMix,
-                          onChanged: notifier.toggleMonoMix,
-                        ),
-                      ),
                     ],
                   ),
                 ],

@@ -1125,8 +1125,30 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     } catch (_) {}
   }
 
-  void _syncToHardware() {
+  Timer? _dspThrottleTimer;
+  bool _dspSyncPending = false;
+
+  void _syncToHardware({bool immediate = false}) {
+    if (immediate) {
+      _dspThrottleTimer?.cancel();
+      _dspThrottleTimer = null;
+      _dspSyncPending = false;
+      _dspService.applyDspState(state);
+      return;
+    }
+
+    if (_dspThrottleTimer != null && _dspThrottleTimer!.isActive) {
+      _dspSyncPending = true;
+      return;
+    }
+
     _dspService.applyDspState(state);
+    _dspThrottleTimer = Timer(const Duration(milliseconds: 24), () {
+      if (_dspSyncPending) {
+        _dspSyncPending = false;
+        _dspService.applyDspState(state);
+      }
+    });
   }
 
   void setVisualizerMode(VisualizerMode mode) {
@@ -1262,7 +1284,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   void toggleMonoMix(bool mono) {
     PixelHaptics.tick();
     state = state.copyWith(monoMix: mono);
-    _syncToHardware();
+    _syncToHardware(immediate: true);
   }
 
   void setTempo(double tempo) {

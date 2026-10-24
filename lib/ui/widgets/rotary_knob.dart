@@ -30,36 +30,78 @@ class PowerampRotaryKnob extends StatefulWidget {
 }
 
 class _PowerampRotaryKnobState extends State<PowerampRotaryKnob> {
+  late double _localValue;
+  bool _isDragging = false;
   double _lastHapticStep = 0.0;
 
-  void _updateFromDelta(double dy) {
-    final delta = -dy / 130.0;
-    final next = (widget.value + delta).clamp(0.0, 1.0);
-    if ((next - widget.value).abs() < 0.001) return;
+  @override
+  void initState() {
+    super.initState();
+    _localValue = widget.value;
+    _lastHapticStep = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(PowerampRotaryKnob oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isDragging && oldWidget.value != widget.value) {
+      _localValue = widget.value;
+      _lastHapticStep = widget.value;
+    }
+  }
+
+  void _onPanStart(DragStartDetails details) {
+    _isDragging = true;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    // Both vertical (upward = increase) and horizontal (rightward = increase) drag supported smoothly
+    final delta = (-details.delta.dy + details.delta.dx) / 140.0;
+    final next = (_localValue + delta).clamp(0.0, 1.0);
+    if ((next - _localValue).abs() < 0.001) return;
+
+    setState(() {
+      _localValue = next;
+    });
 
     if ((next == 0.0 || next == 1.0) &&
-        widget.value > 0.01 &&
-        widget.value < 0.99) {
+        _localValue > 0.01 &&
+        _localValue < 0.99) {
       PixelHaptics.railLimitThud();
-    } else if ((next - _lastHapticStep).abs() >= 0.03) {
+    } else if ((next - _lastHapticStep).abs() >= 0.035) {
       _lastHapticStep = next;
       PixelHaptics.lowTick(intensity: 0.35 + next * 0.55);
     }
     widget.onChanged(next);
   }
 
+  void _onPanEnd(DragEndDetails details) {
+    _isDragging = false;
+    widget.onChanged(_localValue);
+  }
+
+  void _onPanCancel() {
+    _isDragging = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final activeColor = widget.accentColor ?? cs.primary;
-    final pct = (widget.value * 100).round();
+    final pct = (_localValue * 100).round();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: (details) => _updateFromDelta(details.delta.dy),
-      onHorizontalDragUpdate: (details) => _updateFromDelta(-details.delta.dx),
+      onPanStart: _onPanStart,
+      onPanUpdate: _onPanUpdate,
+      onPanEnd: _onPanEnd,
+      onPanCancel: _onPanCancel,
       onDoubleTap: () {
         PixelHaptics.centerDetentSnap();
+        setState(() {
+          _localValue = 0.0;
+          _lastHapticStep = 0.0;
+        });
         widget.onChanged(0.0);
       },
       child: Column(
@@ -68,34 +110,36 @@ class _PowerampRotaryKnobState extends State<PowerampRotaryKnob> {
           SizedBox(
             width: widget.size,
             height: widget.size,
-            child: CustomPaint(
-              painter: _RotaryKnobPainter(
-                value: widget.value,
-                activeColor: activeColor,
-                surfaceColor: cs.surfaceContainerHighest,
-                tickColor: cs.onSurfaceVariant.withValues(alpha: 0.35),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '$pct%',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: cs.onSurface,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _RotaryKnobPainter(
+                  value: _localValue,
+                  activeColor: activeColor,
+                  surfaceColor: cs.surfaceContainerHighest,
+                  tickColor: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$pct%',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurface,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '+${(widget.value * 12.0).toStringAsFixed(1)}dB',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: activeColor,
+                      Text(
+                        '+${(_localValue * 12.0).toStringAsFixed(1)}dB',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: activeColor,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
