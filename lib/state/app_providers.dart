@@ -1735,6 +1735,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   bool _isPlayPending = false;
   ConcatenatingAudioSource? _playlistSource;
   String? _loadedQueueSignature;
+  String? _preloadedTrackId;
+  bool _isPreloadingNext = false;
 
   int _lastSavedPosMs = -1;
   int _lastSavedPosTimestamp = 0;
@@ -1979,9 +1981,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final proc = playerState.processingState;
 
       if (proc == ProcessingState.completed) {
-        if (_isCrossfading && isCurrentActive) {
-          final outgoing = _activePlayer;
-          final incoming = _inactivePlayer;
+        if (_isCrossfading && !isCurrentActive) {
+          final outgoing = _inactivePlayer;
+          final incoming = _activePlayer;
           if (outgoing != null && incoming != null) {
             _completeCrossfade(outgoing, incoming);
           }
@@ -2029,18 +2031,33 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       }
 
-      // True Overlapping Crossfade Trigger
+      // True Overlapping Crossfade Trigger & Pre-buffering
       final crossfadeSec = state.crossfadeSeconds;
       final durationMs = max(
         state.currentTrack.durationMs,
         player.duration?.inMilliseconds ?? 0,
       );
 
-      if (crossfadeSec > 0 && !_isCrossfading && durationMs > 0) {
+      if (crossfadeSec > 0 && durationMs > 0 && !_isCrossfading) {
         final maxFadeMs = (durationMs / 2.5).floor();
         final fadeMs = (crossfadeSec * 1000).clamp(0, maxFadeMs);
-        if (fadeMs >= 1000 && posMs >= (durationMs - fadeMs)) {
-          _triggerCrossfade(fadeMs);
+        if (fadeMs >= 1000) {
+          final nextTrack = _getNextTrackInQueue();
+          if (nextTrack != null && nextTrack.id.isNotEmpty) {
+            // Pre-buffer 8 seconds prior to crossfade threshold into inactive player
+            final preloadThresholdMs = durationMs - fadeMs - 8000;
+            if (posMs >= preloadThresholdMs &&
+                _preloadedTrackId != nextTrack.id &&
+                !_isPreloadingNext) {
+              unawaited(_preloadNextCrossfadeTrack(nextTrack));
+            }
+
+            // Trigger true overlapping crossfade
+            if (posMs >= (durationMs - fadeMs)) {
+              _triggerCrossfade(fadeMs, nextTrack);
+              return;
+            }
+          }
         }
       }
 
@@ -2081,7 +2098,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     player.sequenceStateStream.listen((sequenceState) {
       if (!mounted || sequenceState == null) return;
       final isCurrentActive = _isPlayerAActive == isPlayerA;
-      if (!isCurrentActive) return;
+      if (!isCurrentActive || _isCrossfading) return;
       final currentSource = sequenceState.currentSource;
       final playingTrack = currentSource?.tag as Track?;
 
@@ -2104,10 +2121,31 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     });
   }
 
-  Future<void> _triggerCrossfade(int fadeMs) async {
+  Future<void> _preloadNextCrossfadeTrack(Track nextTrack) async {
+    if (_isPreloadingNext || _isCrossfading || !mounted) return;
+    final inactive = _inactivePlayer;
+    if (inactive == null) return;
+    _isPreloadingNext = true;
+    _preloadedTrackId = nextTrack.id;
+    try {
+      final source = await _createAudioSource(nextTrack);
+      if (!_isCrossfading && _preloadedTrackId == nextTrack.id && mounted) {
+        await inactive.setAudioSource(source);
+        await inactive.setVolume(0.0);
+        await inactive.pause();
+      }
+    } catch (e) {
+      debugPrint('Preload crossfade track error: $e');
+      if (_preloadedTrackId == nextTrack.id) {
+        _preloadedTrackId = null;
+      }
+    } finally {
+      _isPreloadingNext = false;
+    }
+  }
+
+  Future<void> _triggerCrossfade(int fadeMs, Track nextTrack) async {
     if (_isCrossfading || !mounted || !state.isPlaying) return;
-    final nextTrack = _getNextTrackInQueue();
-    if (nextTrack == null || nextTrack.id.isEmpty) return;
 
     final outgoingPlayer = _activePlayer;
     final incomingPlayer = _inactivePlayer;
@@ -2116,8 +2154,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _isCrossfading = true;
 
     try {
-      final source = await _createAudioSource(nextTrack);
-      await incomingPlayer.setAudioSource(source);
+      final wasPreloaded = _preloadedTrackId == nextTrack.id &&
+          incomingPlayer.audioSource != null &&
+          incomingPlayer.playerState.processingState != ProcessingState.idle;
+
+      if (!wasPreloaded) {
+        final source = await _createAudioSource(nextTrack);
+        await incomingPlayer.setAudioSource(source);
+      }
+      _preloadedTrackId = null;
+
       await incomingPlayer.setVolume(0.0);
       if (state.playbackSpeed != 1.0) {
         try {
@@ -2131,8 +2177,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
       await incomingPlayer.play();
 
-      // Immediately synchronize active track in state so that the lock screen,
-      // now playing screen, and notification display the incoming track immediately!
+      // Immediately flip the active player flag so incomingPlayer is now _activePlayer,
+      // and outgoingPlayer is _inactivePlayer!
+      _isPlayerAActive = !_isPlayerAActive;
+
+      // Update state to the new track so that NowPlayingScreen, MiniPlayer,
+      // and Android notification immediately show the new track and progress from 0:00:
       state = state.copyWith(
         currentTrack: nextTrack,
         positionMs: 0,
@@ -2141,8 +2191,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _savePlaybackState();
 
       final startMs = DateTime.now().millisecondsSinceEpoch;
+      double lastVolOut = 1.0;
+      double lastVolIn = 0.0;
       _crossfadeTimer?.cancel();
-      _crossfadeTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      _crossfadeTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
         if (!_isCrossfading || !mounted) {
           timer.cancel();
           return;
@@ -2154,8 +2206,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         final volOut = cos(progress * (pi / 2)).clamp(0.0, 1.0);
         final volIn = sin(progress * (pi / 2)).clamp(0.0, 1.0);
 
-        outgoingPlayer.setVolume(volOut);
-        incomingPlayer.setVolume(volIn);
+        if ((volOut - lastVolOut).abs() >= 0.01) {
+          lastVolOut = volOut;
+          outgoingPlayer.setVolume(volOut);
+        }
+        if ((volIn - lastVolIn).abs() >= 0.01) {
+          lastVolIn = volIn;
+          incomingPlayer.setVolume(volIn);
+        }
 
         if (progress >= 1.0) {
           timer.cancel();
@@ -2168,6 +2226,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _crossfadeTimer?.cancel();
       _crossfadeTimer = null;
       _isCrossfading = false;
+      if (_activePlayer != outgoingPlayer) {
+        _isPlayerAActive = !_isPlayerAActive;
+      }
       await outgoingPlayer.setVolume(1.0);
     }
   }
@@ -2181,7 +2242,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       outgoingPlayer.setVolume(0.0);
       incomingPlayer.setVolume(1.0);
     } catch (_) {}
-    _isPlayerAActive = !_isPlayerAActive;
     _isCrossfading = false;
 
     // Attach hardware DSP effects to the newly active player's session
@@ -2195,6 +2255,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   Track? _getNextTrackInQueue() {
     if (state.queue.isEmpty) return null;
+    if (state.repeatMode == 2) {
+      return state.currentTrack;
+    }
     final currentId = state.currentTrack.id;
     final idx = state.queue.indexWhere((t) => t.id == currentId);
     if (idx != -1 && idx < state.queue.length - 1) {
@@ -2335,6 +2398,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } else {
       _isPlayPending = false;
       _progressTicker?.cancel();
+      if (_isCrossfading) {
+        _crossfadeTimer?.cancel();
+        _crossfadeTimer = null;
+        _isCrossfading = false;
+        try {
+          _inactivePlayer?.stop();
+          _inactivePlayer?.setVolume(0.0);
+          _activePlayer?.setVolume(1.0);
+        } catch (_) {}
+      }
       try {
         await _audioPlayer?.pause();
       } catch (_) {}
@@ -2427,6 +2500,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
 
     final targetTrack = (initialIndex >= 0 && initialIndex < queue.length)
         ? queue[initialIndex]
@@ -2534,6 +2608,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
 
     try {
       await active.setVolume(1.0);
@@ -2582,6 +2657,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             ? state.currentTrack
             : sanitizedTracks.first);
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: sanitizedTracks, currentTrack: current);
     _savePlaybackState();
   }
@@ -2631,6 +2707,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
 
     final catalog = _ref.read(tracksCatalogProvider);
     final freshTrack =
@@ -2704,6 +2781,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _activePlayer?.setVolume(1.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
     final clamped = targetMs.clamp(0, state.currentTrack.durationMs);
     state = state.copyWith(positionMs: clamped);
     _savePlaybackPosition(force: true);
@@ -2726,6 +2804,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
 
     if (_sleepTimerEndAfterTrack) {
       _sleepTimerEndAfterTrack = false;
@@ -2788,6 +2867,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         await _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
     if (state.positionMs > 4000) {
       await seekToMs(0);
       return;
@@ -2812,6 +2892,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     PixelHaptics.tick();
     final newShuffle = !state.isShuffle;
     state = state.copyWith(isShuffle: newShuffle);
+    _preloadedTrackId = null;
     try {
       _playerA?.setShuffleModeEnabled(newShuffle);
       _playerB?.setShuffleModeEnabled(newShuffle);
@@ -2828,6 +2909,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     PixelHaptics.tick();
     final newRepeat = (state.repeatMode + 1) % 3;
     state = state.copyWith(repeatMode: newRepeat);
+    _preloadedTrackId = null;
     final loopMode = newRepeat == 2
         ? LoopMode.one
         : (newRepeat == 1 ? LoopMode.all : LoopMode.off);
@@ -2863,6 +2945,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       ...upNext,
     ];
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
   }
 
@@ -2872,6 +2955,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         .where((t) => t.id != trackId || t.id == state.currentTrack.id)
         .toList();
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
   }
 
@@ -2885,6 +2969,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         : (currentIdx + 1).clamp(0, withoutTrack.length);
     final newQueue = List<Track>.from(withoutTrack)..insert(insertIdx, track);
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
   }
 
@@ -2892,6 +2977,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     PixelHaptics.tick();
     final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: [...withoutTrack, track]);
   }
 
@@ -2908,6 +2994,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         : (currentIdx + 1).clamp(0, withoutTracks.length);
     final newQueue = List<Track>.from(withoutTracks)..insertAll(insertIdx, tracks);
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
   }
 
@@ -2918,6 +3005,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final withoutTracks =
         state.queue.where((t) => !trackIds.contains(t.id)).toList();
     _loadedQueueSignature = null;
+    _preloadedTrackId = null;
     state = state.copyWith(queue: [...withoutTracks, ...tracks]);
   }
 
@@ -3159,6 +3247,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         _inactivePlayer?.setVolume(0.0);
       } catch (_) {}
     }
+    _preloadedTrackId = null;
     state = state.copyWith(crossfadeSeconds: clamped);
     unawaited(() async {
       try {
