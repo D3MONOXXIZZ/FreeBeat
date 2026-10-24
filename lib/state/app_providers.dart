@@ -1940,8 +1940,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       });
 
-      _playerA = AudioPlayer();
-      _playerB = AudioPlayer();
+      _playerA = AudioPlayer(
+        handleInterruptions: false,
+        handleAudioSessionActivation: false,
+      );
+      _playerB = AudioPlayer(
+        handleInterruptions: false,
+        handleAudioSessionActivation: false,
+      );
       await _playerA!.setVolume(1.0);
       await _playerB!.setVolume(0.0);
 
@@ -1981,13 +1987,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final proc = playerState.processingState;
 
       if (proc == ProcessingState.completed) {
-        if (_isCrossfading && !isCurrentActive) {
-          final outgoing = _inactivePlayer;
-          final incoming = _activePlayer;
+        if (_isCrossfading) {
+          // If a player completes during crossfade, conclude crossfade cleanly.
+          // NEVER skipNext() during crossfade!
+          final outgoing = _isPlayerAActive ? _playerB : _playerA;
+          final incoming = _isPlayerAActive ? _playerA : _playerB;
           if (outgoing != null && incoming != null) {
             _completeCrossfade(outgoing, incoming);
           }
-        } else if (isCurrentActive) {
+          return;
+        }
+
+        if (isCurrentActive) {
           if (_playlistSource != null && player.hasNext && state.repeatMode == 0) {
             // Gapless playlist transitioning in ExoPlayer
           } else if (_playlistSource != null && !player.hasNext && state.repeatMode == 0) {
@@ -1999,6 +2010,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           }
         }
       } else if (isCurrentActive &&
+          !_isCrossfading &&
           !_isPlayPending &&
           state.isPlaying != playing &&
           proc != ProcessingState.loading &&
@@ -2054,7 +2066,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
             // Trigger true overlapping crossfade
             if (posMs >= (durationMs - fadeMs)) {
-              _triggerCrossfade(fadeMs, nextTrack);
+              final remainingMs = durationMs - posMs;
+              final effectiveFadeMs =
+                  remainingMs > 1000 ? min(fadeMs, remainingMs) : fadeMs;
+              _triggerCrossfade(effectiveFadeMs, nextTrack);
               return;
             }
           }
@@ -2132,7 +2147,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       if (!_isCrossfading && _preloadedTrackId == nextTrack.id && mounted) {
         await inactive.setAudioSource(source);
         await inactive.setVolume(0.0);
-        await inactive.pause();
       }
     } catch (e) {
       debugPrint('Preload crossfade track error: $e');
@@ -2154,6 +2168,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _isCrossfading = true;
 
     try {
+      if (_isPreloadingNext) {
+        int waited = 0;
+        while (_isPreloadingNext && waited < 1000) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          waited += 50;
+        }
+      }
+
       final wasPreloaded = _preloadedTrackId == nextTrack.id &&
           incomingPlayer.audioSource != null &&
           incomingPlayer.playerState.processingState != ProcessingState.idle;
@@ -2175,7 +2197,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           await incomingPlayer.setPitch(state.pitch);
         } catch (_) {}
       }
-      await incomingPlayer.play();
+
+      // Concurrently start playback of incoming track without blocking
+      unawaited(incomingPlayer.play());
 
       // Immediately flip the active player flag so incomingPlayer is now _activePlayer,
       // and outgoingPlayer is _inactivePlayer!
@@ -2237,12 +2261,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (!_isCrossfading) return;
     _crossfadeTimer?.cancel();
     _crossfadeTimer = null;
+    _isCrossfading = false;
     try {
       outgoingPlayer.stop();
       outgoingPlayer.setVolume(0.0);
       incomingPlayer.setVolume(1.0);
     } catch (_) {}
-    _isCrossfading = false;
 
     // Attach hardware DSP effects to the newly active player's session
     final sessionId = _activePlayer?.androidAudioSessionId;
@@ -2453,6 +2477,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         !track.streamUrl.startsWith('content://')) {
       if (File(track.streamUrl).existsSync()) {
         return AudioSource.file(track.streamUrl, tag: track);
+      } else {
+        return AudioSource.uri(Uri.file(track.streamUrl), tag: track);
       }
     }
 
@@ -2464,6 +2490,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     // 4. Remote cloud stream through loopback proxy (127.0.0.1)
     final proxy = _ref.read(cloudStreamProxyProvider);
     final quality = _ref.read(audioQualityProvider).effectiveStreamingTier;
+    proxy.registerTrack(track);
     final playbackUrl = proxy.buildPlaybackUrl(track, quality);
 
     if (playbackUrl.startsWith('http://127.0.0.1')) {
@@ -3237,15 +3264,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   void setCrossfadeSeconds(int seconds) {
     PixelHaptics.tick();
     final clamped = seconds.clamp(0, 12);
-    if (_isCrossfading && clamped == 0) {
-      _crossfadeTimer?.cancel();
-      _crossfadeTimer = null;
-      _isCrossfading = false;
-      try {
-        _activePlayer?.setVolume(1.0);
-        _inactivePlayer?.stop();
-        _inactivePlayer?.setVolume(0.0);
-      } catch (_) {}
+    if (clamped == 0) {
+      if (_isCrossfading) {
+        _crossfadeTimer?.cancel();
+        _crossfadeTimer = null;
+        _isCrossfading = false;
+        try {
+          _activePlayer?.setVolume(1.0);
+          _inactivePlayer?.stop();
+          _inactivePlayer?.setVolume(0.0);
+        } catch (_) {}
+      }
+    } else {
+      _playlistSource = null;
+      _loadedQueueSignature = null;
     }
     _preloadedTrackId = null;
     state = state.copyWith(crossfadeSeconds: clamped);

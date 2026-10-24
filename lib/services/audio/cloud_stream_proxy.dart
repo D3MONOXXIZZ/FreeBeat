@@ -47,6 +47,13 @@ class CloudStreamProxy {
     _activeTier = activeTier;
   }
 
+  void registerTrack(Track track, {CloudAccount? account}) {
+    _registeredTracks[track.id] = track;
+    if (account != null) {
+      _registeredAccounts[account.id] = account;
+    }
+  }
+
   Future<void> start() async {
     if (_server != null) return;
     try {
