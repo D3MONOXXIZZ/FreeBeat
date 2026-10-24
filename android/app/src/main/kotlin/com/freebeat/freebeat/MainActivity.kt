@@ -9,6 +9,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.DynamicsProcessing
+import android.media.audiofx.EnvironmentalReverb
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
@@ -55,6 +56,9 @@ class MainActivity : FlutterActivity() {
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var presetReverb: PresetReverb? = null
+    private var environmentalReverb: EnvironmentalReverb? = null
+    private var currentReverbEffectId: Int = 0
+    private var currentReverbSendLevel: Float = 0f
 
     private var dspEngineMode: String = "DynamicsProcessing 64-bit Hardware"
     private var isBluetoothOutputActive: Boolean = false
@@ -621,6 +625,51 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun applyReverbAuxEffectToExoPlayer(effectId: Int, sendLevel: Float) {
+        try {
+            val engine = flutterEngine ?: return
+            val pluginClass = Class.forName("com.ryanheise.just_audio.JustAudioPlugin")
+            @Suppress("UNCHECKED_CAST")
+            val plugin = engine.plugins.get(pluginClass as Class<out io.flutter.embedding.engine.plugins.FlutterPlugin>) ?: return
+            val handlerField = plugin.javaClass.getDeclaredField("methodCallHandler").apply { isAccessible = true }
+            val handler = handlerField.get(plugin) ?: return
+            val playersField = handler.javaClass.getDeclaredField("players").apply { isAccessible = true }
+            val playersMap = playersField.get(handler) as? Map<*, *> ?: return
+
+            val auxClass = try {
+                Class.forName("androidx.media3.common.AuxEffectInfo")
+            } catch (_: Throwable) {
+                try {
+                    Class.forName("com.google.android.exoplayer2.audio.AuxEffectInfo")
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+
+            for (audioPlayer in playersMap.values) {
+                if (audioPlayer == null) continue
+                try {
+                    val playerField = audioPlayer.javaClass.getDeclaredField("player").apply { isAccessible = true }
+                    val exoPlayer = playerField.get(audioPlayer) ?: continue
+
+                    if (effectId > 0 && sendLevel > 0.001f && auxClass != null) {
+                        val auxConstructor = auxClass.getConstructor(Int::class.javaPrimitiveType, Float::class.javaPrimitiveType)
+                        val auxInstance = auxConstructor.newInstance(effectId, sendLevel.coerceIn(0f, 1f))
+                        val setAuxMethod = exoPlayer.javaClass.getMethod("setAuxEffectInfo", auxClass)
+                        setAuxMethod.invoke(exoPlayer, auxInstance)
+                    } else {
+                        val clearAuxMethod = exoPlayer.javaClass.getMethod("clearAuxEffectInfo")
+                        clearAuxMethod.invoke(exoPlayer)
+                    }
+                } catch (e: Throwable) {
+                    android.util.Log.w("MainActivity", "Failed applying aux effect to player instance: ${e.message}")
+                }
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("MainActivity", "Failed applying reverb aux effect: ${e.message}")
+        }
+    }
+
     private fun attachAudioSession(sessionId: Int) {
         if (sessionId <= 0 || sessionId == currentSessionId) return
         releaseEffects()
@@ -676,6 +725,9 @@ class MainActivity : FlutterActivity() {
         } else {
             initFallbackEqualizer(sessionId)
         }
+        if (currentReverbEffectId > 0 && currentReverbSendLevel > 0.001f) {
+            applyReverbAuxEffectToExoPlayer(currentReverbEffectId, currentReverbSendLevel)
+        }
     }
 
     private fun initFallbackEqualizer(sessionId: Int) {
@@ -712,6 +764,7 @@ class MainActivity : FlutterActivity() {
         val balance = (args["balance"] as? Number)?.toFloat() ?: 0f
         val monoMix = args["monoMix"] as? Boolean ?: false
         val reverbPresetId = (args["reverbPresetId"] as? Number)?.toInt() ?: 0
+        val reverbMix = (args["reverbMix"] as? Number)?.toFloat() ?: 0.50f
         val bandGainsRaw = args["bandGainsDb"] as? List<*>
         val bandFreqsRaw = args["bandFreqsHz"] as? List<*>
 
@@ -730,6 +783,10 @@ class MainActivity : FlutterActivity() {
             try { virtualizer?.enabled = false } catch (_: Throwable) {}
             try { bassBoost?.enabled = false } catch (_: Throwable) {}
             try { presetReverb?.enabled = false } catch (_: Throwable) {}
+            try { environmentalReverb?.enabled = false } catch (_: Throwable) {}
+            currentReverbEffectId = 0
+            currentReverbSendLevel = 0f
+            applyReverbAuxEffectToExoPlayer(0, 0f)
             return
         }
 
@@ -853,18 +910,63 @@ class MainActivity : FlutterActivity() {
                 bassBoost?.enabled = false
             }
 
-            if (reverbPresetId > 0) {
-                if (presetReverb == null && currentSessionId > 0) {
-                    try { presetReverb = PresetReverb(1000, currentSessionId) } catch (_: Throwable) {}
+            if (reverbPresetId > 0 && reverbMix > 0.001f) {
+                if (presetReverb == null && environmentalReverb == null) {
+                    try {
+                        presetReverb = PresetReverb(1000, 0)
+                    } catch (e1: Throwable) {
+                        if (currentSessionId > 0) {
+                            try {
+                                presetReverb = PresetReverb(1000, currentSessionId)
+                            } catch (e2: Throwable) {
+                                try {
+                                    environmentalReverb = EnvironmentalReverb(1000, 0)
+                                } catch (_: Throwable) {
+                                    try {
+                                        environmentalReverb = EnvironmentalReverb(1000, currentSessionId)
+                                    } catch (_: Throwable) {}
+                                }
+                            }
+                        }
+                    }
                 }
+
+                var activeEffectId = 0
                 presetReverb?.let { pr ->
                     try {
                         pr.preset = reverbPresetId.toShort()
                         pr.enabled = true
+                        activeEffectId = pr.id
                     } catch (_: Throwable) {}
                 }
+
+                if (activeEffectId == 0) {
+                    environmentalReverb?.let { er ->
+                        try {
+                            er.enabled = true
+                            when (reverbPresetId) {
+                                1 -> { er.roomLevel = -1200; er.decayTime = 600 } // Small Room
+                                2 -> { er.roomLevel = -900; er.decayTime = 1200 } // Medium Room
+                                3 -> { er.roomLevel = -600; er.decayTime = 2200 } // Large Room
+                                4 -> { er.roomLevel = -500; er.decayTime = 3200 } // Medium Hall
+                                5 -> { er.roomLevel = -300; er.decayTime = 4800 } // Large Hall
+                                6 -> { er.roomLevel = -200; er.decayTime = 3800; er.diffusion = 1000 } // Studio Plate
+                                else -> { er.roomLevel = -800; er.decayTime = 1500 }
+                            }
+                            activeEffectId = er.id
+                        } catch (_: Throwable) {}
+                    }
+                }
+
+                currentReverbEffectId = activeEffectId
+                currentReverbSendLevel = reverbMix
+                applyReverbAuxEffectToExoPlayer(activeEffectId, reverbMix)
             } else {
-                presetReverb?.enabled = false
+                try { presetReverb?.enabled = false } catch (_: Throwable) {}
+                try { environmentalReverb?.enabled = false } catch (_: Throwable) {}
+                currentReverbEffectId = 0
+                currentReverbSendLevel = 0f
+                applyReverbAuxEffectToExoPlayer(0, 0f)
             }
         } catch (_: Throwable) {}
     }
@@ -1537,12 +1639,17 @@ class MainActivity : FlutterActivity() {
         try { virtualizer?.release() } catch (_: Throwable) {}
         try { bassBoost?.release() } catch (_: Throwable) {}
         try { presetReverb?.release() } catch (_: Throwable) {}
+        try { environmentalReverb?.release() } catch (_: Throwable) {}
         dynamicsProcessing = null
         legacyEqualizer = null
         loudnessEnhancer = null
         virtualizer = null
         bassBoost = null
         presetReverb = null
+        environmentalReverb = null
+        currentReverbEffectId = 0
+        currentReverbSendLevel = 0f
+        applyReverbAuxEffectToExoPlayer(0, 0f)
     }
 
     private fun requestNotificationPermissionIfNeeded() {

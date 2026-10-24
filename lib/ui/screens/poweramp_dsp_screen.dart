@@ -1410,12 +1410,45 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                 },
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Acoustic Room Reverb',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.meeting_room_rounded,
+                        size: 18,
+                        color: dsp.reverbPreset != ReverbPresetType.none
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Acoustic Room Reverb',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (dsp.reverbPreset != ReverbPresetType.none)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: cs.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        dsp.reverbPreset.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 10),
               Wrap(
@@ -1429,6 +1462,48 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                   );
                 }).toList(),
               ),
+              if (dsp.reverbPreset != ReverbPresetType.none) ...[
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Reverb Wet Mix (${(dsp.reverbMix * 100).round()}%)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    if ((dsp.reverbMix - 0.50).abs() > 0.04)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () {
+                          PixelHaptics.centerDetentSnap();
+                          notifier.setReverbMix(0.50);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          child: Text(
+                            'Reset (50%)',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                Slider(
+                  value: dsp.reverbMix.clamp(0.0, 1.0),
+                  min: 0.0,
+                  max: 1.0,
+                  divisions: 20,
+                  onChanged: notifier.setReverbMix,
+                ),
+              ],
               const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,

@@ -1306,8 +1306,13 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     PixelHaptics.tick();
     state = state.copyWith(
       reverbPreset: preset,
-      reverbMix: preset == ReverbPresetType.none ? 0.0 : 0.35,
+      reverbMix: preset == ReverbPresetType.none ? 0.0 : (state.reverbMix > 0.05 ? state.reverbMix : 0.50),
     );
+    _syncToHardware(immediate: true);
+  }
+
+  void setReverbMix(double mix) {
+    state = state.copyWith(reverbMix: mix.clamp(0.0, 1.0));
     _syncToHardware();
   }
 

@@ -75,6 +75,29 @@ void main() {
       expect(initial.evaluateResponseAtFrequency(1000.0), closeTo(0.0, 0.01));
     });
 
+    test('Acoustic Room Reverb and send level updates state and triggers immediate hardware sync', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(powerampDspProvider.notifier);
+      expect(container.read(powerampDspProvider).reverbPreset, ReverbPresetType.none);
+      expect(container.read(powerampDspProvider).reverbMix, 0.0);
+
+      // Select Large Hall
+      notifier.setReverbPreset(ReverbPresetType.largeHall);
+      expect(container.read(powerampDspProvider).reverbPreset, ReverbPresetType.largeHall);
+      expect(container.read(powerampDspProvider).reverbMix, 0.50);
+
+      // Adjust wet mix
+      notifier.setReverbMix(0.75);
+      expect(container.read(powerampDspProvider).reverbMix, 0.75);
+
+      // Turn off reverb
+      notifier.setReverbPreset(ReverbPresetType.none);
+      expect(container.read(powerampDspProvider).reverbPreset, ReverbPresetType.none);
+      expect(container.read(powerampDspProvider).reverbMix, 0.0);
+    });
+
     testWidgets('PowerampDspScreen renders with Flat preset label and Material You visualizer', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
