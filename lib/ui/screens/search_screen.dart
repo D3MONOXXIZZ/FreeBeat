@@ -658,152 +658,182 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: cs.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Row(
-                children: [
-                  MaterialYouAlbumCover(
-                    track: track,
-                    size: 48,
-                    borderRadius: 12,
-                    showQualityBadge: false,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          track.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
+      builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
+        return SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: screenHeight * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        Text(
-                          track.artist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          MaterialYouAlbumCover(
+                            track: track,
+                            size: 48,
+                            borderRadius: 12,
+                            showQualityBadge: false,
                           ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.playlist_add_rounded),
+                          title: const Text('Add to Playlist',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            showAddToPlaylistModal(context, track);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.edit_note_rounded),
+                          title: const Text('Edit Metadata & Artwork',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text(
+                              'Title, artist, album, genre, year & cover art'),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            showTrackMetadataEditorModal(context, track);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            track.isPinnedOffline
+                                ? Icons.download_done_rounded
+                                : Icons.download_for_offline_outlined,
+                            color: track.isPinnedOffline ? cs.primary : null,
+                          ),
+                          title: Text(
+                            track.isPinnedOffline
+                                ? 'Remove Offline Download'
+                                : 'Download Offline',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: track.isPinnedOffline ? cs.primary : null,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .togglePinOffline(track.id);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.person_rounded),
+                          title: Text('View Artist (${track.artist})',
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ArtistDetailsScreen(
+                                    artistName: track.artist),
+                              ),
+                            );
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.info_outline_rounded),
+                          title: const Text('Audio Track Details',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    TrackDetailsScreen(track: track),
+                              ),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(Icons.delete_outline_rounded,
+                              color: cs.error),
+                          title: Text(
+                            'Remove from Library',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: cs.error,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            showRemoveTrackConfirmationDialog(
+                                context, ref, track);
+                          },
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const Icon(Icons.playlist_add_rounded),
-                title: const Text('Add to Playlist',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  showAddToPlaylistModal(context, track);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_note_rounded),
-                title: const Text('Edit Metadata & Artwork',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Title, artist, album, genre, year & cover art'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  showTrackMetadataEditorModal(context, track);
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  track.isPinnedOffline
-                      ? Icons.download_done_rounded
-                      : Icons.download_for_offline_outlined,
-                  color: track.isPinnedOffline ? cs.primary : null,
                 ),
-                title: Text(
-                  track.isPinnedOffline
-                      ? 'Remove Offline Download'
-                      : 'Download Offline',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: track.isPinnedOffline ? cs.primary : null,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ref
-                      .read(tracksCatalogProvider.notifier)
-                      .togglePinOffline(track.id);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.person_rounded),
-                title: Text('View Artist (${track.artist})',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ArtistDetailsScreen(artistName: track.artist),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.info_outline_rounded),
-                title: const Text('Audio Track Details',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TrackDetailsScreen(track: track),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: Icon(Icons.delete_outline_rounded, color: cs.error),
-                title: Text(
-                  'Remove from Library',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: cs.error,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  showRemoveTrackConfirmationDialog(context, ref, track);
-                },
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

@@ -621,270 +621,294 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: cs.surfaceContainerLow,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: screenHeight * 0.85,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.tune_rounded,
+                              color: cs.onPrimaryContainer,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Playback Options',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.tune_rounded,
-                        color: cs.onPrimaryContainer,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Playback Options',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: Icon(
-                    playback.isSleepTimerActive
-                        ? Icons.bedtime_rounded
-                        : Icons.bedtime_outlined,
-                    color: playback.isSleepTimerActive ? cs.primary : null,
-                  ),
-                  title: const Text('Sleep Timer',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                    playback.isSleepTimerActive
-                        ? 'Remaining: ${playback.formattedSleepTimerRemaining}'
-                        : 'Turn off playback automatically',
-                  ),
-                  trailing: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: playback.isSleepTimerActive
-                          ? cs.primaryContainer
-                          : cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Text(
-                      playback.isSleepTimerActive
-                          ? playback.formattedSleepTimerRemaining
-                          : 'Off',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: playback.isSleepTimerActive
-                            ? cs.onPrimaryContainer
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showSleepTimerModal(context);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.speed_rounded,
-                    color: (playback.playbackSpeed != 1.0 ||
-                            playback.pitch != 1.0)
-                        ? cs.primary
-                        : null,
-                  ),
-                  title: const Text('Playback Speed & Pitch',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Fine-grained tempo & pitch shifting'),
-                  trailing: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: (playback.playbackSpeed != 1.0 ||
-                              playback.pitch != 1.0)
-                          ? cs.primaryContainer
-                          : cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Text(
-                      '${playback.playbackSpeed.toStringAsFixed(playback.playbackSpeed % 1 == 0 ? 0 : 2)}x',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: (playback.playbackSpeed != 1.0 ||
-                                playback.pitch != 1.0)
-                            ? cs.onPrimaryContainer
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showPlaybackSpeedModal(context);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    playback.isLoopActive
-                        ? Icons.repeat_on_rounded
-                        : Icons.all_inclusive_rounded,
-                    color: playback.isLoopActive ? cs.primary : null,
-                  ),
-                  title: const Text('A-B Repeat Loop',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Loop a specific section seamlessly'),
-                  trailing: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: playback.isLoopActive
-                          ? cs.primaryContainer
-                          : cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Text(
-                      playback.isLoopActive ? 'Active' : 'Off',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: playback.isLoopActive
-                            ? cs.onPrimaryContainer
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showABLoopModal(context);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.graphic_eq_rounded),
-                  title: const Text('Audio Signal Path & Specs',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                      '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => const SignalPathSheet(),
-                    );
-                  },
-                ),
-                if (track.id.isNotEmpty) ...[
-                  ListTile(
-                    leading: Icon(
-                      track.isPinnedOffline
-                          ? Icons.check_circle_rounded
-                          : Icons.download_for_offline_rounded,
-                      color: track.isPinnedOffline ? cs.primary : null,
-                    ),
-                    title: Text(
-                      track.isPinnedOffline
-                          ? 'Downloaded to Device'
-                          : 'Download Track',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      track.isPinnedOffline
-                          ? 'Available offline • Tap to remove'
-                          : 'Save locally for offline high-fidelity playback',
-                    ),
-                    trailing: track.isPinnedOffline
-                        ? Container(
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: Icon(
+                            playback.isSleepTimerActive
+                                ? Icons.bedtime_rounded
+                                : Icons.bedtime_outlined,
+                            color: playback.isSleepTimerActive ? cs.primary : null,
+                          ),
+                          title: const Text('Sleep Timer',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(
+                            playback.isSleepTimerActive
+                                ? 'Remaining: ${playback.formattedSleepTimerRemaining}'
+                                : 'Turn off playback automatically',
+                          ),
+                          trailing: Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: cs.primaryContainer,
+                              color: playback.isSleepTimerActive
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(100),
                             ),
                             child: Text(
-                              'Saved',
+                              playback.isSleepTimerActive
+                                  ? playback.formattedSleepTimerRemaining
+                                  : 'Off',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: cs.onPrimaryContainer,
+                                color: playback.isSleepTimerActive
+                                    ? cs.onPrimaryContainer
+                                    : cs.onSurfaceVariant,
                               ),
                             ),
-                          )
-                        : null,
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref
-                          .read(tracksCatalogProvider.notifier)
-                          .togglePinOffline(track.id);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.playlist_add_rounded),
-                    title: const Text('Add to Playlist',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Save to a custom or new playlist'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showAddToPlaylistModal(context, track);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.edit_note_rounded),
-                    title: const Text('Edit Metadata & Artwork',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Title, artist, album, genre, year & cover art'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showTrackMetadataEditorModal(context, track);
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading:
-                        Icon(Icons.delete_outline_rounded, color: cs.error),
-                    title: Text(
-                      'Remove from Library',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: cs.error,
-                      ),
+                          ),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showSleepTimerModal(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            Icons.speed_rounded,
+                            color: (playback.playbackSpeed != 1.0 ||
+                                    playback.pitch != 1.0)
+                                ? cs.primary
+                                : null,
+                          ),
+                          title: const Text('Playback Speed & Pitch',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: const Text('Fine-grained tempo & pitch shifting'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: (playback.playbackSpeed != 1.0 ||
+                                      playback.pitch != 1.0)
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              '${playback.playbackSpeed.toStringAsFixed(playback.playbackSpeed % 1 == 0 ? 0 : 2)}x',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: (playback.playbackSpeed != 1.0 ||
+                                        playback.pitch != 1.0)
+                                    ? cs.onPrimaryContainer
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showPlaybackSpeedModal(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            playback.isLoopActive
+                                ? Icons.repeat_on_rounded
+                                : Icons.all_inclusive_rounded,
+                            color: playback.isLoopActive ? cs.primary : null,
+                          ),
+                          title: const Text('A-B Repeat Loop',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: const Text('Loop a specific section seamlessly'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: playback.isLoopActive
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              playback.isLoopActive ? 'Active' : 'Off',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: playback.isLoopActive
+                                    ? cs.onPrimaryContainer
+                                    : cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showABLoopModal(context);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.graphic_eq_rounded),
+                          title: const Text('Audio Signal Path & Specs',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(
+                              '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showModalBottomSheet<void>(
+                              context: context,
+                              isScrollControlled: true,
+                              builder: (_) => const SignalPathSheet(),
+                            );
+                          },
+                        ),
+                        if (track.id.isNotEmpty) ...[
+                          ListTile(
+                            leading: Icon(
+                              track.isPinnedOffline
+                                  ? Icons.check_circle_rounded
+                                  : Icons.download_for_offline_rounded,
+                              color: track.isPinnedOffline ? cs.primary : null,
+                            ),
+                            title: Text(
+                              track.isPinnedOffline
+                                  ? 'Downloaded to Device'
+                                  : 'Download Track',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: Text(
+                              track.isPinnedOffline
+                                  ? 'Available offline • Tap to remove'
+                                  : 'Save locally for offline high-fidelity playback',
+                            ),
+                            trailing: track.isPinnedOffline
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: cs.primaryContainer,
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: Text(
+                                      'Saved',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: cs.onPrimaryContainer,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              ref
+                                  .read(tracksCatalogProvider.notifier)
+                                  .togglePinOffline(track.id);
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.playlist_add_rounded),
+                            title: const Text('Add to Playlist',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: const Text('Save to a custom or new playlist'),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              showAddToPlaylistModal(context, track);
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.edit_note_rounded),
+                            title: const Text('Edit Metadata & Artwork',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: const Text(
+                                'Title, artist, album, genre, year & cover art'),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              showTrackMetadataEditorModal(context, track);
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading:
+                                Icon(Icons.delete_outline_rounded, color: cs.error),
+                            title: Text(
+                              'Remove from Library',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: cs.error,
+                              ),
+                            ),
+                            subtitle:
+                                const Text('Remove this track from your collection'),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              showRemoveTrackConfirmationDialog(
+                                context,
+                                ref,
+                                track,
+                                onRemoved: () {
+                                  Navigator.of(context).maybePop();
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ],
                     ),
-                    subtitle:
-                        const Text('Remove this track from your collection'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showRemoveTrackConfirmationDialog(
-                        context,
-                        ref,
-                        track,
-                        onRemoved: () {
-                          Navigator.of(context).maybePop();
-                        },
-                      );
-                    },
                   ),
-                ],
+                ),
               ],
             ),
           ),

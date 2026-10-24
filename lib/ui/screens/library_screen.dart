@@ -404,6 +404,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
         return Material(
           color: cs.surfaceContainerLowest,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -419,200 +420,219 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             child: SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: screenHeight * 0.85,
+                ),
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        MaterialYouAlbumCover(
-                          track: track,
-                          size: 52,
-                          borderRadius: 14,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                track.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                track.artist,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.checklist_rounded),
-                    title: const Text('Select Track',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Enter multi-selection mode'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      _enterMultiSelect(track.id);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.playlist_play_rounded),
-                    title: const Text('Play Next',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle:
-                        const Text('Insert immediately after current track'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref.read(playbackProvider.notifier).playNext(track);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Playing next: ${track.title}'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.queue_music_rounded),
-                    title: const Text('Add to Queue',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Append to the end of Up Next queue'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref.read(playbackProvider.notifier).addToQueue(track);
-                      PixelHaptics.hifiConfirm();
-                      SwipeToQueueWrapper.showQueuedSnackBar(
-                        context,
-                        track.title,
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.playlist_add_rounded),
-                    title: const Text('Add to Playlist',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Save to custom or new playlist'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showAddToPlaylistModal(context, track);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.edit_note_rounded),
-                    title: const Text('Edit Metadata & Artwork',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: const Text('Title, artist, album, genre, year & cover art'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showTrackMetadataEditorModal(context, track);
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: const Text('View Track Details',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                        '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => TrackDetailsScreen(track: track),
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.person_rounded),
-                    title: Text('View Artist: ${track.artist}',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ArtistDetailsScreen(artistName: track.artist),
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(
-                      track.isPinnedOffline
-                          ? Icons.download_done_rounded
-                          : Icons.download_rounded,
-                    ),
-                    title: Text(
-                      track.isPinnedOffline
-                          ? 'Cached Offline (Tap to Remove)'
-                          : 'Download / Cache Offline',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref
-                          .read(tracksCatalogProvider.notifier)
-                          .togglePinOffline(track.id);
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading:
-                        Icon(Icons.delete_outline_rounded, color: cs.error),
-                    title: Text(
-                      'Remove from Library',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: cs.error,
+                          const SizedBox(height: 16),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              children: [
+                                MaterialYouAlbumCover(
+                                  track: track,
+                                  size: 52,
+                                  borderRadius: 14,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        track.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        track.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    subtitle: const Text(
-                      'Remove from library, offline cache, and playlists',
+                    const Divider(height: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.checklist_rounded),
+                              title: const Text('Select Track',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: const Text('Enter multi-selection mode'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                _enterMultiSelect(track.id);
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.playlist_play_rounded),
+                              title: const Text('Play Next',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle:
+                                  const Text('Insert immediately after current track'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                ref.read(playbackProvider.notifier).playNext(track);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Playing next: ${track.title}'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.queue_music_rounded),
+                              title: const Text('Add to Queue',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: const Text('Append to the end of Up Next queue'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                ref.read(playbackProvider.notifier).addToQueue(track);
+                                PixelHaptics.hifiConfirm();
+                                SwipeToQueueWrapper.showQueuedSnackBar(
+                                  context,
+                                  track.title,
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.playlist_add_rounded),
+                              title: const Text('Add to Playlist',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: const Text('Save to custom or new playlist'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                showAddToPlaylistModal(context, track);
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.edit_note_rounded),
+                              title: const Text('Edit Metadata & Artwork',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: const Text('Title, artist, album, genre, year & cover art'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                showTrackMetadataEditorModal(context, track);
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.info_outline_rounded),
+                              title: const Text('View Track Details',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text(
+                                  '${track.codec} • ${track.bitDepth}-Bit • ${track.formattedSampleRate}'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TrackDetailsScreen(track: track),
+                                  ),
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.person_rounded),
+                              title: Text('View Artist: ${track.artist}',
+                                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ArtistDetailsScreen(artistName: track.artist),
+                                  ),
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: Icon(
+                                track.isPinnedOffline
+                                    ? Icons.download_done_rounded
+                                    : Icons.download_rounded,
+                              ),
+                              title: Text(
+                                track.isPinnedOffline
+                                    ? 'Cached Offline (Tap to Remove)'
+                                    : 'Download / Cache Offline',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                ref
+                                    .read(tracksCatalogProvider.notifier)
+                                    .togglePinOffline(track.id);
+                              },
+                            ),
+                            const Divider(height: 1),
+                            ListTile(
+                              leading:
+                                  Icon(Icons.delete_outline_rounded, color: cs.error),
+                              title: Text(
+                                'Remove from Library',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.error,
+                                ),
+                              ),
+                              subtitle: const Text(
+                                'Remove from library, offline cache, and playlists',
+                              ),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                showRemoveTrackConfirmationDialog(context, ref, track);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showRemoveTrackConfirmationDialog(context, ref, track);
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
 }
 
   void _showBatchTrackOptions(List<Track> tracks) {
@@ -639,6 +659,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
         return Material(
           color: cs.surfaceContainerLowest,
           borderRadius:
@@ -655,251 +676,268 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             child: SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: screenHeight * 0.85,
+                ),
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: cs.primaryContainer,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.queue_music_rounded,
-                                color: cs.onPrimaryContainer,
-                                size: 28,
-                              ),
-                              Positioned(
-                                right: 4,
-                                bottom: 4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: cs.primary,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '${tracks.length}',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      color: cs.onPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${tracks.length} Selected ${tracks.length == 1 ? "Track" : "Tracks"}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$formattedDuration • $artistCount ${artistCount == 1 ? "artist" : "artists"}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.playlist_play_rounded),
-                    title: const Text('Play Next',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                        'Insert ${tracks.length} tracks immediately after current track'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref
-                          .read(playbackProvider.notifier)
-                          .playNextMultiple(tracks);
-                      _exitMultiSelect();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Playing next: ${tracks.length} tracks',
-                          ),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.queue_music_rounded),
-                    title: const Text('Add to Queue',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                        'Append ${tracks.length} tracks to Up Next queue'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref
-                          .read(playbackProvider.notifier)
-                          .addToQueueMultiple(tracks);
-                      _exitMultiSelect();
-                      PixelHaptics.hifiConfirm();
-                      SwipeToQueueWrapper.showQueuedSnackBar(
-                        context,
-                        '${tracks.length} tracks',
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.playlist_add_rounded),
-                    title: const Text('Add to Playlist',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                        'Save ${tracks.length} tracks to custom or new playlist'),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showAddToPlaylistModal(context, null, tracks);
-                      _exitMultiSelect();
-                    },
-                  ),
-                  if (tracks.length == 1) ...[
-                    ListTile(
-                      leading: const Icon(Icons.info_outline_rounded),
-                      title: const Text('View Track Details',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(
-                          '${tracks.first.codec} • ${tracks.first.bitDepth}-Bit • ${tracks.first.formattedSampleRate}'),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                TrackDetailsScreen(track: tracks.first),
-                          ),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.person_rounded),
-                      title: Text('View Artist: ${tracks.first.artist}',
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ArtistDetailsScreen(
-                              artistName: tracks.first.artist,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                  ListTile(
-                    leading: Icon(
-                      allPinned
-                          ? Icons.download_done_rounded
-                          : Icons.download_rounded,
-                    ),
-                    title: Text(
-                      allPinned
-                          ? 'Remove from Offline Cache (${tracks.length} tracks)'
-                          : 'Download / Cache Offline ($unpinnedCount new)',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      allPinned
-                          ? 'Delete local cached files to free device space'
-                          : 'Download and pin for offline lossless playback',
-                    ),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      if (allPinned) {
-                        ref
-                            .read(tracksCatalogProvider.notifier)
-                            .unpinTracksOffline(
-                              tracks.map((t) => t.id).toList(),
-                            );
-                      } else {
-                        ref
-                            .read(tracksCatalogProvider.notifier)
-                            .pinTracksOffline(
-                              tracks.map((t) => t.id).toList(),
-                            );
-                      }
-                      _exitMultiSelect();
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading:
-                        Icon(Icons.delete_outline_rounded, color: cs.error),
-                    title: Text(
-                      'Remove from Library',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: cs.error,
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.queue_music_rounded,
+                                      color: cs.onPrimaryContainer,
+                                      size: 28,
+                                    ),
+                                    Positioned(
+                                      right: 4,
+                                      bottom: 4,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 5,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: cs.primary,
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '${tracks.length}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            color: cs.onPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${tracks.length} Selected ${tracks.length == 1 ? "Track" : "Tracks"}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '$formattedDuration • $artistCount ${artistCount == 1 ? "artist" : "artists"}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    subtitle: Text(
-                      'Remove ${tracks.length} tracks from library, offline cache, and playlists',
+                    const Divider(height: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.playlist_play_rounded),
+                              title: const Text('Play Next',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text(
+                                  'Insert ${tracks.length} tracks immediately after current track'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                ref
+                                    .read(playbackProvider.notifier)
+                                    .playNextMultiple(tracks);
+                                _exitMultiSelect();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Playing next: ${tracks.length} tracks',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.queue_music_rounded),
+                              title: const Text('Add to Queue',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text(
+                                  'Append ${tracks.length} tracks to Up Next queue'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                ref
+                                    .read(playbackProvider.notifier)
+                                    .addToQueueMultiple(tracks);
+                                _exitMultiSelect();
+                                PixelHaptics.hifiConfirm();
+                                SwipeToQueueWrapper.showQueuedSnackBar(
+                                  context,
+                                  '${tracks.length} tracks',
+                                );
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.playlist_add_rounded),
+                              title: const Text('Add to Playlist',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text(
+                                  'Save ${tracks.length} tracks to custom or new playlist'),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                showAddToPlaylistModal(context, null, tracks);
+                                _exitMultiSelect();
+                              },
+                            ),
+                            if (tracks.length == 1) ...[
+                              ListTile(
+                                leading: const Icon(Icons.info_outline_rounded),
+                                title: const Text('View Track Details',
+                                    style: TextStyle(fontWeight: FontWeight.w700)),
+                                subtitle: Text(
+                                    '${tracks.first.codec} • ${tracks.first.bitDepth}-Bit • ${tracks.first.formattedSampleRate}'),
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          TrackDetailsScreen(track: tracks.first),
+                                    ),
+                                  );
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.person_rounded),
+                                title: Text('View Artist: ${tracks.first.artist}',
+                                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ArtistDetailsScreen(
+                                        artistName: tracks.first.artist,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            ListTile(
+                              leading: Icon(
+                                allPinned
+                                    ? Icons.download_done_rounded
+                                    : Icons.download_rounded,
+                              ),
+                              title: Text(
+                                allPinned
+                                    ? 'Remove from Offline Cache (${tracks.length} tracks)'
+                                    : 'Download / Cache Offline ($unpinnedCount new)',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                allPinned
+                                    ? 'Delete local cached files to free device space'
+                                    : 'Download and pin for offline lossless playback',
+                              ),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                if (allPinned) {
+                                  ref
+                                      .read(tracksCatalogProvider.notifier)
+                                      .unpinTracksOffline(
+                                        tracks.map((t) => t.id).toList(),
+                                      );
+                                } else {
+                                  ref
+                                      .read(tracksCatalogProvider.notifier)
+                                      .pinTracksOffline(
+                                        tracks.map((t) => t.id).toList(),
+                                      );
+                                }
+                                _exitMultiSelect();
+                              },
+                            ),
+                            const Divider(height: 1),
+                            ListTile(
+                              leading:
+                                  Icon(Icons.delete_outline_rounded, color: cs.error),
+                              title: Text(
+                                'Remove from Library',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.error,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Remove ${tracks.length} tracks from library, offline cache, and playlists',
+                              ),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                showRemoveTracksConfirmationDialog(
+                                  context,
+                                  ref,
+                                  tracks,
+                                  onRemoved: _exitMultiSelect,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      showRemoveTracksConfirmationDialog(
-                        context,
-                        ref,
-                        tracks,
-                        onRemoved: _exitMultiSelect,
-                      );
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
 }
 
   @override

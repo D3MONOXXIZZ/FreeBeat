@@ -522,147 +522,172 @@ class _PlaylistDetailsScreenState
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: cs.surfaceContainerLow,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
+        final screenHeight = MediaQuery.of(ctx).size.height;
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: screenHeight * 0.85,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    MaterialYouAlbumCover(
-                      track: track,
-                      size: 48,
-                      borderRadius: 14,
-                      showQualityBadge: false,
-                      showSourceBadge: false,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: cs.outlineVariant,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
-                          Text(
-                            track.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
+                          MaterialYouAlbumCover(
+                            track: track,
+                            size: 48,
+                            borderRadius: 14,
+                            showQualityBadge: false,
+                            showSourceBadge: false,
                           ),
-                          Text(
-                            track.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  track.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.playlist_play_rounded),
-                  title: const Text('Play Next',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    ref.read(playbackProvider.notifier).playNext(track);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.queue_music_rounded),
-                  title: const Text('Add to Queue',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    ref.read(playbackProvider.notifier).addToQueue(track);
-                    PixelHaptics.hifiConfirm();
-                    SwipeToQueueWrapper.showQueuedSnackBar(
-                      context,
-                      track.title,
-                    );
-                  },
-                ),
-                if (!current.isSmart)
-                  ListTile(
-                    leading: Icon(Icons.remove_circle_outline_rounded,
-                        color: cs.error),
-                    title: Text(
-                      'Remove from Playlist',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: cs.error,
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      ref
-                          .read(playlistsProvider.notifier)
-                          .removeTrackFromPlaylist(current.id, track.id);
-                    },
+                    ],
                   ),
-                ListTile(
-                  leading: const Icon(Icons.info_outline_rounded),
-                  title: const Text('View Track Details',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => TrackDetailsScreen(track: track),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_note_rounded),
-                  title: const Text('Edit Metadata & Artwork',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text('Title, artist, album, genre, year & cover art'),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showTrackMetadataEditorModal(context, track);
-                  },
                 ),
                 const Divider(height: 1),
-                ListTile(
-                  leading:
-                      Icon(Icons.delete_outline_rounded, color: cs.error),
-                  title: Text(
-                    'Remove from Library',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: cs.error,
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.playlist_play_rounded),
+                          title: const Text('Play Next',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            ref.read(playbackProvider.notifier).playNext(track);
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.queue_music_rounded),
+                          title: const Text('Add to Queue',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            ref.read(playbackProvider.notifier).addToQueue(track);
+                            PixelHaptics.hifiConfirm();
+                            SwipeToQueueWrapper.showQueuedSnackBar(
+                              context,
+                              track.title,
+                            );
+                          },
+                        ),
+                        if (!current.isSmart)
+                          ListTile(
+                            leading: Icon(Icons.remove_circle_outline_rounded,
+                                color: cs.error),
+                            title: Text(
+                              'Remove from Playlist',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: cs.error,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              ref
+                                  .read(playlistsProvider.notifier)
+                                  .removeTrackFromPlaylist(current.id, track.id);
+                            },
+                          ),
+                        ListTile(
+                          leading: const Icon(Icons.info_outline_rounded),
+                          title: const Text('View Track Details',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => TrackDetailsScreen(track: track),
+                              ),
+                            );
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.edit_note_rounded),
+                          title: const Text('Edit Metadata & Artwork',
+                              style: TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: const Text(
+                              'Title, artist, album, genre, year & cover art'),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showTrackMetadataEditorModal(context, track);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading:
+                              Icon(Icons.delete_outline_rounded, color: cs.error),
+                          title: Text(
+                            'Remove from Library',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: cs.error,
+                            ),
+                          ),
+                          subtitle: const Text(
+                            'Delete completely from FreeBeat and all playlists',
+                          ),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            showRemoveTrackConfirmationDialog(
+                                context, ref, track);
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  subtitle: const Text(
-                    'Delete completely from FreeBeat and all playlists',
-                  ),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    showRemoveTrackConfirmationDialog(context, ref, track);
-                  },
                 ),
               ],
             ),
