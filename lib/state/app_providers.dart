@@ -1800,6 +1800,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   bool _isInitializingPlayer = false;
   bool _playerInitFailed = false;
   bool _isPlayPending = false;
+  bool _isTransitioningTrack = false;
   ConcatenatingAudioSource? _playlistSource;
   String? _loadedQueueSignature;
   String? _preloadedTrackId;
@@ -2089,6 +2090,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       } else if (isCurrentActive &&
           !_isCrossfading &&
           !_isPlayPending &&
+          !_isTransitioningTrack &&
           state.isPlaying != playing &&
           proc != ProcessingState.loading &&
           proc != ProcessingState.buffering) {
@@ -2123,20 +2125,28 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
 
       // Reconcile current playing track with actual ExoPlayer index on position ticks
+      // Only reconcile when using a ConcatenatingAudioSource gapless playlist, NOT during track transitions or crossfades!
       final currentIdx = player.currentIndex;
-      if (currentIdx != null &&
+      if (!_isTransitioningTrack &&
+          !_isCrossfading &&
+          _playlistSource != null &&
+          player.audioSource == _playlistSource &&
+          currentIdx != null &&
           currentIdx >= 0 &&
           currentIdx < state.queue.length &&
           state.queue[currentIdx].id != state.currentTrack.id) {
+        final currentTag = player.sequenceState?.currentSource?.tag as Track?;
         final newTrack = state.queue[currentIdx];
-        state = state.copyWith(
-          currentTrack: newTrack,
-          positionMs: posMs,
-        );
-        _syncForegroundNotification(track: newTrack, isPlaying: true);
-        _savePlaybackState();
-        _savePlaybackPosition(force: true);
-        unawaited(_preloadUpcomingQueueTracks());
+        if (currentTag == null || currentTag.id == newTrack.id) {
+          state = state.copyWith(
+            currentTrack: newTrack,
+            positionMs: posMs,
+          );
+          _syncForegroundNotification(track: newTrack, isPlaying: true);
+          _savePlaybackState();
+          _savePlaybackPosition(force: true);
+          unawaited(_preloadUpcomingQueueTracks());
+        }
       }
 
       // Loop point check
@@ -2220,10 +2230,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     player.currentIndexStream.listen((index) {
       if (!mounted || index == null) return;
       final isCurrentActive = _isPlayerAActive == isPlayerA;
-      if (!isCurrentActive || _isCrossfading) return;
+      if (!isCurrentActive ||
+          _isCrossfading ||
+          _isTransitioningTrack ||
+          _playlistSource == null ||
+          player.audioSource != _playlistSource) {
+        return;
+      }
 
       if (index >= 0 && index < state.queue.length) {
         final newTrack = state.queue[index];
+        final currentTag = player.sequenceState?.currentSource?.tag as Track?;
+        if (currentTag != null && currentTag.id != newTrack.id) {
+          return;
+        }
         if (newTrack.id != state.currentTrack.id) {
           state = state.copyWith(
             currentTrack: newTrack,
@@ -2240,11 +2260,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     player.sequenceStateStream.listen((sequenceState) {
       if (!mounted || sequenceState == null) return;
       final isCurrentActive = _isPlayerAActive == isPlayerA;
-      if (!isCurrentActive || _isCrossfading) return;
+      if (!isCurrentActive || _isCrossfading || _isTransitioningTrack) return;
       final currentSource = sequenceState.currentSource;
       final playingTrack = currentSource?.tag as Track?;
 
       if (playingTrack != null && playingTrack.id.isNotEmpty) {
+        // Discard events from a previous queue or audio source
+        if (state.queue.isNotEmpty && !state.queue.any((t) => t.id == playingTrack.id)) {
+          return;
+        }
         if (playingTrack.id != state.currentTrack.id) {
           final foundTrack = state.queue.firstWhere(
             (t) => t.id == playingTrack.id,
@@ -2714,82 +2738,116 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         ? queue[initialIndex]
         : queue.first;
 
-    // When crossfade is enabled (crossfadeSeconds > 0):
-    // Play tracks via the true dual-player crossfade engine!
-    if (state.crossfadeSeconds > 0) {
-      _playlistSource = null;
-      _loadedQueueSignature = null;
-      await _loadAndPlayTrack(targetTrack, initialPositionMs: initialPositionMs);
-      return;
-    }
+    final wasTransitioning = _isTransitioningTrack;
+    _isTransitioningTrack = true;
+    _isPlayPending = true;
 
-    // When crossfade is 0 (True Gapless Playback):
-    // Use ExoPlayer's ConcatenatingAudioSource for 0ms transition gap between tracks!
-    final initPos = (initialPositionMs != null &&
-            initialPositionMs > 0 &&
-            initialIndex >= 0 &&
-            initialIndex < queue.length &&
-            initialPositionMs < (queue[initialIndex].durationMs - 2000))
-        ? Duration(milliseconds: initialPositionMs)
-        : null;
+    try {
+      // When crossfade is enabled (crossfadeSeconds > 0):
+      // Play tracks via the true dual-player crossfade engine!
+      if (state.crossfadeSeconds > 0) {
+        _playlistSource = null;
+        _loadedQueueSignature = null;
+        await _loadAndPlayTrack(targetTrack, initialPositionMs: initialPositionMs);
+        return;
+      }
 
-    final queueSig = queue.map((t) => t.id).join(',');
+      // When crossfade is 0 (True Gapless Playback):
+      // Use ExoPlayer's ConcatenatingAudioSource for 0ms transition gap between tracks!
+      final initPos = (initialPositionMs != null &&
+              initialPositionMs > 0 &&
+              initialIndex >= 0 &&
+              initialIndex < queue.length &&
+              initialPositionMs < (queue[initialIndex].durationMs - 2000))
+          ? Duration(milliseconds: initialPositionMs)
+          : null;
 
-    // If the same playlist is already loaded in ExoPlayer, just seek to the track index gaplessly!
-    if (_playlistSource != null &&
-        _loadedQueueSignature == queueSig &&
-        active.audioSource != null &&
-        active.playerState.processingState != ProcessingState.idle) {
+      final queueSig = queue.map((t) => t.id).join(',');
+
+      // If the same playlist is already loaded in ExoPlayer, just seek to the track index gaplessly!
+      if (_playlistSource != null &&
+          _loadedQueueSignature == queueSig &&
+          active.audioSource != null &&
+          active.playerState.processingState != ProcessingState.idle) {
+        try {
+          state = state.copyWith(
+            currentTrack: targetTrack,
+            positionMs: initialPositionMs ?? 0,
+            isPlaying: true,
+          );
+          _syncForegroundNotification(track: targetTrack, isPlaying: true);
+          await active.seek(initPos ?? Duration.zero, index: initialIndex);
+          await active.setVolume(1.0);
+          await active.play();
+          state = state.copyWith(
+            currentTrack: targetTrack,
+            positionMs: initialPositionMs ?? 0,
+            isPlaying: true,
+          );
+          _savePlaybackState();
+          _savePlaybackPosition(force: true);
+          unawaited(_preloadUpcomingQueueTracks());
+          return;
+        } catch (e) {
+          debugPrint('Seek within playlist failed, rebuilding: $e');
+        }
+      }
+
+      // Immediately pause old track to eliminate ghost background audio while building playlist
+      if (active.playing) {
+        try {
+          await active.pause();
+        } catch (_) {}
+      }
+
+      // Build the ConcatenatingAudioSource for gapless playback in parallel
+      final sources = await Future.wait(queue.map((t) => _createAudioSource(t)));
+
+      _playlistSource = ConcatenatingAudioSource(
+        children: sources,
+        useLazyPreparation: true, // Seamless ExoPlayer gapless pre-buffering
+      );
+      _loadedQueueSignature = queueSig;
+
+      // Apply repeat and shuffle
+      final loopMode = state.repeatMode == 2
+          ? LoopMode.one
+          : (state.repeatMode == 1 ? LoopMode.all : LoopMode.off);
       try {
-        state = state.copyWith(
-          currentTrack: targetTrack,
-          positionMs: initialPositionMs ?? 0,
-          isPlaying: true,
+        await active.setLoopMode(loopMode);
+        await active.setShuffleModeEnabled(state.isShuffle);
+      } catch (_) {}
+
+      try {
+        await active.setAudioSource(
+          _playlistSource!,
+          initialIndex: initialIndex.clamp(0, sources.length - 1),
+          initialPosition: initPos,
         );
-        _syncForegroundNotification(track: targetTrack, isPlaying: true);
-        await active.seek(initPos ?? Duration.zero, index: initialIndex);
         await active.setVolume(1.0);
         await active.play();
-        _savePlaybackState();
-        _savePlaybackPosition(force: true);
-        unawaited(_preloadUpcomingQueueTracks());
-        return;
       } catch (e) {
-        debugPrint('Seek within playlist failed, rebuilding: $e');
+        debugPrint('setAudioSource playlist error: $e');
+      }
+
+      // Ensure state and notification firmly reflect the target track
+      state = state.copyWith(
+        currentTrack: targetTrack,
+        positionMs: initialPositionMs ?? 0,
+        isPlaying: true,
+      );
+      _syncForegroundNotification(track: targetTrack, isPlaying: true);
+      _savePlaybackState();
+      _savePlaybackPosition(force: true);
+
+      // Preload at least 5 upcoming songs in the queue into stream cache
+      unawaited(_preloadUpcomingQueueTracks());
+    } finally {
+      if (!wasTransitioning) {
+        _isTransitioningTrack = false;
+        _isPlayPending = false;
       }
     }
-
-    // Build the ConcatenatingAudioSource for gapless playback
-    final sources = <AudioSource>[];
-    for (final t in queue) {
-      sources.add(await _createAudioSource(t));
-    }
-
-    _playlistSource = ConcatenatingAudioSource(
-      children: sources,
-      useLazyPreparation: true, // Seamless ExoPlayer gapless pre-buffering
-    );
-    _loadedQueueSignature = queueSig;
-
-    // Apply repeat and shuffle
-    final loopMode = state.repeatMode == 2
-        ? LoopMode.one
-        : (state.repeatMode == 1 ? LoopMode.all : LoopMode.off);
-    try {
-      await active.setLoopMode(loopMode);
-      await active.setShuffleModeEnabled(state.isShuffle);
-    } catch (_) {}
-
-    await active.setAudioSource(
-      _playlistSource!,
-      initialIndex: initialIndex.clamp(0, sources.length - 1),
-      initialPosition: initPos,
-    );
-    await active.setVolume(1.0);
-    await active.play();
-
-    // Preload at least 5 upcoming songs in the queue into stream cache
-    unawaited(_preloadUpcomingQueueTracks());
   }
 
   Future<void> _preloadUpcomingQueueTracks() async {
@@ -2826,6 +2884,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
     _preloadedTrackId = null;
 
+    final wasTransitioning = _isTransitioningTrack;
+    _isTransitioningTrack = true;
+    _isPlayPending = true;
+
     try {
       await active.setVolume(1.0);
 
@@ -2846,15 +2908,31 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           ? Duration(milliseconds: initialPositionMs)
           : null;
 
-      final source = await _createAudioSource(track);
-      await active.setAudioSource(source, initialPosition: initPos);
-      await active.setVolume(1.0);
-      await active.play();
+      try {
+        final source = await _createAudioSource(track);
+        await active.setAudioSource(source, initialPosition: initPos);
+        await active.setVolume(1.0);
+        await active.play();
+      } catch (e) {
+        debugPrint('setAudioSource single error: $e');
+      }
 
+      state = state.copyWith(
+        currentTrack: track,
+        positionMs: initialPositionMs ?? 0,
+        isPlaying: true,
+      );
       _syncForegroundNotification(track: track, isPlaying: true);
+      _savePlaybackState();
+      _savePlaybackPosition(force: true);
       unawaited(_preloadUpcomingQueueTracks());
     } catch (e, st) {
       debugPrint('Error playing track "${track.title}": $e\n$st');
+    } finally {
+      if (!wasTransitioning) {
+        _isTransitioningTrack = false;
+        _isPlayPending = false;
+      }
     }
   }
 
@@ -2949,6 +3027,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       ].take(50).toList();
     }
 
+    _isTransitioningTrack = true;
+    _isPlayPending = true;
+
     state = state.copyWith(
       currentTrack: effectiveTrack,
       queue: queueToUse,
@@ -2973,8 +3054,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           await _loadAndPlayTrack(effectiveTrack);
         }
       } catch (_) {}
+    } finally {
+      state = state.copyWith(
+        currentTrack: effectiveTrack,
+        queue: queueToUse,
+        isPlaying: true,
+      );
+      _syncForegroundNotification(track: effectiveTrack, isPlaying: true);
+      _savePlaybackState();
+      _isTransitioningTrack = false;
+      _isPlayPending = false;
     }
-    _syncForegroundNotification(track: effectiveTrack, isPlaying: true);
+
     unawaited(_preloadUpcomingQueueTracks());
 
     if (effectiveTrack.artworkUrl == null ||
@@ -3062,7 +3153,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           _syncForegroundNotification(track: nextTrack, isPlaying: true);
           _savePlaybackState();
         }
-        await _activePlayer!.seekToNext();
+        _isTransitioningTrack = true;
+        try {
+          await _activePlayer!.seekToNext();
+        } finally {
+          _isTransitioningTrack = false;
+        }
         return;
       } catch (_) {}
     }
@@ -3125,7 +3221,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           _syncForegroundNotification(track: prevTrack, isPlaying: true);
           _savePlaybackState();
         }
-        await _activePlayer!.seekToPrevious();
+        _isTransitioningTrack = true;
+        try {
+          await _activePlayer!.seekToPrevious();
+        } finally {
+          _isTransitioningTrack = false;
+        }
         return;
       } catch (_) {}
     }
@@ -3553,7 +3654,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final actualPos = active.position.inMilliseconds;
 
       Track effectiveTrack = state.currentTrack;
-      if (currentIdx != null &&
+      if (_playlistSource != null &&
+          active.audioSource == _playlistSource &&
+          currentIdx != null &&
           currentIdx >= 0 &&
           currentIdx < state.queue.length) {
         final candidate = state.queue[currentIdx];
@@ -3562,7 +3665,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       } else if (active.sequenceState?.currentSource?.tag is Track) {
         final tagTrack = active.sequenceState!.currentSource!.tag as Track;
-        if (tagTrack.id.isNotEmpty) {
+        if (tagTrack.id.isNotEmpty &&
+            (state.queue.isEmpty || state.queue.any((t) => t.id == tagTrack.id))) {
           effectiveTrack = tagTrack;
         }
       }
