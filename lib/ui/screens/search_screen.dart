@@ -16,6 +16,7 @@ import '../widgets/track_metadata_editor_modal.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
 import 'track_details_screen.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Stock Google Pixel Material 3 Expressive Global Search & Audiophile Filtering Screen.
 /// Provides real-time instant search across all connected clouds and local storage with
@@ -93,7 +94,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
-          physics: const ClampingScrollPhysics(
+          physics: const UltraFreeScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
           slivers: [
@@ -180,7 +181,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   itemCount: SearchFilterType.values.length,
@@ -497,7 +498,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const ClampingScrollPhysics(
+                      physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                       itemCount: results.artists.length,
@@ -544,7 +545,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const ClampingScrollPhysics(
+                      physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                       itemCount: results.playlists.length,
@@ -743,7 +744,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(
+                    physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),

@@ -18,6 +18,7 @@ import '../widgets/playlist_qr_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Playlist Details Screen.
@@ -595,7 +596,7 @@ class _PlaylistDetailsScreenState
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(
+                    physics: const UltraFreeScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
@@ -730,7 +731,7 @@ class _PlaylistDetailsScreenState
         children: [
           CustomScrollView(
             scrollCacheExtent: const ScrollCacheExtent.pixels(500),
-            physics: const ClampingScrollPhysics(
+            physics: const UltraFreeScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             slivers: [

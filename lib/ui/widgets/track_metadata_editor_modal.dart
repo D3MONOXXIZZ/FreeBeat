@@ -8,6 +8,7 @@ import '../../services/metadata/artwork_and_lyrics_service.dart';
 import '../../services/metadata/artwork_palette_extractor.dart';
 import '../../state/app_providers.dart';
 import 'material_you_album_cover.dart';
+import 'ultra_free_scroll_physics.dart';
 
 /// Shows the Pixel Material 3 in-app ID3 tag and album artwork editor modal.
 Future<void> showTrackMetadataEditorModal(
@@ -230,7 +231,7 @@ class _TrackMetadataEditorSheetState
             padding: EdgeInsets.only(bottom: keyboardBottom),
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              physics: const ClampingScrollPhysics(
+              physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
               child: Column(
@@ -652,7 +653,7 @@ class _OnlineArtworkSearchSheetState
                           ),
                         )
                       : GridView.builder(
-                          physics: const ClampingScrollPhysics(
+                          physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
                           gridDelegate:

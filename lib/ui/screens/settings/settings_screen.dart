@@ -9,6 +9,7 @@ import 'battery_settings_screen.dart';
 import 'bluetooth_settings_screen.dart';
 import 'cloud_sync_settings_screen.dart';
 import 'playback_settings_screen.dart';
+import '../../widgets/ultra_free_scroll_physics.dart';
 
 /// Master Settings Hub for FreeBeat (Styled after Google Pixel Settings).
 /// Clean, categorized entry point where each configurable setting has its own dedicated screen.
@@ -35,7 +36,7 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const ClampingScrollPhysics(
+        physics: const UltraFreeScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

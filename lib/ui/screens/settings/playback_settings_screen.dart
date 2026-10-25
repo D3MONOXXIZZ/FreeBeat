@@ -27,9 +27,6 @@ class PlaybackSettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const ClampingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // 1. Crossfade & Gapless Card

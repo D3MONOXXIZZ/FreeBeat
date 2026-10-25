@@ -7,6 +7,7 @@ import 'expressive_shapes.dart';
 import 'material_you_album_cover.dart';
 import 'sleep_timer_modal.dart';
 import 'swipe_to_queue_wrapper.dart';
+import 'ultra_free_scroll_physics.dart';
 
 /// Shows the Material 3 Expressive Up Next Queue bottom sheet.
 Future<void> showQueueBottomSheet(BuildContext context) =>
@@ -418,7 +419,7 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
         Expanded(
           child: ReorderableListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            physics: const ClampingScrollPhysics(
+            physics: const UltraFreeScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             itemCount: upNext.length,
@@ -584,7 +585,7 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-      physics: const ClampingScrollPhysics(
+      physics: const UltraFreeScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       itemCount: history.length,

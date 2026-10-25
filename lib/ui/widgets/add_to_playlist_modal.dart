@@ -4,6 +4,7 @@ import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import 'generative_playlist_cover.dart';
+import 'ultra_free_scroll_physics.dart';
 
 /// Shows the Material 3 Expressive "Add to Playlist" bottom sheet modal.
 Future<void> showAddToPlaylistModal(
@@ -290,7 +291,7 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      physics: const ClampingScrollPhysics(
+                      physics: const UltraFreeScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       itemCount: playlists.length,

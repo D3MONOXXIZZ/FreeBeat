@@ -10,6 +10,7 @@ import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Artist Details Page.
@@ -73,7 +74,7 @@ class ArtistDetailsScreen extends ConsumerWidget {
         children: [
           CustomScrollView(
             scrollCacheExtent: const ScrollCacheExtent.pixels(500),
-            physics: const ClampingScrollPhysics(
+            physics: const UltraFreeScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             slivers: [
@@ -253,7 +254,7 @@ class ArtistDetailsScreen extends ConsumerWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   itemCount: albumMap.entries.length,

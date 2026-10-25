@@ -8,6 +8,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/rotary_knob.dart';
 import '../widgets/signal_path_sheet.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Smart EQ 10-Band Equalizer, Preamp, Exact Numeric Tuning, Rotary Tone & Spatial DSP Studio.
 /// Strictly implements Screen 8 ("# Equalizer & Audio Settings") in Figma inspiration:
@@ -122,7 +123,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
 
     return Scaffold(
       body: CustomScrollView(
-        physics: const ClampingScrollPhysics(
+        physics: const UltraFreeScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [
@@ -609,7 +610,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              physics: const ClampingScrollPhysics(
+              physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
               child: Row(
@@ -814,7 +815,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             height: 275,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(
+              physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
               child: Row(
@@ -1593,7 +1594,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Action buttons: Save EQ, Import, Auto Profiles
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const ClampingScrollPhysics(
+                        physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
                         child: Row(
@@ -1817,7 +1818,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Quick actions
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const ClampingScrollPhysics(
+                        physics: const UltraFreeScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
                         child: Row(

@@ -26,6 +26,7 @@ import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import '../widgets/expressive_shapes.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -482,7 +483,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(
+                        physics: const UltraFreeScrollPhysics(
                           parent: AlwaysScrollableScrollPhysics(),
                         ),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
@@ -792,7 +793,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(
+                        physics: const UltraFreeScrollPhysics(
                           parent: AlwaysScrollableScrollPhysics(),
                         ),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
@@ -1132,7 +1133,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 : null),
         body: CustomScrollView(
           controller: _scrollController,
-          physics: const ClampingScrollPhysics(
+          physics: const UltraFreeScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
           scrollCacheExtent: const ScrollCacheExtent.pixels(500),
@@ -1544,7 +1545,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 scrollDirection: Axis.horizontal,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                physics: const ClampingScrollPhysics(
+                physics: const UltraFreeScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 children: [
@@ -1839,7 +1840,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                   addAutomaticKeepAlives: false,

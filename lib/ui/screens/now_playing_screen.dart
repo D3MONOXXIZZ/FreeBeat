@@ -22,6 +22,7 @@ import 'fullscreen_lyrics_screen.dart';
 import 'track_details_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/track_metadata_editor_modal.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Full-Screen Google Pixel Material 3 Expressive Now Playing Screen.
 /// Strictly implements Screen 2 in Figma inspiration:
@@ -853,7 +854,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(
+                    physics: const UltraFreeScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),

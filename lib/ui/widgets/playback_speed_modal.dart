@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import 'nav_pill.dart';
+import 'ultra_free_scroll_physics.dart';
 
 /// Shows the Material 3 Expressive Playback Speed & Pitch Shifter modal sheet.
 Future<void> showPlaybackSpeedModal(BuildContext context) {
@@ -169,7 +170,7 @@ class PlaybackSpeedModal extends ConsumerWidget {
               // Preset Speed Chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                physics: const ClampingScrollPhysics(
+                physics: const UltraFreeScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 child: Row(

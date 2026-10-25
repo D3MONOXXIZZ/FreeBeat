@@ -10,6 +10,7 @@ import '../widgets/remove_track_dialog.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import 'artist_details_screen.dart';
 import 'fullscreen_lyrics_screen.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Stock Google Pixel Material 3 Expressive Track Details Page.
 /// Displays comprehensive technical audio specs, cloud storage & cache status,
@@ -67,7 +68,7 @@ class TrackDetailsScreen extends ConsumerWidget {
 
     return Scaffold(
       body: CustomScrollView(
-        physics: const ClampingScrollPhysics(
+        physics: const UltraFreeScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [

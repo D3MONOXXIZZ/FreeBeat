@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../services/haptics/pixel_haptics.dart';
 import '../../../state/app_providers.dart';
+import '../../widgets/ultra_free_scroll_physics.dart';
 
 /// Dedicated Material 3 Battery & Power Saver Settings Screen.
 /// Styled after Google Pixel System Battery Settings.
@@ -27,7 +28,7 @@ class BatterySettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const ClampingScrollPhysics(
+        physics: const UltraFreeScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

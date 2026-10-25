@@ -17,6 +17,7 @@ import '../widgets/cloud_sync_progress_banner.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/track_metadata_editor_modal.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -135,7 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(
+                    physics: const UltraFreeScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
@@ -413,7 +414,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final importProgress = ref.watch(importProgressProvider);
 
     return CustomScrollView(
-      physics: const ClampingScrollPhysics(
+      physics: const UltraFreeScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
@@ -656,7 +657,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const ClampingScrollPhysics(
+                physics: const UltraFreeScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -749,7 +750,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const ClampingScrollPhysics(
+                      physics: const UltraFreeScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -837,7 +838,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const ClampingScrollPhysics(
+                      physics: const UltraFreeScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -1118,7 +1119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const ClampingScrollPhysics(
+                physics: const UltraFreeScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 addAutomaticKeepAlives: false,
@@ -1204,7 +1205,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1290,7 +1291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1385,7 +1386,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1470,7 +1471,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const ClampingScrollPhysics(
+                  physics: const UltraFreeScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,

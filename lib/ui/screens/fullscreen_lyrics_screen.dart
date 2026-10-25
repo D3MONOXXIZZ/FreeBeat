@@ -8,6 +8,7 @@ import '../../state/app_providers.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/track_metadata_editor_modal.dart';
+import '../widgets/ultra_free_scroll_physics.dart';
 
 /// Fullscreen Synchronized Karaoke Lyrics Screen (Google Pixel Material You Style).
 /// Strictly mirrors Screen 6 in Figma inspiration with:
@@ -359,7 +360,7 @@ class _FullscreenLyricsScreenState
                         )
                       : ListView.builder(
                           controller: _scrollController,
-                          physics: const ClampingScrollPhysics(
+                          physics: const UltraFreeScrollPhysics(
                             parent: AlwaysScrollableScrollPhysics(),
                           ),
                           padding: const EdgeInsets.fromLTRB(24, 40, 24, 140),
@@ -845,7 +846,7 @@ class _OnlineLyricsSearchSheetState
                           ),
                         )
                       : ListView.separated(
-                          physics: const ClampingScrollPhysics(
+                          physics: const UltraFreeScrollPhysics(
                             parent: AlwaysScrollableScrollPhysics(),
                           ),
                           itemCount: _results.length,

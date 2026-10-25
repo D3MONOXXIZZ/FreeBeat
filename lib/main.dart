@@ -7,6 +7,7 @@ import 'services/metadata/artwork_palette_extractor.dart';
 import 'state/app_providers.dart';
 import 'ui/screens/main_shell.dart';
 import 'ui/theme/pixel_theme.dart';
+import 'ui/widgets/ultra_free_scroll_physics.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -172,13 +173,13 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
 }
 
 /// Provides smooth, frictionless free scrolling across the entire app
-/// replacing spring bouncing physics with native Android free ballistic scroll.
+/// with zero drag resistance, uncapped fling velocity, and minimal gradual slow down.
 class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
   const SmoothFreeScrollBehavior();
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
-    return const ClampingScrollPhysics(
+    return const UltraFreeScrollPhysics(
       parent: AlwaysScrollableScrollPhysics(),
     );
   }
