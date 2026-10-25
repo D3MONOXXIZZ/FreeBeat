@@ -13,6 +13,7 @@ import 'track_details_screen.dart';
 import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
+import '../widgets/expressive_shapes.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 
@@ -1616,8 +1617,8 @@ class _PixelPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SpringPressScale(
+      scaleDown: 0.97,
       onTap: () {
         PixelHaptics.tick();
         onTap();
@@ -1718,17 +1719,17 @@ class _PixelCoverCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return RepaintBoundary(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        onLongPress: onOpenOptions,
-        child: SizedBox(
-          width: cardWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              MaterialYouAlbumCover(
+      child: SizedBox(
+        width: cardWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SpringPressScale(
+              scaleDown: 0.96,
+              onTap: onTap,
+              onLongPress: onOpenOptions,
+              child: MaterialYouAlbumCover(
                 track: track,
                 size: cardWidth,
                 borderRadius: 24,
@@ -1738,68 +1739,78 @@ class _PixelCoverCard extends StatelessWidget {
                 isPlaying: isPlaying,
                 onPlayTap: onTap,
               ),
-              const SizedBox(height: 8),
-              Text(
-                track.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
-                  color: isCurrent ? cs.primary : cs.onSurface,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                track.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+            const SizedBox(height: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  MaterialYouDownloadButton(
-                    track: track,
-                    size: 22,
-                  ),
-                  IconButton(
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    icon: Icon(
-                      track.isFavorite
-                          ? Icons.favorite_rounded
-                          : Icons.favorite_border_rounded,
-                      color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w700,
+                      color: isCurrent ? cs.primary : cs.onSurface,
                     ),
-                    onPressed: () {
-                      PixelHaptics.tick();
-                      onToggleFavorite();
-                    },
                   ),
-                  IconButton(
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    icon: const Icon(Icons.more_vert_rounded),
-                    color: cs.onSurfaceVariant,
-                    onPressed: () {
-                      PixelHaptics.tick();
-                      onOpenOptions();
-                    },
+                  const SizedBox(height: 2),
+                  Text(
+                    track.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                MaterialYouDownloadButton(
+                  track: track,
+                  size: 22,
+                ),
+                IconButton(
+                  iconSize: 20,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    track.isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                  ),
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onToggleFavorite();
+                  },
+                ),
+                IconButton(
+                  iconSize: 20,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: const Icon(Icons.more_vert_rounded),
+                  color: cs.onSurfaceVariant,
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onOpenOptions();
+                  },
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1826,16 +1837,16 @@ class _PixelAlbumCoverCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return RepaintBoundary(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: cardWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              MaterialYouAlbumCover(
+      child: SizedBox(
+        width: cardWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SpringPressScale(
+              scaleDown: 0.96,
+              onTap: onTap,
+              child: MaterialYouAlbumCover(
                 track: album.representativeTrack,
                 size: cardWidth,
                 borderRadius: 24,
@@ -1844,28 +1855,38 @@ class _PixelAlbumCoverCard extends StatelessWidget {
                 showPlayButton: true,
                 onPlayTap: onPlay,
               ),
-              const SizedBox(height: 8),
-              Text(
-                album.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                ),
+            ),
+            const SizedBox(height: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    album.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${album.artist} • ${album.trackCount} ${album.trackCount == 1 ? "track" : "tracks"}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                '${album.artist} • ${album.trackCount} ${album.trackCount == 1 ? "track" : "tracks"}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -525,6 +526,15 @@ class PixelTheme {
         color: cs.outlineVariant.withValues(alpha: 0.4),
         thickness: 1,
         space: 1,
+      ),
+
+      // Material 3 Page Transitions Theme (Predictive Back on Android 14+)
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+        },
       ),
     );
   }

@@ -24,6 +24,7 @@ import '../widgets/playlist_import_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
+import '../widgets/expressive_shapes.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -1828,7 +1829,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   itemBuilder: (context, index) {
                     final artist = filteredArtists[index];
                     final isSelected = _selectedArtist == artist;
-                    return GestureDetector(
+                    return SpringPressScale(
+                      scaleDown: 0.92,
                       onTap: () {
                         PixelHaptics.tick();
                         setState(() {
@@ -2716,8 +2718,8 @@ class _NewPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SpringPressScale(
+      scaleDown: 0.96,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -2777,8 +2779,8 @@ class _ImportPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SpringPressScale(
+      scaleDown: 0.96,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -2838,8 +2840,8 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SpringPressScale(
+      scaleDown: 0.98,
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.antiAlias,
@@ -2921,8 +2923,8 @@ class _PlaylistGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return SpringPressScale(
+      scaleDown: 0.96,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(

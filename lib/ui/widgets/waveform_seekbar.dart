@@ -38,6 +38,7 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
   bool _isDragging = false;
   double _dragProgress = 0.0;
   int _lastHapticBar = -1;
+  DateTime _lastPhysicalSeek = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -80,7 +81,7 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
     super.dispose();
   }
 
-  void _handleSeekUpdate(double localX, double width) {
+  void _handleSeekUpdate(double localX, double width, {bool isFinal = false}) {
     final frac = (localX / width).clamp(0.0, 1.0);
     final currentBar = (frac * widget.barCount).floor();
     if (currentBar != _lastHapticBar) {
@@ -90,7 +91,12 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
     setState(() {
       _dragProgress = frac;
     });
-    widget.onSeek(frac);
+
+    final now = DateTime.now();
+    if (isFinal || now.difference(_lastPhysicalSeek).inMilliseconds >= 180) {
+      _lastPhysicalSeek = now;
+      widget.onSeek(frac);
+    }
   }
 
   @override
@@ -120,9 +126,10 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
           onHorizontalDragEnd: (details) {
             setState(() => _isDragging = false);
             PixelHaptics.tick();
+            widget.onSeek(_dragProgress);
           },
           onTapDown: (details) {
-            _handleSeekUpdate(details.localPosition.dx, totalWidth);
+            _handleSeekUpdate(details.localPosition.dx, totalWidth, isFinal: true);
           },
           child: AnimatedBuilder(
             animation: _animController,

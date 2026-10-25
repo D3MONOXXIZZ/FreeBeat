@@ -4,7 +4,7 @@ import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/add_to_library_modal.dart';
-import '../widgets/material_you_album_cover.dart';
+import '../widgets/mini_player_dock.dart';
 import '../widgets/nav_pill.dart';
 import 'clouds_screen.dart';
 import 'home_screen.dart';
@@ -81,161 +81,11 @@ class _MainShellState extends ConsumerState<MainShell> {
     double? width,
     bool fullWidth = false,
   }) {
-    final pillWidget = RepaintBoundary(
-      child: SizedBox(
-        width: fullWidth ? double.infinity : (width ?? 310),
-        height: 50,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _openFullNowPlaying,
-          child: Container(
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(100),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    children: [
-                      MaterialYouAlbumCover(
-                        track: track,
-                        size: 34,
-                        borderRadius: 100,
-                        showQualityBadge: false,
-                        showSourceBadge: false,
-                        isPlaying: isPlaying,
-                        showPlayingAnimation: false,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.title.isEmpty ? 'FreeBeat' : track.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              '${track.artist} • ${track.codec}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Backward / Skip Previous Button
-                      IconButton(
-                        icon: const Icon(Icons.skip_previous_rounded),
-                        color: cs.onSurfaceVariant,
-                        iconSize: 19,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 26,
-                          minHeight: 26,
-                        ),
-                        tooltip: 'Previous',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          ref.read(playbackProvider.notifier).skipPrevious();
-                        },
-                      ),
-                      const SizedBox(width: 2),
-
-                      // Play / Pause Circle Button
-                      FilledButton(
-                        onPressed: () {
-                          ref
-                              .read(playbackProvider.notifier)
-                              .togglePlayPause();
-                        },
-                        style: FilledButton.styleFrom(
-                          shape: const CircleBorder(),
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(32, 32),
-                          backgroundColor: cs.primaryContainer,
-                          foregroundColor: cs.onPrimaryContainer,
-                        ),
-                        child: Icon(
-                          isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 19,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-
-                      // Skip Next Button
-                      IconButton(
-                        icon: const Icon(Icons.skip_next_rounded),
-                        color: cs.onSurfaceVariant,
-                        iconSize: 19,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 26,
-                          minHeight: 26,
-                        ),
-                        tooltip: 'Next',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          ref.read(playbackProvider.notifier).skipNext();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Slim Track Progress Bar at bottom of mini player (isolated consumer)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 0,
-                  child: _MiniPlayerProgressBar(
-                    primaryColor: cs.primary,
-                    backgroundColor:
-                        cs.onSurfaceVariant.withValues(alpha: 0.12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-
-    if (fullWidth) {
-      return pillWidget;
-    }
-    return Align(
-      alignment: Alignment.center,
-      child: pillWidget,
+    return MiniPlayerDock(
+      width: width,
+      fullWidth: fullWidth,
+      onTap: _openFullNowPlaying,
+      onOpenDspStudio: () => setState(() => _selectedIndex = 2),
     );
   }
 
@@ -262,9 +112,23 @@ class _MainShellState extends ConsumerState<MainShell> {
 
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<int>(_selectedIndex),
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: pages,
+          ),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         top: false,
@@ -444,29 +308,5 @@ class _MainShellState extends ConsumerState<MainShell> {
       ),
     ),
   );
-  }
-}
-
-class _MiniPlayerProgressBar extends ConsumerWidget {
-  const _MiniPlayerProgressBar({
-    required this.primaryColor,
-    required this.backgroundColor,
-  });
-
-  final Color primaryColor;
-  final Color backgroundColor;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final progress =
-        ref.watch(playbackProvider.select((p) => p.progressFraction));
-    return RepaintBoundary(
-      child: LinearProgressIndicator(
-        value: progress,
-        minHeight: 2,
-        backgroundColor: backgroundColor,
-        valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
-      ),
-    );
   }
 }

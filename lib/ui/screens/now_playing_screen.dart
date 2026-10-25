@@ -44,10 +44,15 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 }
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   ArtworkPalette? _palette;
   String? _lastArtworkKey;
   late final AnimationController _auraAnimController;
+  late final AnimationController _springResetController;
+  Animation<double>? _springResetAnim;
+  Animation<double>? _artSpringAnim;
+  double _dragOffsetY = 0.0;
+  double _artDragX = 0.0;
 
   @override
   void initState() {
@@ -56,12 +61,80 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     );
+    _springResetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+    );
+    _springResetController.addListener(() {
+      if (_springResetAnim != null) {
+        setState(() => _dragOffsetY = _springResetAnim!.value);
+      }
+      if (_artSpringAnim != null) {
+        setState(() => _artDragX = _artSpringAnim!.value);
+      }
+    });
   }
 
   @override
   void dispose() {
     _auraAnimController.dispose();
+    _springResetController.dispose();
     super.dispose();
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
+    final dy = details.delta.dy;
+    if (_dragOffsetY + dy >= 0) {
+      setState(() {
+        _dragOffsetY += dy;
+      });
+    }
+  }
+
+  void _onVerticalDragEnd(DragEndDetails details) {
+    final vy = details.primaryVelocity ?? 0.0;
+    if (_dragOffsetY > 120 || vy > 650) {
+      PixelHaptics.sheetExpand();
+      Navigator.of(context).pop();
+    } else if (_dragOffsetY > 0) {
+      _springResetAnim = Tween<double>(
+        begin: _dragOffsetY,
+        end: 0.0,
+      ).animate(CurvedAnimation(
+        parent: _springResetController,
+        curve: Curves.easeOutCubic,
+      ));
+      _springResetController.forward(from: 0.0);
+    }
+  }
+
+  void _onArtHorizontalDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _artDragX += details.delta.dx;
+    });
+    PixelHaptics.swipeLoadTick(
+      progress: (_artDragX.abs() / 120.0).clamp(0.0, 1.0),
+    );
+  }
+
+  void _onArtHorizontalDragEnd(DragEndDetails details) {
+    final vx = details.primaryVelocity ?? 0.0;
+    if (_artDragX < -55 || vx < -400) {
+      PixelHaptics.swipeClick();
+      ref.read(playbackProvider.notifier).skipNext();
+    } else if (_artDragX > 55 || vx > 400) {
+      PixelHaptics.swipeClick();
+      ref.read(playbackProvider.notifier).skipPrevious();
+    }
+
+    _artSpringAnim = Tween<double>(
+      begin: _artDragX,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _springResetController,
+      curve: Curves.easeOutBack,
+    ));
+    _springResetController.forward(from: 0.0);
   }
 
   void _resolvePalette(Track track) {
@@ -179,9 +252,23 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         ? _palette!.rightEdgeColor
         : effectiveDominant;
 
+    final dragScale = (1.0 - (_dragOffsetY / 1400.0)).clamp(0.92, 1.0);
+    final dragBorderRadius = (_dragOffsetY / 6.0).clamp(0.0, 36.0);
+
     return Scaffold(
-      body: Stack(
-        children: [
+      backgroundColor: Colors.transparent,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragUpdate: _onVerticalDragUpdate,
+        onVerticalDragEnd: _onVerticalDragEnd,
+        child: Transform.translate(
+          offset: Offset(0, _dragOffsetY * 0.85),
+          child: Transform.scale(
+            scale: dragScale,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(dragBorderRadius),
+              child: Stack(
+                children: [
           // 1. Ambient Dynamic Gradient Background
           AnimatedContainer(
             duration: const Duration(milliseconds: 600),
@@ -359,25 +446,34 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                             ),
                           ),
 
-                          // 3c. Crisp Hero Album Artwork Card
-                          GestureDetector(
-                            onTap: () {
-                              PixelHaptics.tick();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => TrackDetailsScreen(track: track),
+                          // 3c. Crisp Hero Album Artwork Card with horizontal swipe-to-skip & tilt
+                          Transform.translate(
+                            offset: Offset(_artDragX, 0),
+                            child: Transform.rotate(
+                              angle: (_artDragX / 1400.0).clamp(-0.1, 0.1),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onHorizontalDragUpdate: _onArtHorizontalDragUpdate,
+                                onHorizontalDragEnd: _onArtHorizontalDragEnd,
+                                onTap: () {
+                                  PixelHaptics.tick();
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => TrackDetailsScreen(track: track),
+                                    ),
+                                  );
+                                },
+                                child: Hero(
+                                  tag: 'album_art_${track.id}',
+                                  child: MaterialYouAlbumCover(
+                                    track: track,
+                                    size: double.infinity,
+                                    borderRadius: 32,
+                                    showQualityBadge: true,
+                                    showSourceBadge: true,
+                                    isPlaying: isPlaying,
+                                  ),
                                 ),
-                              );
-                            },
-                            child: Hero(
-                              tag: 'album_art_${track.id}',
-                              child: MaterialYouAlbumCover(
-                                track: track,
-                                size: double.infinity,
-                                borderRadius: 32,
-                                showQualityBadge: true,
-                                showSourceBadge: true,
-                                isPlaying: isPlaying,
                               ),
                             ),
                           ),
@@ -610,7 +706,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
           ),
         ],
       ),
-    );
+    ),
+  ),
+),
+),
+);
   }
 
   void _showPlaybackOptionsMenu(BuildContext context) {

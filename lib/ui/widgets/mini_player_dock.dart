@@ -60,6 +60,13 @@ class MiniPlayerDock extends ConsumerWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
+    final isStaleGreen = track.dominantColorValue == 0xFF3DDC84 ||
+        track.dominantColorValue == 0xFF1DB954;
+    final accentColor = (!isStaleGreen &&
+            track.dominantColorValue != 0 &&
+            track.dominantColorValue != 0xFF1E293B)
+        ? track.dominantColor
+        : cs.primary;
 
     final pillWidget = RepaintBoundary(
       child: SizedBox(
@@ -68,26 +75,41 @@ class MiniPlayerDock extends ConsumerWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _openNowPlaying(context),
+          onHorizontalDragEnd: (details) {
+            final vx = details.primaryVelocity ?? 0;
+            if (vx < -250) {
+              PixelHaptics.tick();
+              ref.read(playbackProvider.notifier).skipNext();
+            } else if (vx > 250) {
+              PixelHaptics.tick();
+              ref.read(playbackProvider.notifier).skipPrevious();
+            }
+          },
           child: Container(
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.35),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.16),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(
+                color: accentColor.withValues(alpha: 0.35),
+                width: 1.2,
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(100),
-            child: Stack(
-              children: [
+              boxShadow: [
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(100),
+              child: Stack(
+                children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Row(
@@ -198,7 +220,7 @@ class MiniPlayerDock extends ConsumerWidget {
                   bottom: 0,
                   child: RepaintBoundary(
                     child: _MiniPlayerProgressBar(
-                      primaryColor: cs.primary,
+                      primaryColor: accentColor,
                       backgroundColor:
                           cs.onSurfaceVariant.withValues(alpha: 0.12),
                     ),
