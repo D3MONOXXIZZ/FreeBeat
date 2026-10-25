@@ -163,21 +163,26 @@ class DeviceBatteryStatus {
     this.batteryLevel = 100,
     this.isCharging = false,
     this.isPowerSaveMode = false,
+    this.isIgnoringBatteryOptimizations = true,
   });
 
   final int batteryLevel; // 0 to 100
   final bool isCharging;
   final bool isPowerSaveMode;
+  final bool isIgnoringBatteryOptimizations;
 
   DeviceBatteryStatus copyWith({
     int? batteryLevel,
     bool? isCharging,
     bool? isPowerSaveMode,
+    bool? isIgnoringBatteryOptimizations,
   }) {
     return DeviceBatteryStatus(
       batteryLevel: batteryLevel ?? this.batteryLevel,
       isCharging: isCharging ?? this.isCharging,
       isPowerSaveMode: isPowerSaveMode ?? this.isPowerSaveMode,
+      isIgnoringBatteryOptimizations:
+          isIgnoringBatteryOptimizations ?? this.isIgnoringBatteryOptimizations,
     );
   }
 }

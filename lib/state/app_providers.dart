@@ -267,17 +267,45 @@ class DeviceBatteryStatusNotifier extends StateNotifier<DeviceBatteryStatus> {
   static const MethodChannel _dspChannel = MethodChannel('com.freebeat.app/dsp');
 
   Future<void> _initNativeChannel() async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid && !Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       final map = await _dspChannel.invokeMethod<Map<dynamic, dynamic>>('getBatteryStatus');
+      final isIgnoring = await isIgnoringBatteryOptimizations();
       if (map != null) {
-        _updateFromMap(Map<String, dynamic>.from(map));
+        final m = Map<String, dynamic>.from(map);
+        m['isIgnoringBatteryOptimizations'] = isIgnoring;
+        _updateFromMap(m);
       }
     } catch (_) {}
 
-    _dspSvc?.setBatteryStateListener((map) {
-      _updateFromMap(map);
+    _dspSvc?.setBatteryStateListener((map) async {
+      final isIgnoring = await isIgnoringBatteryOptimizations();
+      final m = Map<String, dynamic>.from(map);
+      m['isIgnoringBatteryOptimizations'] = isIgnoring;
+      _updateFromMap(m);
     });
+  }
+
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    if (!Platform.isAndroid && !Platform.environment.containsKey('FLUTTER_TEST')) return true;
+    try {
+      final res = await _dspChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return res ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    if (!Platform.isAndroid && !Platform.environment.containsKey('FLUTTER_TEST')) return true;
+    try {
+      final res = await _dspChannel.invokeMethod<bool>('requestIgnoreBatteryOptimizations');
+      final isIgnoring = await isIgnoringBatteryOptimizations();
+      state = state.copyWith(isIgnoringBatteryOptimizations: isIgnoring);
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _updateFromMap(Map<String, dynamic> map) {
@@ -285,6 +313,8 @@ class DeviceBatteryStatusNotifier extends StateNotifier<DeviceBatteryStatus> {
       batteryLevel: map['batteryLevel'] as int? ?? 100,
       isCharging: map['isCharging'] as bool? ?? false,
       isPowerSaveMode: map['isPowerSaveMode'] as bool? ?? false,
+      isIgnoringBatteryOptimizations:
+          map['isIgnoringBatteryOptimizations'] as bool? ?? state.isIgnoringBatteryOptimizations,
     );
   }
 

@@ -211,6 +211,19 @@ class MainActivity : FlutterActivity() {
                     "getBatteryStatus" -> {
                         result.success(getBatteryStatusMap())
                     }
+                    "isIgnoringBatteryOptimizations" -> {
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                        val isIgnoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            powerManager?.isIgnoringBatteryOptimizations(packageName) ?: true
+                        } else {
+                            true
+                        }
+                        result.success(isIgnoring)
+                    }
+                    "requestIgnoreBatteryOptimizations" -> {
+                        val success = requestIgnoreBatteryOptimizations()
+                        result.success(success)
+                    }
                     "setHighRefreshRate" -> {
                         enableAdaptiveDisplayRefreshRate()
                         result.success(true)
@@ -330,11 +343,18 @@ class MainActivity : FlutterActivity() {
                         if (uriString != null && uriString.startsWith("content://")) {
                             try {
                                 val uri = android.net.Uri.parse(uriString)
-                                contentResolver.takePersistableUriPermission(
-                                    uri,
-                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                )
-                                result.success(true)
+                                val alreadyPersisted = contentResolver.persistedUriPermissions.any {
+                                    it.uri == uri && it.isReadPermission
+                                }
+                                if (alreadyPersisted) {
+                                    result.success(true)
+                                } else {
+                                    contentResolver.takePersistableUriPermission(
+                                        uri,
+                                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                    result.success(true)
+                                }
                             } catch (_: Throwable) {
                                 result.success(false)
                             }
@@ -1692,6 +1712,30 @@ class MainActivity : FlutterActivity() {
             "isCharging" to isCharging,
             "isPowerSaveMode" to isPowerSaveMode
         )
+    }
+
+    private fun requestIgnoreBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (powerManager?.isIgnoringBatteryOptimizations(packageName) == false) {
+                return try {
+                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = android.net.Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                    true
+                } catch (_: Throwable) {
+                    try {
+                        val fallbackIntent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        startActivity(fallbackIntent)
+                        true
+                    } catch (_: Throwable) {
+                        false
+                    }
+                }
+            }
+        }
+        return true
     }
 
     private fun setPreferredDisplayRefreshRate(rate: Float) {

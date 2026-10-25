@@ -423,6 +423,92 @@ class BatterySettingsScreen extends ConsumerWidget {
             ),
           ),
 
+          const SizedBox(height: 16),
+
+          // 5. Deep Sleep & OEM Background Playback Protection Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.shield_outlined, color: cs.primary, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Deep Sleep Playback Protection',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Safeguards audio playback against aggressive OEM task killers (Samsung OneUI, Xiaomi MIUI/HyperOS, OnePlus OxygenOS) during extended multi-hour screen-off listening.',
+                    style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: battery.isIgnoringBatteryOptimizations
+                            ? cs.primaryContainer
+                            : cs.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        battery.isIgnoringBatteryOptimizations
+                            ? Icons.verified_user_rounded
+                            : Icons.warning_amber_rounded,
+                        color: battery.isIgnoringBatteryOptimizations
+                            ? cs.onPrimaryContainer
+                            : cs.onErrorContainer,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      battery.isIgnoringBatteryOptimizations
+                          ? 'Unrestricted Background Playback'
+                          : 'Battery Optimizations Active',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                    ),
+                    subtitle: Text(
+                      battery.isIgnoringBatteryOptimizations
+                          ? 'Protected from OEM deep sleep termination.'
+                          : 'Tap to exempt FreeBeat from background sleep restrictions.',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
+                    trailing: battery.isIgnoringBatteryOptimizations
+                        ? const Icon(Icons.check_circle_rounded, color: Colors.green)
+                        : FilledButton.tonal(
+                            onPressed: () async {
+                              PixelHaptics.tick();
+                              await ref
+                                  .read(deviceBatteryStatusProvider.notifier)
+                                  .requestIgnoreBatteryOptimizations();
+                            },
+                            child: const Text('Allow'),
+                          ),
+                    onTap: battery.isIgnoringBatteryOptimizations
+                        ? null
+                        : () async {
+                            PixelHaptics.tick();
+                            await ref
+                                .read(deviceBatteryStatusProvider.notifier)
+                                .requestIgnoreBatteryOptimizations();
+                          },
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           const SizedBox(height: 24),
         ],
       ),

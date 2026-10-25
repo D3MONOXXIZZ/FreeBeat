@@ -101,8 +101,13 @@ class FreeBeatPlaybackService : Service() {
         when (action) {
             ACTION_PLAY_PAUSE -> {
                 isPlaying = !isPlaying
-                acquireWakeLock()
-                acquireWifiLock()
+                if (isPlaying) {
+                    acquireWakeLock()
+                    acquireWifiLock()
+                } else {
+                    releaseWakeLock()
+                    releaseWifiLock()
+                }
                 dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to isPlaying))
                 updateNotification()
             }
@@ -182,6 +187,7 @@ class FreeBeatPlaybackService : Service() {
                     acquireWakeLock()
                     acquireWifiLock()
                 } else {
+                    releaseWakeLock()
                     releaseWifiLock()
                 }
 
@@ -219,9 +225,11 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private fun releaseWakeLock() {
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-        }
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (_: Throwable) {}
     }
 
     private fun acquireWifiLock() {
@@ -577,7 +585,7 @@ class FreeBeatPlaybackService : Service() {
                 .addAction(repeatAction)      // Slot 4
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setOngoing(true)
+                .setOngoing(isPlaying)
                 .setColor(currentDominantColor)
                 .setColorized(true)
                 .setOnlyAlertOnce(true)
