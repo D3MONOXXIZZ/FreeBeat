@@ -143,6 +143,31 @@ void main() {
       expect(state.currentTrack.id, 'track_3');
       expect(state.isShuffle, true);
     });
+
+    test('Toggling shuffle and cycling repeat maintains track duration and metadata', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(playbackProvider.notifier);
+      notifier.setQueue(testTracks, startTrack: testTracks[1]);
+
+      expect(container.read(playbackProvider).currentTrack.durationMs, 180000);
+
+      // Trigger shuffle toggle
+      notifier.toggleShuffle();
+      expect(container.read(playbackProvider).isShuffle, true);
+      expect(container.read(playbackProvider).currentTrack.durationMs, 180000);
+      expect(container.read(playbackProvider).currentTrack.title, 'Track 1');
+
+      // Trigger repeat cycling
+      notifier.cycleRepeatMode(); // 1: all
+      expect(container.read(playbackProvider).repeatMode, 1);
+      expect(container.read(playbackProvider).currentTrack.durationMs, 180000);
+
+      notifier.cycleRepeatMode(); // 2: one
+      expect(container.read(playbackProvider).repeatMode, 2);
+      expect(container.read(playbackProvider).currentTrack.durationMs, 180000);
+    });
   });
 
   group('Pause and Track Desync Resilience Tests', () {

@@ -2008,6 +2008,43 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       try {
         final session = await AudioSession.instance;
         await session.configure(const AudioSessionConfiguration.music());
+
+        session.becomingNoisyEventStream.listen((_) {
+          if (!mounted) return;
+          if (state.isPlaying) {
+            togglePlayPause(forcePlay: false);
+          }
+        });
+
+        session.interruptionEventStream.listen((event) {
+          if (!mounted) return;
+          if (event.begin) {
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+                _activePlayer?.setVolume(0.25);
+                break;
+              case AudioInterruptionType.pause:
+              case AudioInterruptionType.unknown:
+                if (state.isPlaying) {
+                  togglePlayPause(forcePlay: false);
+                }
+                break;
+            }
+          } else {
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+                _activePlayer?.setVolume(1.0);
+                break;
+              case AudioInterruptionType.pause:
+                if (!state.isPlaying) {
+                  togglePlayPause(forcePlay: true);
+                }
+                break;
+              case AudioInterruptionType.unknown:
+                break;
+            }
+          }
+        });
       } catch (e) {
         debugPrint('AudioSession configuration notice: $e');
       }
@@ -3339,11 +3376,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _playerA?.setShuffleModeEnabled(newShuffle);
       _playerB?.setShuffleModeEnabled(newShuffle);
     } catch (_) {}
-    try {
-      _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
-            isShuffle: newShuffle,
-          );
-    } catch (_) {}
+    _syncForegroundNotification();
     _savePlaybackState();
   }
 
@@ -3359,11 +3392,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _playerA?.setLoopMode(loopMode);
       _playerB?.setLoopMode(loopMode);
     } catch (_) {}
-    try {
-      _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
-            repeatMode: newRepeat,
-          );
-    } catch (_) {}
+    _syncForegroundNotification();
     _savePlaybackState();
   }
 

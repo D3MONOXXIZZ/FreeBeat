@@ -65,6 +65,11 @@ class FreeBeatPlaybackService : Service() {
         var currentOutputDevice: String = "Phone Speaker"
         var isPowerSaver: Boolean = false
         var isCurrentTrackLocal: Boolean = false
+
+        private var cachedArtworkPath: String? = null
+        private var cachedDominantColor: Int = 0
+        private var cachedTitle: String = ""
+        private var cachedArtBitmap: Bitmap? = null
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -149,12 +154,25 @@ class FreeBeatPlaybackService : Service() {
                     currentArtworkPath = artArg
                 }
 
-                currentDurationMs = intent.getLongExtra("durationMs", currentDurationMs)
-                currentPositionMs = intent.getLongExtra("positionMs", currentPositionMs)
-                isPlaying = intent.getBooleanExtra("isPlaying", isPlaying)
-                currentVolume = intent.getFloatExtra("volume", currentVolume)
-                currentDominantColor = intent.getIntExtra("dominantColor", currentDominantColor)
-                intent.getStringExtra("outputDevice")?.let { if (it.isNotEmpty()) currentOutputDevice = it }
+                if (intent.hasExtra("durationMs")) {
+                    val d = intent.getLongExtra("durationMs", 0L)
+                    if (d > 0L) currentDurationMs = d
+                }
+                if (intent.hasExtra("positionMs")) {
+                    currentPositionMs = intent.getLongExtra("positionMs", currentPositionMs)
+                }
+                if (intent.hasExtra("isPlaying")) {
+                    isPlaying = intent.getBooleanExtra("isPlaying", isPlaying)
+                }
+                if (intent.hasExtra("volume")) {
+                    currentVolume = intent.getFloatExtra("volume", currentVolume)
+                }
+                if (intent.hasExtra("dominantColor")) {
+                    currentDominantColor = intent.getIntExtra("dominantColor", currentDominantColor)
+                }
+                if (intent.hasExtra("outputDevice")) {
+                    intent.getStringExtra("outputDevice")?.let { if (it.isNotEmpty()) currentOutputDevice = it }
+                }
                 if (intent.hasExtra("isShuffle")) isShuffle = intent.getBooleanExtra("isShuffle", isShuffle)
                 if (intent.hasExtra("repeatMode")) repeatMode = intent.getIntExtra("repeatMode", repeatMode)
                 if (intent.hasExtra("isPowerSaver")) isPowerSaver = intent.getBooleanExtra("isPowerSaver", isPowerSaver)
@@ -644,6 +662,18 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private fun loadArtworkBitmap(path: String?, title: String, dominantColor: Int): Bitmap {
+        if (cachedArtBitmap != null && path == cachedArtworkPath && dominantColor == cachedDominantColor && title == cachedTitle) {
+            return cachedArtBitmap!!
+        }
+        val resolved = resolveArtworkBitmap(path, title, dominantColor)
+        cachedArtworkPath = path
+        cachedDominantColor = dominantColor
+        cachedTitle = title
+        cachedArtBitmap = resolved
+        return resolved
+    }
+
+    private fun resolveArtworkBitmap(path: String?, title: String, dominantColor: Int): Bitmap {
         if (!path.isNullOrEmpty()) {
             // 1. Android SAF content:// URI
             if (path.startsWith("content://")) {

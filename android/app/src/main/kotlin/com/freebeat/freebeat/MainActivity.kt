@@ -290,35 +290,22 @@ class MainActivity : FlutterActivity() {
                     }
                     "updatePlaybackNotification" -> {
                         try {
-                            val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
-                            val durationMs = (call.argument<Number>("durationMs") ?: 0).toLong()
-                            val isPlaying = call.argument<Boolean>("isPlaying") ?: true
-                            val volume = (call.argument<Number>("volume") ?: 0.8).toFloat()
-                            val dominantColor = (call.argument<Number>("dominantColor") ?: 0xFF1E293B).toInt()
-                            val title = call.argument<String>("title")
-                            val artist = call.argument<String>("artist")
-                            val artworkPath = call.argument<String>("artworkPath")
-                            val outputDevice = call.argument<String>("outputDevice")
-                            val isShuffle = call.argument<Boolean>("isShuffle")
-                            val repeatMode = call.argument<Number>("repeatMode")?.toInt()
-                            val isPowerSaver = call.argument<Boolean>("isPowerSaver")
-                            val isCurrentTrackLocal = call.argument<Boolean>("isCurrentTrackLocal")
-
                             val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
                                 action = FreeBeatPlaybackService.ACTION_UPDATE
-                                putExtra("positionMs", positionMs)
-                                putExtra("durationMs", durationMs)
-                                putExtra("isPlaying", isPlaying)
-                                putExtra("volume", volume)
-                                putExtra("dominantColor", dominantColor)
-                                title?.let { putExtra("title", it) }
-                                artist?.let { putExtra("artist", it) }
-                                artworkPath?.let { putExtra("artworkPath", it) }
-                                outputDevice?.let { putExtra("outputDevice", it) }
-                                isShuffle?.let { putExtra("isShuffle", it) }
-                                repeatMode?.let { putExtra("repeatMode", it) }
-                                isPowerSaver?.let { putExtra("isPowerSaver", it) }
-                                isCurrentTrackLocal?.let { putExtra("isCurrentTrackLocal", it) }
+                                call.argument<Number>("positionMs")?.let { putExtra("positionMs", it.toLong()) }
+                                call.argument<Number>("durationMs")?.let { putExtra("durationMs", it.toLong()) }
+                                call.argument<Boolean>("isPlaying")?.let { putExtra("isPlaying", it) }
+                                call.argument<Number>("volume")?.let { putExtra("volume", it.toFloat()) }
+                                call.argument<Number>("dominantColor")?.let { putExtra("dominantColor", it.toInt()) }
+                                call.argument<String>("title")?.let { putExtra("title", it) }
+                                call.argument<String>("artist")?.let { putExtra("artist", it) }
+                                call.argument<String>("album")?.let { putExtra("album", it) }
+                                call.argument<String>("artworkPath")?.let { putExtra("artworkPath", it) }
+                                call.argument<String>("outputDevice")?.let { putExtra("outputDevice", it) }
+                                call.argument<Boolean>("isShuffle")?.let { putExtra("isShuffle", it) }
+                                call.argument<Number>("repeatMode")?.let { putExtra("repeatMode", it.toInt()) }
+                                call.argument<Boolean>("isPowerSaver")?.let { putExtra("isPowerSaver", it) }
+                                call.argument<Boolean>("isCurrentTrackLocal")?.let { putExtra("isCurrentTrackLocal", it) }
                             }
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
