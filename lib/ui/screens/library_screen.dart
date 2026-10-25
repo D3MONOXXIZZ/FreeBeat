@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
@@ -1119,6 +1120,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         body: CustomScrollView(
           controller: _scrollController,
           physics: const BouncingScrollPhysics(),
+          scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar

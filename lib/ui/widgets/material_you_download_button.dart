@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/audio/cloud_audio_cache_service.dart';
-import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import 'expressive_shapes.dart';
@@ -29,14 +28,22 @@ class MaterialYouDownloadButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final cacheSvc = ref.watch(cloudAudioCacheServiceProvider);
-    final queueMgr = ref.watch(downloadQueueManagerProvider);
-    final isCached = track.isPinnedOffline || cacheSvc.isTrackCached(track);
-    final progress = cacheSvc.getProgress(track.id);
-    final inQueue = queueMgr.queue.any((q) =>
-        q.track.id == track.id &&
-        (q.status == DownloadStatus.downloading ||
-            q.status == DownloadStatus.queued));
+    final isPinned = track.isPinnedOffline;
+
+    // Selectively observe download progress and queue state ONLY for this track
+    // Prevents mass-rebuilding all 500+ track tiles during 120Hz library scrolling
+    final progress = ref.watch(cloudAudioCacheServiceProvider.select(
+      (svc) => svc.getProgress(track.id),
+    ));
+    final inQueue = ref.watch(downloadQueueManagerProvider.select(
+      (mgr) => mgr.isTrackInQueue(track.id),
+    ));
+
+    final isCached = isPinned ||
+        progress.state == CacheState.cached ||
+        (track.localCachePath != null &&
+            track.localCachePath!.isNotEmpty &&
+            progress.state != CacheState.notCached);
     final isDownloading = progress.state == CacheState.caching || inQueue;
 
     Widget iconWidget;

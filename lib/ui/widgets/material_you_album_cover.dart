@@ -70,14 +70,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
                       offset: const Offset(0, 3),
                     ),
                   ]
-                : [
-                    // Lightweight elevation for fast 120Hz scrolling list thumbnails
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                : null, // Zero shadow blur-mask penalty for rapid 120Hz list thumbnails
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -89,19 +82,20 @@ class MaterialYouAlbumCover extends StatelessWidget {
               child: _buildCoverImage(context, trackColor, cs),
             ),
 
-            // 2. Subtle Bottom Gradient Scrim for Contrast
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.45),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+            // 2. Subtle Bottom Gradient Scrim for Contrast (only on larger cards with text/badges)
+            if (size > 52 || showQualityBadge || showSourceBadge)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.45),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
               ),
-            ),
 
             // 3. Top-Left: Quality / Codec Badge (FLAC, Hi-Res, 320k)
             if (showQualityBadge)
@@ -243,6 +237,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
           fit: BoxFit.cover,
           cacheWidth: targetCache,
           cacheHeight: targetCache,
+          gaplessPlayback: true,
+          filterQuality: size > 80 ? FilterQuality.medium : FilterQuality.low,
           errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
       } else {
@@ -251,6 +247,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
           fit: BoxFit.cover,
           cacheWidth: targetCache,
           cacheHeight: targetCache,
+          gaplessPlayback: true,
+          filterQuality: size > 80 ? FilterQuality.medium : FilterQuality.low,
           errorBuilder: (_, __, ___) =>
               _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
@@ -347,7 +345,8 @@ class _VinylGroovesPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     final maxRadius = size.width * 0.65;
-    for (double r = size.width * 0.18; r < maxRadius; r += 9.0) {
+    final step = size.width > 80 ? 9.0 : 16.0;
+    for (double r = size.width * 0.18; r < maxRadius; r += step) {
       canvas.drawCircle(center, r, paint);
     }
   }

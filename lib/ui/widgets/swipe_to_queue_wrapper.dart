@@ -322,128 +322,134 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     // Dynamic icon load-up scale: expands from 0.75 -> 1.10, popping to 1.20 when armed
     final iconScale = _hasTriggeredClick ? 1.20 : (0.75 + (0.35 * progress));
 
+    final isIdle = absOffset <= 0.001;
+
+    final content = isIdle
+        ? widget.child
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Background container with load-up visual indicators, clipped strictly to uncovered gap
+              if (absOffset > 0.5)
+                Positioned.fill(
+                  child: ClipRect(
+                    clipper: _SwipeBackgroundClipper(offset: _effectiveOffset),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isSwipingRight
+                            ? cs.primaryContainer.withValues(
+                                alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
+                              )
+                            : cs.errorContainer.withValues(
+                                alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
+                              ),
+                        borderRadius: widget.borderRadius,
+                      ),
+                      alignment: isSwipingRight
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: isSwipingRight
+                            ? [
+                                Transform.scale(
+                                  scale: iconScale,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: cs.onPrimaryContainer.withValues(
+                                        alpha: _hasTriggeredClick
+                                            ? 0.28
+                                            : (0.10 + (0.15 * progress)),
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      widget.primaryActionIcon,
+                                      color: cs.onPrimaryContainer,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Opacity(
+                                  opacity:
+                                      ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
+                                  child: Transform.translate(
+                                    offset: Offset((1.0 - progress) * -12.0, 0),
+                                    child: Text(
+                                      widget.primaryActionTitle,
+                                      style: TextStyle(
+                                        color: cs.onPrimaryContainer,
+                                        fontWeight: _hasTriggeredClick
+                                            ? FontWeight.w900
+                                            : FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]
+                            : [
+                                Opacity(
+                                  opacity:
+                                      ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
+                                  child: Transform.translate(
+                                    offset: Offset((1.0 - progress) * 12.0, 0),
+                                    child: Text(
+                                      widget.secondaryActionTitle,
+                                      style: TextStyle(
+                                        color: cs.onErrorContainer,
+                                        fontWeight: _hasTriggeredClick
+                                            ? FontWeight.w900
+                                            : FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Transform.scale(
+                                  scale: iconScale,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: cs.onErrorContainer.withValues(
+                                        alpha: _hasTriggeredClick
+                                            ? 0.28
+                                            : (0.10 + (0.15 * progress)),
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      widget.secondaryActionIcon,
+                                      color: cs.onErrorContainer,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Sliding track tile child
+              Transform.translate(
+                offset: Offset(_effectiveOffset, 0),
+                child: widget.child,
+              ),
+            ],
+          );
+
     return GestureDetector(
       onHorizontalDragStart: _handleDragStart,
       onHorizontalDragUpdate: _handleDragUpdate,
       onHorizontalDragEnd: _handleDragEnd,
       onHorizontalDragCancel: _handleDragCancel,
       behavior: HitTestBehavior.translucent,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Background container with load-up visual indicators, clipped strictly to uncovered gap
-          if (absOffset > 0.5)
-            Positioned.fill(
-              child: ClipRect(
-                clipper: _SwipeBackgroundClipper(offset: _effectiveOffset),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSwipingRight
-                        ? cs.primaryContainer.withValues(
-                            alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
-                          )
-                        : cs.errorContainer.withValues(
-                            alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
-                          ),
-                    borderRadius: widget.borderRadius,
-                  ),
-                  alignment: isSwipingRight
-                      ? Alignment.centerLeft
-                      : Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: isSwipingRight
-                        ? [
-                            Transform.scale(
-                              scale: iconScale,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: cs.onPrimaryContainer.withValues(
-                                    alpha: _hasTriggeredClick
-                                        ? 0.28
-                                        : (0.10 + (0.15 * progress)),
-                                  ),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  widget.primaryActionIcon,
-                                  color: cs.onPrimaryContainer,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Opacity(
-                              opacity:
-                                  ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
-                              child: Transform.translate(
-                                offset: Offset((1.0 - progress) * -12.0, 0),
-                                child: Text(
-                                  widget.primaryActionTitle,
-                                  style: TextStyle(
-                                    color: cs.onPrimaryContainer,
-                                    fontWeight: _hasTriggeredClick
-                                        ? FontWeight.w900
-                                        : FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ]
-                        : [
-                            Opacity(
-                              opacity:
-                                  ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
-                              child: Transform.translate(
-                                offset: Offset((1.0 - progress) * 12.0, 0),
-                                child: Text(
-                                  widget.secondaryActionTitle,
-                                  style: TextStyle(
-                                    color: cs.onErrorContainer,
-                                    fontWeight: _hasTriggeredClick
-                                        ? FontWeight.w900
-                                        : FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Transform.scale(
-                              scale: iconScale,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: cs.onErrorContainer.withValues(
-                                    alpha: _hasTriggeredClick
-                                        ? 0.28
-                                        : (0.10 + (0.15 * progress)),
-                                  ),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  widget.secondaryActionIcon,
-                                  color: cs.onErrorContainer,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
-                          ],
-                  ),
-                ),
-              ),
-            ),
-
-          // Sliding track tile child
-          Transform.translate(
-            offset: Offset(_effectiveOffset, 0),
-            child: widget.child,
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 }

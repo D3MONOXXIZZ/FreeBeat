@@ -995,11 +995,15 @@ final availableAlbumsProvider = Provider<List<AlbumInfo>>((ref) {
     map.putIfAbsent(album, () => []).add(t);
   }
   final list = map.entries.map((e) {
+    final representative = e.value.firstWhere(
+      (t) => t.artworkUrl != null && t.artworkUrl!.isNotEmpty,
+      orElse: () => e.value.first,
+    );
     return AlbumInfo(
       title: e.key,
-      artist: e.value.first.artist,
+      artist: representative.artist.isNotEmpty ? representative.artist : e.value.first.artist,
       trackCount: e.value.length,
-      representativeTrack: e.value.first,
+      representativeTrack: representative,
     );
   }).toList();
   list.sort((a, b) => b.trackCount.compareTo(a.trackCount));

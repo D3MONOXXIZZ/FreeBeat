@@ -391,6 +391,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
+      scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions
@@ -1094,7 +1095,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
-                scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
+                scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
                 itemCount: tracks.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 14),
                 itemBuilder: (context, idx) {
@@ -1178,7 +1181,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
                   itemCount: albums.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1262,7 +1267,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
                   itemCount: allTracks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1355,7 +1362,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
                   itemCount: topPicks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1438,7 +1447,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {

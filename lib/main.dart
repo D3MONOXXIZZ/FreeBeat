@@ -13,6 +13,10 @@ void main() {
   // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
   GestureBinding.instance.resamplingEnabled = true;
 
+  // Optimize image cache capacity for high-density 120Hz album cover art & carousels
+  PaintingBinding.instance.imageCache.maximumSize = 2500;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 256 * 1024 * 1024; // 256 MB
+
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 

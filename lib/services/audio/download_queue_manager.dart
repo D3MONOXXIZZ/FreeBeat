@@ -96,6 +96,19 @@ class DownloadQueueManager extends ChangeNotifier {
   int get totalCount => _queue.length;
   int get completedCount => _queue.where((i) => i.status == DownloadStatus.completed).length;
 
+  /// High-efficiency O(N) lookup for single track status without copying full queue list
+  bool isTrackInQueue(String trackId) {
+    for (int i = 0; i < _queue.length; i++) {
+      final q = _queue[i];
+      if (q.track.id == trackId &&
+          (q.status == DownloadStatus.downloading ||
+              q.status == DownloadStatus.queued)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _loadPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();

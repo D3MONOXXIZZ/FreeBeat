@@ -34,9 +34,9 @@ class _SpringPressScaleState extends State<SpringPressScale> {
 
   void _onTapDown(TapDownDetails details) {
     _pressTimer?.cancel();
-    // 75ms debounce ensures that horizontal or vertical swipe flings across lists
+    // 180ms debounce ensures that horizontal or vertical swipe flings across lists
     // do not trigger micro-jitters by prematurely shrinking and restoring the card.
-    _pressTimer = Timer(const Duration(milliseconds: 75), () {
+    _pressTimer = Timer(const Duration(milliseconds: 180), () {
       if (mounted) {
         setState(() => _pressed = true);
       }
