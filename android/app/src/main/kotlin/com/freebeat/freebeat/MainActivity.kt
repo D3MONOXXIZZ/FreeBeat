@@ -323,11 +323,7 @@ class MainActivity : FlutterActivity() {
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
                             } else {
-                                if (FreeBeatPlaybackService.isServiceRunning) {
-                                startService(serviceIntent)
-                            } else {
                                 androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
-                            }
                             }
                             result.success(true)
                         } catch (e: Throwable) {
@@ -592,8 +588,11 @@ class MainActivity : FlutterActivity() {
         FreeBeatPlaybackService.playerActionListener = { action, extras ->
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 try {
-                    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-                        .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
+                    val engine = flutterEngine
+                    if (engine != null) {
+                        MethodChannel(engine.dartExecutor.binaryMessenger, channelName)
+                            .invokeMethod("onNotificationAction", mapOf("action" to action, "extras" to extras))
+                    }
                 } catch (e: Throwable) {
                     android.util.Log.w("MainActivity", "Failed to dispatch onNotificationAction: ${e.message}")
                 }

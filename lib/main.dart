@@ -71,6 +71,9 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
         _isAppInForeground = inForeground;
       });
     }
+    if (inForeground) {
+      ref.read(playbackProvider.notifier).resyncWithActivePlayer();
+    }
   }
 
   @override

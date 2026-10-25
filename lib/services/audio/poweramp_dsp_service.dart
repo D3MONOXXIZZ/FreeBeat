@@ -154,15 +154,34 @@ class PowerampDspService {
     }
   }
 
+  void Function(String action, Map<String, dynamic> extras)? _notificationListener;
+  void Function(Map<String, dynamic> batteryMap)? _batteryListener;
+
   void setNotificationActionListener(
       void Function(String action, Map<String, dynamic> extras) listener) {
+    _notificationListener = listener;
+    _ensureMethodCallHandler();
+  }
+
+  void setBatteryStateListener(
+      void Function(Map<String, dynamic> batteryMap) listener) {
+    _batteryListener = listener;
+    _ensureMethodCallHandler();
+  }
+
+  void _ensureMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onNotificationAction') {
         final args = call.arguments as Map<dynamic, dynamic>? ?? {};
         final action = args['action'] as String? ?? '';
         final extras = (args['extras'] as Map<dynamic, dynamic>? ?? {})
             .map((k, v) => MapEntry(k.toString(), v));
-        listener(action, extras);
+        _notificationListener?.call(action, extras);
+      } else if (call.method == 'onBatteryStateChanged') {
+        final args = call.arguments;
+        if (args is Map) {
+          _batteryListener?.call(Map<String, dynamic>.from(args));
+        }
       }
     });
   }

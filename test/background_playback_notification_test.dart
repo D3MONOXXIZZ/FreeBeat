@@ -15,6 +15,14 @@ void main() {
   setUpAll(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/shared_preferences'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'getAll') return <String, dynamic>{};
+        return true;
+      },
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/path_provider'),
       (MethodCall methodCall) async => Directory.systemTemp.path,
     );
@@ -252,5 +260,78 @@ void main() {
           call.arguments['isPlaying'] == true),
       isTrue,
     );
+  });
+
+  test('PowerampDspService allows simultaneous notification and battery listeners without handler collision', () async {
+    final dspService = PowerampDspService();
+    String? lastAction;
+    Map<String, dynamic>? lastBattery;
+
+    dspService.setNotificationActionListener((action, extras) {
+      lastAction = action;
+    });
+
+    dspService.setBatteryStateListener((batteryMap) {
+      lastBattery = batteryMap;
+    });
+
+    final binaryMessenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    // Send onNotificationAction
+    await binaryMessenger.handlePlatformMessage(
+      'com.freebeat.app/dsp',
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('onNotificationAction', {
+          'action': 'onPlayPause',
+          'extras': {'isPlaying': false},
+        }),
+      ),
+      (data) {},
+    );
+    expect(lastAction, equals('onPlayPause'));
+
+    // Send onBatteryStateChanged
+    await binaryMessenger.handlePlatformMessage(
+      'com.freebeat.app/dsp',
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('onBatteryStateChanged', {
+          'batteryLevel': 85,
+          'isCharging': true,
+          'isPowerSaveMode': false,
+        }),
+      ),
+      (data) {},
+    );
+    expect(lastBattery?['batteryLevel'], equals(85));
+    expect(lastBattery?['isCharging'], equals(true));
+
+    // Send another notification action to verify notification handler remains active
+    await binaryMessenger.handlePlatformMessage(
+      'com.freebeat.app/dsp',
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('onNotificationAction', {
+          'action': 'onNext',
+          'extras': <String, dynamic>{},
+        }),
+      ),
+      (data) {},
+    );
+    expect(lastAction, equals('onNext'));
+  });
+
+  test('PlaybackNotifier resyncWithActivePlayer reconciles state safely', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(playbackProvider.notifier);
+    notifier.setQueue([testTrack]);
+
+    // Simulate resync
+    await notifier.resyncWithActivePlayer();
+
+    final state = container.read(playbackProvider);
+    expect(state.queue.length, equals(1));
+    expect(state.queue.first.id, equals(testTrack.id));
   });
 }

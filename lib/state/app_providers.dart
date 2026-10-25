@@ -253,14 +253,16 @@ class PowerSaverNotifier extends StateNotifier<PowerSaverSettings> {
 /// Real-time native battery state provider.
 final deviceBatteryStatusProvider =
     StateNotifierProvider<DeviceBatteryStatusNotifier, DeviceBatteryStatus>((ref) {
-  return DeviceBatteryStatusNotifier();
+  final dspSvc = ref.watch(powerampDspServiceProvider);
+  return DeviceBatteryStatusNotifier(dspSvc);
 });
 
 class DeviceBatteryStatusNotifier extends StateNotifier<DeviceBatteryStatus> {
-  DeviceBatteryStatusNotifier() : super(const DeviceBatteryStatus()) {
+  DeviceBatteryStatusNotifier([this._dspSvc]) : super(const DeviceBatteryStatus()) {
     _initNativeChannel();
   }
 
+  final PowerampDspService? _dspSvc;
   static const MethodChannel _dspChannel = MethodChannel('com.freebeat.app/dsp');
 
   Future<void> _initNativeChannel() async {
@@ -272,13 +274,8 @@ class DeviceBatteryStatusNotifier extends StateNotifier<DeviceBatteryStatus> {
       }
     } catch (_) {}
 
-    _dspChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onBatteryStateChanged') {
-        final args = call.arguments;
-        if (args is Map) {
-          _updateFromMap(Map<String, dynamic>.from(args));
-        }
-      }
+    _dspSvc?.setBatteryStateListener((map) {
+      _updateFromMap(map);
     });
   }
 
@@ -1790,6 +1787,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   AudioPlayer? get _audioPlayer => _activePlayer;
   bool _isCrossfading = false;
   Timer? _crossfadeTimer;
+  int? _crossfadeStartTimeMs;
+  int? _crossfadeFadeMs;
   Timer? _progressTicker;
   Timer? _sleepTimer;
   DateTime? _sleepTimerTarget;
@@ -1982,7 +1981,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         switch (action) {
           case 'onPlayPause':
             final playingExtra = extras['isPlaying'] as bool?;
-            togglePlayPause(forcePlay: playingExtra);
+            final isPhysicallyPlaying =
+                (_playerA?.playing ?? false) || (_playerB?.playing ?? false);
+            final shouldPlay =
+                isPhysicallyPlaying ? false : (playingExtra ?? !state.isPlaying);
+            togglePlayPause(forcePlay: shouldPlay);
             break;
           case 'onNext':
             skipNext();
@@ -2060,9 +2063,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       if (proc == ProcessingState.completed) {
         if (_isCrossfading) {
           // If a player completes during crossfade, conclude crossfade cleanly.
-          // NEVER skipNext() during crossfade!
-          final outgoing = _isPlayerAActive ? _playerB : _playerA;
-          final incoming = _isPlayerAActive ? _playerA : _playerB;
+          final outgoing = _inactivePlayer;
+          final incoming = _activePlayer;
           if (outgoing != null && incoming != null) {
             _completeCrossfade(outgoing, incoming);
           }
@@ -2103,6 +2105,35 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       if (!isCurrentActive || !state.isPlaying) return;
 
       final posMs = pos.inMilliseconds;
+
+      // Crossfade Watchdog: finalize crossfade if elapsed time exceeded even if timer was throttled by Android deep sleep
+      if (_isCrossfading && _crossfadeStartTimeMs != null && _crossfadeFadeMs != null) {
+        final elapsed = DateTime.now().millisecondsSinceEpoch - _crossfadeStartTimeMs!;
+        if (elapsed >= _crossfadeFadeMs!) {
+          final outgoing = _inactivePlayer;
+          final incoming = _activePlayer;
+          if (outgoing != null && incoming != null) {
+            _completeCrossfade(outgoing, incoming);
+          }
+        }
+      }
+
+      // Reconcile current playing track with actual ExoPlayer index on position ticks
+      final currentIdx = player.currentIndex;
+      if (currentIdx != null &&
+          currentIdx >= 0 &&
+          currentIdx < state.queue.length &&
+          state.queue[currentIdx].id != state.currentTrack.id) {
+        final newTrack = state.queue[currentIdx];
+        state = state.copyWith(
+          currentTrack: newTrack,
+          positionMs: posMs,
+        );
+        _syncForegroundNotification(track: newTrack, isPlaying: true);
+        _savePlaybackState();
+        _savePlaybackPosition(force: true);
+        unawaited(_preloadUpcomingQueueTracks());
+      }
 
       // Loop point check
       if (state.isLoopActive &&
@@ -2178,6 +2209,27 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       if ((bufMs - lastEmittedBufMs).abs() >= 1000 || bufMs == 0) {
         lastEmittedBufMs = bufMs;
         state = state.copyWith(bufferedPositionMs: bufMs);
+      }
+    });
+
+    // Primary Gapless Transition Listener via ExoPlayer direct currentIndex
+    player.currentIndexStream.listen((index) {
+      if (!mounted || index == null) return;
+      final isCurrentActive = _isPlayerAActive == isPlayerA;
+      if (!isCurrentActive || _isCrossfading) return;
+
+      if (index >= 0 && index < state.queue.length) {
+        final newTrack = state.queue[index];
+        if (newTrack.id != state.currentTrack.id) {
+          state = state.copyWith(
+            currentTrack: newTrack,
+            positionMs: 0,
+          );
+          _syncForegroundNotification(track: newTrack, isPlaying: true);
+          _savePlaybackState();
+          _savePlaybackPosition(force: true);
+          unawaited(_preloadUpcomingQueueTracks());
+        }
       }
     });
 
@@ -2269,6 +2321,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         } catch (_) {}
       }
 
+      _crossfadeStartTimeMs = DateTime.now().millisecondsSinceEpoch;
+      _crossfadeFadeMs = fadeMs;
+
       // Concurrently start playback of incoming track without blocking
       unawaited(incomingPlayer.play());
 
@@ -2320,6 +2375,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       debugPrint('Crossfade setup error: $e');
       _crossfadeTimer?.cancel();
       _crossfadeTimer = null;
+      _crossfadeStartTimeMs = null;
+      _crossfadeFadeMs = null;
       _isCrossfading = false;
       if (_activePlayer != outgoingPlayer) {
         _isPlayerAActive = !_isPlayerAActive;
@@ -2328,15 +2385,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
   }
 
-  void _completeCrossfade(AudioPlayer outgoingPlayer, AudioPlayer incomingPlayer) {
+  Future<void> _completeCrossfade(AudioPlayer outgoingPlayer, AudioPlayer incomingPlayer) async {
     if (!_isCrossfading) return;
     _crossfadeTimer?.cancel();
     _crossfadeTimer = null;
+    _crossfadeStartTimeMs = null;
+    _crossfadeFadeMs = null;
     _isCrossfading = false;
     try {
-      outgoingPlayer.stop();
-      outgoingPlayer.setVolume(0.0);
-      incomingPlayer.setVolume(1.0);
+      await outgoingPlayer.pause();
+      await outgoingPlayer.stop();
+      await outgoingPlayer.setVolume(0.0);
+      await incomingPlayer.setVolume(1.0);
     } catch (_) {}
 
     // Attach hardware DSP effects to the newly active player's session
@@ -2422,7 +2482,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   Future<void> togglePlayPause({bool? forcePlay}) async {
     await PixelHaptics.playPauseToggle();
-    final nextPlaying = forcePlay ?? !state.isPlaying;
+    final isPhysicallyPlaying =
+        (_playerA?.playing ?? false) || (_playerB?.playing ?? false);
+    final nextPlaying =
+        forcePlay ?? (isPhysicallyPlaying ? false : !state.isPlaying);
     state = state.copyWith(isPlaying: nextPlaying);
 
     if (nextPlaying) {
@@ -2493,18 +2556,22 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } else {
       _isPlayPending = false;
       _progressTicker?.cancel();
-      if (_isCrossfading) {
-        _crossfadeTimer?.cancel();
-        _crossfadeTimer = null;
-        _isCrossfading = false;
-        try {
-          _inactivePlayer?.stop();
-          _inactivePlayer?.setVolume(0.0);
-          _activePlayer?.setVolume(1.0);
-        } catch (_) {}
-      }
+      _crossfadeTimer?.cancel();
+      _crossfadeTimer = null;
+      _crossfadeStartTimeMs = null;
+      _crossfadeFadeMs = null;
+      _isCrossfading = false;
+
+      // Unconditionally pause BOTH physical players to eliminate ghost background audio
       try {
-        await _audioPlayer?.pause();
+        await Future.wait([
+          if (_playerA != null) _playerA!.pause(),
+          if (_playerB != null) _playerB!.pause(),
+        ]);
+        if (_inactivePlayer != null) {
+          await _inactivePlayer!.stop();
+          await _inactivePlayer!.setVolume(0.0);
+        }
       } catch (_) {}
       _syncForegroundNotification(isPlaying: false);
       _savePlaybackPosition(force: true);
@@ -2670,9 +2737,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         active.audioSource != null &&
         active.playerState.processingState != ProcessingState.idle) {
       try {
+        state = state.copyWith(
+          currentTrack: targetTrack,
+          positionMs: initialPositionMs ?? 0,
+          isPlaying: true,
+        );
+        _syncForegroundNotification(track: targetTrack, isPlaying: true);
         await active.seek(initPos ?? Duration.zero, index: initialIndex);
         await active.setVolume(1.0);
         await active.play();
+        _savePlaybackState();
+        _savePlaybackPosition(force: true);
         unawaited(_preloadUpcomingQueueTracks());
         return;
       } catch (e) {
@@ -2933,8 +3008,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (_isCrossfading) {
       _crossfadeTimer?.cancel();
       _crossfadeTimer = null;
+      _crossfadeStartTimeMs = null;
+      _crossfadeFadeMs = null;
       _isCrossfading = false;
       try {
+        await Future.wait([
+          if (_playerA != null) _playerA!.pause(),
+          if (_playerB != null) _playerB!.pause(),
+        ]);
         await _activePlayer?.stop();
         await _inactivePlayer?.stop();
         await _activePlayer?.setVolume(1.0);
@@ -2970,6 +3051,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final isPlaylistAligned = _playlistSource != null && _loadedQueueSignature == queueSig;
     if (state.crossfadeSeconds == 0 && isPlaylistAligned && _activePlayer != null && _activePlayer!.hasNext) {
       try {
+        final nextIdx = _activePlayer!.nextIndex;
+        if (nextIdx != null && nextIdx >= 0 && nextIdx < state.queue.length) {
+          final nextTrack = state.queue[nextIdx];
+          state = state.copyWith(currentTrack: nextTrack, positionMs: 0);
+          _syncForegroundNotification(track: nextTrack, isPlaying: true);
+          _savePlaybackState();
+        }
         await _activePlayer!.seekToNext();
         return;
       } catch (_) {}
@@ -2985,7 +3073,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     } else if (state.queue.isNotEmpty) {
       state = state.copyWith(isPlaying: false, positionMs: 0);
       try {
-        await _activePlayer?.pause();
+        await Future.wait([
+          if (_playerA != null) _playerA!.pause(),
+          if (_playerB != null) _playerB!.pause(),
+        ]);
+        if (_inactivePlayer != null) {
+          await _inactivePlayer!.stop();
+          await _inactivePlayer!.setVolume(0.0);
+        }
         _ref.read(powerampDspServiceProvider).stopForegroundPlayback();
       } catch (_) {}
     }
@@ -2996,8 +3091,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (_isCrossfading) {
       _crossfadeTimer?.cancel();
       _crossfadeTimer = null;
+      _crossfadeStartTimeMs = null;
+      _crossfadeFadeMs = null;
       _isCrossfading = false;
       try {
+        await Future.wait([
+          if (_playerA != null) _playerA!.pause(),
+          if (_playerB != null) _playerB!.pause(),
+        ]);
         await _activePlayer?.stop();
         await _inactivePlayer?.stop();
         await _activePlayer?.setVolume(1.0);
@@ -3013,6 +3114,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final isPlaylistAligned = _playlistSource != null && _loadedQueueSignature == queueSig;
     if (state.crossfadeSeconds == 0 && isPlaylistAligned && _activePlayer != null && _activePlayer!.hasPrevious) {
       try {
+        final prevIdx = _activePlayer!.previousIndex;
+        if (prevIdx != null && prevIdx >= 0 && prevIdx < state.queue.length) {
+          final prevTrack = state.queue[prevIdx];
+          state = state.copyWith(currentTrack: prevTrack, positionMs: 0);
+          _syncForegroundNotification(track: prevTrack, isPlaying: true);
+          _savePlaybackState();
+        }
         await _activePlayer!.seekToPrevious();
         return;
       } catch (_) {}
@@ -3399,6 +3507,76 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       } catch (_) {}
     }());
     _ref.read(audioQualityProvider.notifier).setCrossfadeDuration(clamped * 1000);
+  }
+
+  /// Reconciles FreeBeat's reactive state with the underlying physical ExoPlayer instances.
+  /// Called on AppLifecycleState.resumed and whenever the UI returns to foreground.
+  Future<void> resyncWithActivePlayer() async {
+    if (!mounted) return;
+    try {
+      // 1. Resolve any interrupted or stalled crossfades
+      if (_isCrossfading) {
+        final outgoing = _inactivePlayer;
+        final incoming = _activePlayer;
+        if (outgoing != null && incoming != null) {
+          await _completeCrossfade(outgoing, incoming);
+        }
+      }
+
+      // 2. Detect which physical player is actually active/playing
+      final aPlaying = _playerA?.playing ?? false;
+      final bPlaying = _playerB?.playing ?? false;
+      if (aPlaying && !bPlaying) {
+        _isPlayerAActive = true;
+      } else if (bPlaying && !aPlaying) {
+        _isPlayerAActive = false;
+      }
+
+      // Ensure any rogue secondary player is silenced
+      if (_inactivePlayer != null && _inactivePlayer!.playing && !_isCrossfading) {
+        try {
+          await _inactivePlayer!.pause();
+          await _inactivePlayer!.stop();
+          await _inactivePlayer!.setVolume(0.0);
+        } catch (_) {}
+      }
+
+      final active = _activePlayer;
+      if (active == null) return;
+
+      final isActuallyPlaying = active.playing;
+      final currentIdx = active.currentIndex;
+      final actualPos = active.position.inMilliseconds;
+
+      Track effectiveTrack = state.currentTrack;
+      if (currentIdx != null &&
+          currentIdx >= 0 &&
+          currentIdx < state.queue.length) {
+        final candidate = state.queue[currentIdx];
+        if (candidate.id.isNotEmpty) {
+          effectiveTrack = candidate;
+        }
+      } else if (active.sequenceState?.currentSource?.tag is Track) {
+        final tagTrack = active.sequenceState!.currentSource!.tag as Track;
+        if (tagTrack.id.isNotEmpty) {
+          effectiveTrack = tagTrack;
+        }
+      }
+
+      final posToSet = (actualPos > 0) ? actualPos : state.positionMs;
+
+      state = state.copyWith(
+        currentTrack: effectiveTrack,
+        isPlaying: isActuallyPlaying,
+        positionMs: posToSet,
+      );
+
+      _syncForegroundNotification(track: effectiveTrack, isPlaying: isActuallyPlaying);
+      _savePlaybackState();
+      _savePlaybackPosition();
+    } catch (e) {
+      debugPrint('Error resyncing with active player: $e');
+    }
   }
 
   @override
