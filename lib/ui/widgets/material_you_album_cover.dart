@@ -227,9 +227,10 @@ class MaterialYouAlbumCover extends StatelessWidget {
   Widget _buildCoverImage(BuildContext context, Color trackColor, ColorScheme cs) {
     if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
       final art = track.artworkUrl!;
-      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.5;
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 3.0;
+      // Target cache ~144-180px for list thumbnails (size <= 56), capped at 512px for hero artwork
       final int targetCache = size.isFinite
-          ? (size * dpr).round().clamp(96, 720)
+          ? (size * dpr).round().clamp(128, 512)
           : 512;
 
       if (art.startsWith('http://') || art.startsWith('https://')) {
@@ -272,6 +273,23 @@ class MaterialYouAlbumCover extends StatelessWidget {
         ? track.artist.trim()[0].toUpperCase()
         : '';
     final effectiveSize = size.isFinite ? size : 280.0;
+
+    // For list thumbnails (size <= 52), use an ultra-lightweight static representation
+    // with 0 custom paint passes and no multi-stop gradient allocations
+    if (size <= 52) {
+      return Container(
+        color: trackColor.withValues(alpha: 0.22),
+        alignment: Alignment.center,
+        child: Text(
+          '$titleInitial$artistInitial',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+          ),
+        ),
+      );
+    }
 
     return Container(
       decoration: BoxDecoration(

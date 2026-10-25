@@ -4,7 +4,6 @@ import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../widgets/add_to_library_modal.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/nav_pill.dart';
 import 'clouds_screen.dart';
@@ -82,12 +81,14 @@ class _MainShellState extends ConsumerState<MainShell> {
     double? width,
     bool fullWidth = false,
   }) {
-    final pillWidget = SizedBox(
-      width: fullWidth ? double.infinity : (width ?? 310),
-      height: 50,
-      child: SpringPressScale(
-        onTap: _openFullNowPlaying,
-        child: Container(
+    final pillWidget = RepaintBoundary(
+      child: SizedBox(
+        width: fullWidth ? double.infinity : (width ?? 310),
+        height: 50,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _openFullNowPlaying,
+          child: Container(
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(100),
@@ -226,7 +227,8 @@ class _MainShellState extends ConsumerState<MainShell> {
           ),
         ),
       ),
-    );
+    ),
+  );
 
     if (fullWidth) {
       return pillWidget;
@@ -268,9 +270,10 @@ class _MainShellState extends ConsumerState<MainShell> {
         top: false,
         left: false,
         right: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Column(
+        child: RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Global Real-Time Import Progress Indicator
@@ -439,7 +442,8 @@ class _MainShellState extends ConsumerState<MainShell> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

@@ -133,13 +133,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     PixelHaptics.tick();
   }
 
-  String _formatTrackDuration(int ms) {
-    final totalSeconds = (ms / 1000).floor().clamp(0, 86400);
-    final minutes = totalSeconds ~/ 60;
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   Future<void> _pickLocalFiles() async {
     PixelHaptics.tick();
     final authService = ref.read(nativeCloudAuthServiceProvider);
@@ -949,10 +942,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final allTracks = ref.watch(tracksCatalogProvider);
-    final activeTrackId =
-        ref.watch(playbackProvider.select((p) => p.currentTrack.id));
-    final isPlaybackActive =
-        ref.watch(playbackProvider.select((p) => p.isPlaying));
     final importProgress = ref.watch(importProgressProvider);
     final allPlaylists = ref.watch(smartPlaylistsProvider);
     final duplicateMap = ref.watch(duplicateTracksProvider);
@@ -1125,7 +1114,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           physics: const ClampingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
-          scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(500),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar
@@ -2275,7 +2264,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                 ),
               ),
-              // 3. Fully Virtualized Track List with RepaintBoundary per item for smooth 120Hz scrolling
+              // 3. Fully Virtualized O(1) Fixed Extent Track List with RepaintBoundary per item for locked 120Hz scrolling
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
                 sliver: DecoratedSliver(
@@ -2294,64 +2283,58 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       ),
                     ),
                   ),
-                  sliver: SliverList.separated(
-                    itemCount: filtered.length,
-                    addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: true,
-                    separatorBuilder: (context, index) => Divider(
-                      height: 1,
-                      indent: 74,
-                      endIndent: 16,
-                      color: cs.outlineVariant.withValues(alpha: 0.25),
+                  sliver: SliverFixedExtentList(
+                    itemExtent: _LibraryTrackTile.tileHeight,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        final track = filtered[i];
+                        return RepaintBoundary(
+                          key: ValueKey('tile_boundary_${track.id}'),
+                          child: SwipeToQueueWrapper(
+                            key: ValueKey('swipe_${track.id}'),
+                            track: track,
+                            enabled: !_isMultiSelect,
+                            child: _LibraryTrackTile(
+                              key: ValueKey('track_${track.id}'),
+                              track: track,
+                              isMultiSelect: _isMultiSelect,
+                              isSelected: _selectedTrackIds.contains(track.id),
+                              onSelectToggle: () => _toggleSelectTrack(track.id),
+                              onTap: () {
+                                if (_isMultiSelect) {
+                                  _toggleSelectTrack(track.id);
+                                } else {
+                                  ref
+                                      .read(playbackProvider.notifier)
+                                      .playTrack(track);
+                                }
+                              },
+                              onLongPress: () {
+                                if (_isMultiSelect) {
+                                  _toggleSelectTrack(track.id);
+                                } else {
+                                  _enterMultiSelect(track.id);
+                                }
+                              },
+                              onToggleFavorite: () {
+                                ref
+                                    .read(tracksCatalogProvider.notifier)
+                                    .toggleFavorite(track.id);
+                              },
+                              onTogglePin: () {
+                                ref
+                                    .read(tracksCatalogProvider.notifier)
+                                    .togglePinOffline(track.id);
+                              },
+                              onOptionsTap: () => _showTrackOptions(track),
+                            ),
+                          ),
+                        );
+                      },
+                      childCount: filtered.length,
+                      addAutomaticKeepAlives: false,
+                      addRepaintBoundaries: false,
                     ),
-                    itemBuilder: (context, i) {
-                      final track = filtered[i];
-                      final isCurrent = activeTrackId == track.id;
-                      final isPlaying = isCurrent && isPlaybackActive;
-
-                      return SwipeToQueueWrapper(
-                        key: ValueKey(track.id),
-                        track: track,
-                        enabled: !_isMultiSelect,
-                        child: _LibraryTrackTile(
-                          track: track,
-                          isCurrent: isCurrent,
-                          isPlaying: isPlaying,
-                          durationText:
-                              _formatTrackDuration(track.durationMs),
-                          isMultiSelect: _isMultiSelect,
-                          isSelected: _selectedTrackIds.contains(track.id),
-                          onSelectToggle: () => _toggleSelectTrack(track.id),
-                          onTap: () {
-                            if (_isMultiSelect) {
-                              _toggleSelectTrack(track.id);
-                            } else {
-                              ref
-                                  .read(playbackProvider.notifier)
-                                  .playTrack(track);
-                            }
-                          },
-                          onLongPress: () {
-                            if (_isMultiSelect) {
-                              _toggleSelectTrack(track.id);
-                            } else {
-                              _enterMultiSelect(track.id);
-                            }
-                          },
-                          onToggleFavorite: () {
-                            ref
-                                .read(tracksCatalogProvider.notifier)
-                                .toggleFavorite(track.id);
-                          },
-                          onTogglePin: () {
-                            ref
-                                .read(tracksCatalogProvider.notifier)
-                                .togglePinOffline(track.id);
-                          },
-                          onOptionsTap: () => _showTrackOptions(track),
-                        ),
-                      );
-                    },
                   ),
                 ),
               ),
@@ -2430,12 +2413,10 @@ class _LibraryPillFilter extends StatelessWidget {
   }
 }
 
-class _LibraryTrackTile extends StatelessWidget {
+class _LibraryTrackTile extends ConsumerWidget {
   const _LibraryTrackTile({
+    super.key,
     required this.track,
-    required this.isCurrent,
-    required this.isPlaying,
-    required this.durationText,
     required this.onTap,
     required this.onToggleFavorite,
     required this.onTogglePin,
@@ -2447,9 +2428,6 @@ class _LibraryTrackTile extends StatelessWidget {
   });
 
   final Track track;
-  final bool isCurrent;
-  final bool isPlaying;
-  final String durationText;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
   final VoidCallback onTogglePin;
@@ -2459,157 +2437,184 @@ class _LibraryTrackTile extends StatelessWidget {
   final VoidCallback? onSelectToggle;
   final VoidCallback? onLongPress;
 
+  static const double tileHeight = 72.0;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
 
-    return InkWell(
-      onTap: () {
-        PixelHaptics.tick();
-        if (isMultiSelect) {
-          onSelectToggle?.call();
-        } else {
-          onTap();
-        }
-      },
-      onLongPress: () {
-        PixelHaptics.sheetExpand();
-        if (onLongPress != null) {
-          onLongPress!();
-        } else {
-          onOptionsTap();
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: isSelected
-              ? cs.primaryContainer.withValues(alpha: 0.35)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            if (isMultiSelect) ...[
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: isSelected ? cs.primary : Colors.transparent,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? cs.primary : cs.outlineVariant,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? Icon(Icons.check_rounded, size: 16, color: cs.onPrimary)
-                    : null,
+    // Localized fine-grained selectors: only rebuilds this specific tile
+    // when its own active playback or isPlaying state changes
+    final isCurrent = ref.watch(playbackProvider.select(
+      (p) => p.currentTrack.id == track.id,
+    ));
+    final isPlaying = isCurrent && ref.watch(playbackProvider.select(
+      (p) => p.isPlaying,
+    ));
+
+    final totalSeconds = (track.durationMs / 1000).floor().clamp(0, 86400);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    final durationText = '$minutes:$seconds';
+
+    return SizedBox(
+      height: tileHeight,
+      child: InkWell(
+        onTap: () {
+          PixelHaptics.tick();
+          if (isMultiSelect) {
+            onSelectToggle?.call();
+          } else {
+            onTap();
+          }
+        },
+        onLongPress: () {
+          PixelHaptics.sheetExpand();
+          if (onLongPress != null) {
+            onLongPress!();
+          } else {
+            onOptionsTap();
+          }
+        },
+        child: Container(
+          height: tileHeight,
+          decoration: BoxDecoration(
+            color: isSelected
+                ? cs.primaryContainer.withValues(alpha: 0.35)
+                : Colors.transparent,
+            border: Border(
+              bottom: BorderSide(
+                color: cs.outlineVariant.withValues(alpha: 0.18),
+                width: 1.0,
               ),
-              const SizedBox(width: 12),
-            ],
-            MaterialYouAlbumCover(
-              track: track,
-              size: 48,
-              borderRadius: 14,
-              showQualityBadge: false,
-              showSourceBadge: false,
-              isPlaying: isPlaying,
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    track.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
-                      color: isCurrent ? cs.primary : cs.onSurface,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (isMultiSelect) ...[
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isSelected ? cs.primary : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? cs.primary : cs.outlineVariant,
+                      width: 2,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.secondaryContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          track.codec,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSecondaryContainer,
-                          ),
-                        ),
+                  child: isSelected
+                      ? Icon(Icons.check_rounded, size: 16, color: cs.onPrimary)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+              ],
+              MaterialYouAlbumCover(
+                track: track,
+                size: 48,
+                borderRadius: 14,
+                showQualityBadge: false,
+                showSourceBadge: false,
+                isPlaying: isPlaying,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                        color: isCurrent ? cs.primary : cs.onSurface,
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            if (isMultiSelect) {
-                              onSelectToggle?.call();
-                            } else {
-                              PixelHaptics.tick();
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      ArtistDetailsScreen(artistName: track.artist),
-                                ),
-                              );
-                            }
-                          },
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                           child: Text(
-                            '${track.artist} • $durationText',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            track.codec,
                             style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSecondaryContainer,
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (isMultiSelect) {
+                                onSelectToggle?.call();
+                              } else {
+                                PixelHaptics.tick();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ArtistDetailsScreen(artistName: track.artist),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Text(
+                              '${track.artist} • $durationText',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (!isMultiSelect) ...[
-              MaterialYouDownloadButton(
-                track: track,
-                size: 20,
-              ),
-              IconButton(
-                icon: Icon(
-                  track.isFavorite
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+              if (!isMultiSelect) ...[
+                MaterialYouDownloadButton(
+                  track: track,
                   size: 20,
                 ),
-                onPressed: onToggleFavorite,
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_vert_rounded, size: 20),
-                tooltip: 'Track Options',
-                onPressed: () {
-                  PixelHaptics.tick();
-                  onOptionsTap();
-                },
-              ),
+                IconButton(
+                  icon: Icon(
+                    track.isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: track.isFavorite ? cs.error : cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  onPressed: onToggleFavorite,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_vert_rounded, size: 20),
+                  tooltip: 'Track Options',
+                  onPressed: () {
+                    PixelHaptics.tick();
+                    onOptionsTap();
+                  },
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

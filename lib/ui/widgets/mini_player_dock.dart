@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../screens/now_playing_screen.dart';
-import 'expressive_shapes.dart';
 import 'material_you_album_cover.dart';
 
 /// Floating Material You Mini Player Dock.
@@ -62,12 +61,14 @@ class MiniPlayerDock extends ConsumerWidget {
 
     final cs = Theme.of(context).colorScheme;
 
-    final pillWidget = SizedBox(
-      width: fullWidth ? double.infinity : (width ?? 320),
-      height: 50,
-      child: SpringPressScale(
-        onTap: () => _openNowPlaying(context),
-        child: Container(
+    final pillWidget = RepaintBoundary(
+      child: SizedBox(
+        width: fullWidth ? double.infinity : (width ?? 320),
+        height: 50,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openNowPlaying(context),
+          child: Container(
           decoration: BoxDecoration(
             color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(100),
@@ -208,7 +209,8 @@ class MiniPlayerDock extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ),
+  );
 
     if (fullWidth) {
       return pillWidget;

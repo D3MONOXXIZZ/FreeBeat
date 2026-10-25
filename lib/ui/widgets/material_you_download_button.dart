@@ -4,7 +4,6 @@ import '../../core/models/track.dart';
 import '../../services/audio/cloud_audio_cache_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import 'expressive_shapes.dart';
 
 /// Material You Expressive Download Action Button.
 /// Displays clear visual states:
@@ -85,7 +84,8 @@ class MaterialYouDownloadButton extends ConsumerWidget {
       );
     }
 
-    final button = SpringPressScale(
+    final button = GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () async {
         PixelHaptics.tick();
         if (track.id.isEmpty) return;
