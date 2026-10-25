@@ -38,12 +38,10 @@ class MaterialYouDownloadButton extends ConsumerWidget {
       (mgr) => mgr.isTrackInQueue(track.id),
     ));
 
-    final isCached = isPinned ||
-        progress.state == CacheState.cached ||
-        (track.localCachePath != null &&
-            track.localCachePath!.isNotEmpty &&
-            progress.state != CacheState.notCached);
     final isDownloading = progress.state == CacheState.caching || inQueue;
+    // Download tick checkmark should strictly represent explicit offline download (pinned offline),
+    // NOT ephemeral streaming playback cache!
+    final isDownloadedOffline = isPinned;
 
     Widget iconWidget;
     Color buttonColor = color ?? cs.onSurfaceVariant;
@@ -69,7 +67,7 @@ class MaterialYouDownloadButton extends ConsumerWidget {
           ],
         ),
       );
-    } else if (isCached) {
+    } else if (isDownloadedOffline) {
       iconWidget = Icon(
         Icons.download_done_rounded,
         size: size,
@@ -90,7 +88,7 @@ class MaterialYouDownloadButton extends ConsumerWidget {
         PixelHaptics.tick();
         if (track.id.isEmpty) return;
 
-        final willPin = !isCached;
+        final willPin = !isDownloadedOffline;
         await ref
             .read(tracksCatalogProvider.notifier)
             .togglePinOffline(track.id);
@@ -133,13 +131,13 @@ class MaterialYouDownloadButton extends ConsumerWidget {
       child: Tooltip(
         message: isDownloading
             ? 'Downloading ${(progress.progress * 100).round()}%'
-            : (isCached ? 'Downloaded Offline' : 'Download Song Locally'),
+            : (isDownloadedOffline ? 'Downloaded Offline' : 'Download Song Locally'),
         child: showBackground
             ? Container(
                 width: size + 16,
                 height: size + 16,
                 decoration: BoxDecoration(
-                  color: isCached
+                  color: isDownloadedOffline
                       ? cs.primaryContainer
                       : cs.surfaceContainerHighest.withValues(alpha: 0.6),
                   shape: BoxShape.circle,

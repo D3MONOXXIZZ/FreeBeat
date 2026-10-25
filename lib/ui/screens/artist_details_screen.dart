@@ -182,8 +182,11 @@ class ArtistDetailsScreen extends ConsumerWidget {
                                   ..shuffle();
                                 ref
                                     .read(playbackProvider.notifier)
-                                    .playTrack(shuffled.first,
-                                        newQueue: shuffled);
+                                    .playTrack(
+                                      shuffled.first,
+                                      newQueue: shuffled,
+                                      isShuffle: true,
+                                    );
                               },
                         icon: const Icon(Icons.shuffle_rounded, size: 20),
                         label: const Text('Shuffle'),
@@ -709,7 +712,11 @@ class ArtistDetailsScreen extends ConsumerWidget {
                   final shuffled = List<Track>.from(albumTracks)..shuffle();
                   ref
                       .read(playbackProvider.notifier)
-                      .playTrack(shuffled.first, newQueue: shuffled);
+                      .playTrack(
+                        shuffled.first,
+                        newQueue: shuffled,
+                        isShuffle: true,
+                      );
                 },
               ),
               ListTile(

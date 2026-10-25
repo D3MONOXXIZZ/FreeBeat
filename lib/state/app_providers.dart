@@ -1831,6 +1831,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   String? _loadedQueueSignature;
   String? _preloadedTrackId;
   bool _isPreloadingNext = false;
+  List<Track>? _unshuffledQueue;
 
   int _lastSavedPosMs = -1;
   int _lastSavedPosTimestamp = 0;
@@ -1923,9 +1924,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final savedQueueIds = prefs.getStringList('playback_last_queue_ids') ?? [];
 
       Track? targetTrack;
-      final effectiveId = (savedTrackId != null && savedTrackId.isNotEmpty)
-          ? savedTrackId
-          : state.currentTrack.id;
+      // Prioritize currently active/paused track in memory
+      final effectiveId = state.currentTrack.id.isNotEmpty
+          ? state.currentTrack.id
+          : (savedTrackId != null && savedTrackId.isNotEmpty ? savedTrackId : '');
 
       if (effectiveId.isNotEmpty) {
         targetTrack = catalog.firstWhere(
@@ -1938,7 +1940,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       }
 
       List<Track> restoredQueue = catalog;
-      if (savedQueueIds.isNotEmpty) {
+      if (state.queue.isNotEmpty) {
+        // Retain the active queue in memory, refreshing track metadata
+        final catalogMap = {for (final t in catalog) t.id: t};
+        restoredQueue = state.queue.map((t) => catalogMap[t.id] ?? t).toList();
+      } else if (savedQueueIds.isNotEmpty) {
         final catalogMap = {for (final t in catalog) t.id: t};
         final orderedQueue = <Track>[];
         for (final qId in savedQueueIds) {
@@ -1962,9 +1968,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           (state.currentTrack.id.isNotEmpty
               ? state.currentTrack
               : restoredQueue.first);
-      final finalPos = targetTrack != null
-          ? savedPosMs
-          : (state.currentTrack.id == current.id ? state.positionMs : 0);
+      final finalPos = (state.currentTrack.id == current.id)
+          ? state.positionMs
+          : (targetTrack != null ? savedPosMs : 0);
 
       if (!state.isPlaying) {
         state = state.copyWith(
@@ -2103,9 +2109,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
 
         if (isCurrentActive) {
-          if (_playlistSource != null && player.hasNext && state.repeatMode == 0) {
+          final queueSig = state.queue.map((t) => t.id).join(',');
+          final isPlaylistAligned = _playlistSource != null && _loadedQueueSignature == queueSig;
+          if (isPlaylistAligned && player.hasNext && state.repeatMode == 0) {
             // Gapless playlist transitioning in ExoPlayer
-          } else if (_playlistSource != null && !player.hasNext && state.repeatMode == 0) {
+          } else if (isPlaylistAligned && !player.hasNext && state.repeatMode == 0) {
             state = state.copyWith(isPlaying: false);
             _syncForegroundNotification(isPlaying: false);
             _savePlaybackState();
@@ -2153,9 +2161,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       // Reconcile current playing track with actual ExoPlayer index on position ticks
       // Only reconcile when using a ConcatenatingAudioSource gapless playlist, NOT during track transitions or crossfades!
       final currentIdx = player.currentIndex;
+      final queueSig = state.queue.map((t) => t.id).join(',');
+      final isPlaylistAligned = _playlistSource != null && _loadedQueueSignature == queueSig;
       if (!_isTransitioningTrack &&
           !_isCrossfading &&
-          _playlistSource != null &&
+          isPlaylistAligned &&
           player.audioSource == _playlistSource &&
           currentIdx != null &&
           currentIdx >= 0 &&
@@ -2256,10 +2266,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     player.currentIndexStream.listen((index) {
       if (!mounted || index == null) return;
       final isCurrentActive = _isPlayerAActive == isPlayerA;
+      final queueSig = state.queue.map((t) => t.id).join(',');
+      final isPlaylistAligned = _playlistSource != null && _loadedQueueSignature == queueSig;
       if (!isCurrentActive ||
+          !state.isPlaying ||
+          !isPlaylistAligned ||
           _isCrossfading ||
           _isTransitioningTrack ||
-          _playlistSource == null ||
           player.audioSource != _playlistSource) {
         return;
       }
@@ -2286,7 +2299,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     player.sequenceStateStream.listen((sequenceState) {
       if (!mounted || sequenceState == null) return;
       final isCurrentActive = _isPlayerAActive == isPlayerA;
-      if (!isCurrentActive || _isCrossfading || _isTransitioningTrack) return;
+      if (!isCurrentActive || !state.isPlaying || _isCrossfading || _isTransitioningTrack) return;
       final currentSource = sequenceState.currentSource;
       final playingTrack = currentSource?.tag as Track?;
 
@@ -2972,6 +2985,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       return t;
     }).toList();
 
+    _unshuffledQueue = null;
     final current = startTrack ??
         (sanitizedTracks.any((t) => t.id == state.currentTrack.id)
             ? state.currentTrack
@@ -3014,7 +3028,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _ref.read(tracksCatalogProvider.notifier).updateTrack(updated);
   }
 
-  Future<void> playTrack(Track track, {List<Track>? newQueue}) async {
+  Future<void> playTrack(
+    Track track, {
+    List<Track>? newQueue,
+    bool? isShuffle,
+  }) async {
     await PixelHaptics.playPauseToggle();
     if (_isCrossfading) {
       _crossfadeTimer?.cancel();
@@ -3037,11 +3055,27 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         ? freshTrack.copyWith(dominantColorValue: 0xFF1E293B)
         : freshTrack;
 
-    final List<Track> effectiveQueue = newQueue ??
+    final bool targetShuffle = isShuffle ?? state.isShuffle;
+    List<Track> baseQueue = newQueue ??
         (state.queue.isEmpty ? _ref.read(tracksCatalogProvider) : state.queue);
-    final hasTrack = effectiveQueue.any((t) => t.id == effectiveTrack.id);
-    final queueToUse =
-        hasTrack ? effectiveQueue : [effectiveTrack, ...effectiveQueue];
+
+    if (newQueue != null) {
+      if (targetShuffle) {
+        _unshuffledQueue = List<Track>.from(newQueue);
+      } else {
+        _unshuffledQueue = null;
+      }
+    }
+
+    final hasTrack = baseQueue.any((t) => t.id == effectiveTrack.id);
+    List<Track> queueToUse =
+        hasTrack ? baseQueue : [effectiveTrack, ...baseQueue];
+
+    if (targetShuffle && newQueue != null && (isShuffle == null || !isShuffle)) {
+      // User tapped a specific track while in shuffle mode: keep that track first, shuffle the remaining
+      final remaining = baseQueue.where((t) => t.id != effectiveTrack.id).toList()..shuffle();
+      queueToUse = [effectiveTrack, ...remaining];
+    }
 
     // Record session history
     final prevTrack = state.currentTrack;
@@ -3063,6 +3097,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       positionMs: 0,
       bufferedPositionMs: (effectiveTrack.durationMs * 0.35).round(),
       isPlaying: true,
+      isShuffle: targetShuffle,
     );
     _startTicker();
     _savePlaybackState();
@@ -3085,6 +3120,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         currentTrack: effectiveTrack,
         queue: queueToUse,
         isPlaying: true,
+        isShuffle: targetShuffle,
       );
       _syncForegroundNotification(track: effectiveTrack, isPlaying: true);
       _savePlaybackState();
@@ -3193,7 +3229,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (idx != -1 && idx < state.queue.length - 1) {
       await playTrack(state.queue[idx + 1]);
     } else if (state.repeatMode == 1 && state.queue.isNotEmpty) {
-      await playTrack(state.queue.first);
+      if (state.isShuffle && state.queue.length > 1) {
+        final reshuffled = List<Track>.from(state.queue)..shuffle();
+        state = state.copyWith(queue: reshuffled);
+        _loadedQueueSignature = null;
+        await playTrack(reshuffled.first);
+      } else {
+        await playTrack(state.queue.first);
+      }
     } else if (state.isAutoplay) {
       _triggerAutoplayNext();
     } else if (state.queue.isNotEmpty) {
@@ -3267,8 +3310,31 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   void toggleShuffle() {
     PixelHaptics.tick();
     final newShuffle = !state.isShuffle;
-    state = state.copyWith(isShuffle: newShuffle);
-    _preloadedTrackId = null;
+
+    if (newShuffle) {
+      if (state.queue.isNotEmpty) {
+        _unshuffledQueue ??= List<Track>.from(state.queue);
+        final current = state.currentTrack;
+        final remaining = state.queue.where((t) => t.id != current.id).toList()..shuffle();
+        final newQueue = current.id.isNotEmpty ? [current, ...remaining] : (List<Track>.from(state.queue)..shuffle());
+        _loadedQueueSignature = null;
+        _preloadedTrackId = null;
+        state = state.copyWith(queue: newQueue, isShuffle: true);
+      } else {
+        state = state.copyWith(isShuffle: true);
+      }
+    } else {
+      if (_unshuffledQueue != null && _unshuffledQueue!.isNotEmpty) {
+        final restoredQueue = List<Track>.from(_unshuffledQueue!);
+        _unshuffledQueue = null;
+        _loadedQueueSignature = null;
+        _preloadedTrackId = null;
+        state = state.copyWith(queue: restoredQueue, isShuffle: false);
+      } else {
+        state = state.copyWith(isShuffle: false);
+      }
+    }
+
     try {
       _playerA?.setShuffleModeEnabled(newShuffle);
       _playerB?.setShuffleModeEnabled(newShuffle);
@@ -3330,6 +3396,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final newQueue = state.queue
         .where((t) => t.id != trackId || t.id == state.currentTrack.id)
         .toList();
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = _unshuffledQueue!
+          .where((t) => t.id != trackId || t.id == state.currentTrack.id)
+          .toList();
+    }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
@@ -3344,6 +3415,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         ? 0
         : (currentIdx + 1).clamp(0, withoutTrack.length);
     final newQueue = List<Track>.from(withoutTrack)..insert(insertIdx, track);
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = [..._unshuffledQueue!.where((t) => t.id != track.id), track];
+    }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
@@ -3354,6 +3428,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = [..._unshuffledQueue!.where((t) => t.id != track.id), track];
+    }
     state = state.copyWith(queue: [...withoutTrack, track]);
   }
 
@@ -3369,6 +3446,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         ? 0
         : (currentIdx + 1).clamp(0, withoutTracks.length);
     final newQueue = List<Track>.from(withoutTracks)..insertAll(insertIdx, tracks);
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = [..._unshuffledQueue!.where((t) => !trackIds.contains(t.id)), ...tracks];
+    }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
     state = state.copyWith(queue: newQueue);
@@ -3382,6 +3462,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         state.queue.where((t) => !trackIds.contains(t.id)).toList();
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = [..._unshuffledQueue!.where((t) => !trackIds.contains(t.id)), ...tracks];
+    }
     state = state.copyWith(queue: [...withoutTracks, ...tracks]);
   }
 
@@ -3391,6 +3474,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         state.queue.indexWhere((t) => t.id == state.currentTrack.id);
     if (currentIdx == -1) return;
     _loadedQueueSignature = null;
+    if (_unshuffledQueue != null) {
+      _unshuffledQueue = [state.currentTrack];
+    }
     state = state.copyWith(queue: [state.currentTrack]);
   }
 
@@ -3680,20 +3766,22 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final actualPos = active.position.inMilliseconds;
 
       Track effectiveTrack = state.currentTrack;
-      if (_playlistSource != null &&
-          active.audioSource == _playlistSource &&
-          currentIdx != null &&
-          currentIdx >= 0 &&
-          currentIdx < state.queue.length) {
-        final candidate = state.queue[currentIdx];
-        if (candidate.id.isNotEmpty) {
-          effectiveTrack = candidate;
-        }
-      } else if (active.sequenceState?.currentSource?.tag is Track) {
-        final tagTrack = active.sequenceState!.currentSource!.tag as Track;
-        if (tagTrack.id.isNotEmpty &&
-            (state.queue.isEmpty || state.queue.any((t) => t.id == tagTrack.id))) {
-          effectiveTrack = tagTrack;
+      if (isActuallyPlaying) {
+        if (_playlistSource != null &&
+            active.audioSource == _playlistSource &&
+            currentIdx != null &&
+            currentIdx >= 0 &&
+            currentIdx < state.queue.length) {
+          final candidate = state.queue[currentIdx];
+          if (candidate.id.isNotEmpty) {
+            effectiveTrack = candidate;
+          }
+        } else if (active.sequenceState?.currentSource?.tag is Track) {
+          final tagTrack = active.sequenceState!.currentSource!.tag as Track;
+          if (tagTrack.id.isNotEmpty &&
+              (state.queue.isEmpty || state.queue.any((t) => t.id == tagTrack.id))) {
+            effectiveTrack = tagTrack;
+          }
         }
       }
 

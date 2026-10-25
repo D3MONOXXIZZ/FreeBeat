@@ -617,7 +617,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               ..shuffle();
                             ref
                                 .read(playbackProvider.notifier)
-                                .playTrack(shuffled.first, newQueue: shuffled);
+                                .playTrack(
+                                  shuffled.first,
+                                  newQueue: shuffled,
+                                  isShuffle: true,
+                                );
                           },
                           icon: const Icon(Icons.shuffle_rounded, size: 16),
                           label: const Text('Shuffle'),

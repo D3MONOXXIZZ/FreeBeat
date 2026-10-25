@@ -990,6 +990,7 @@ class _PlaylistDetailsScreenState
                                       .playTrack(
                                         shuffled.first,
                                         newQueue: shuffled,
+                                        isShuffle: true,
                                       );
                                 }
                               : null,
