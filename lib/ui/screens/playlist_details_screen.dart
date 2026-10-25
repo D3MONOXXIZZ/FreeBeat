@@ -9,7 +9,6 @@ import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../services/playlist/playlist_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
@@ -595,7 +594,9 @@ class _PlaylistDetailsScreenState
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: const ClampingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -727,7 +728,9 @@ class _PlaylistDetailsScreenState
       body: Stack(
         children: [
           CustomScrollView(
-            physics: const BouncingScrollPhysics(),
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             slivers: [
           // 1. Sleek App Bar
           SliverAppBar(
@@ -1249,7 +1252,8 @@ class _SmallActionPill extends StatelessWidget {
       message: tooltip,
       child: Opacity(
         opacity: isEnabled ? 1.0 : 0.45,
-        child: SpringPressScale(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: onPressed,
           child: Container(
             height: 38,

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import 'expressive_shapes.dart';
 import 'generative_playlist_cover.dart';
 
 /// Shows the Material 3 Expressive "Add to Playlist" bottom sheet modal.
@@ -291,7 +290,9 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      physics: const BouncingScrollPhysics(),
+                      physics: const ClampingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
                       itemCount: playlists.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                       itemBuilder: (context, idx) {
@@ -307,7 +308,8 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                         final isInPlaylist =
                             isSingle ? playlist.trackIds.contains(widget.tracks.first.id) : allPresent;
 
-                        return SpringPressScale(
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: () async {
                             final notifier =
                                 ref.read(playlistsProvider.notifier);

@@ -103,7 +103,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
   bool _isDismissed = false;
 
   static const double _kActivationThreshold = 80.0;
-  static const double _kResistanceThreshold = 100.0;
 
   AnimationController _ensureAnimController() {
     _animController ??= AnimationController(
@@ -125,25 +124,10 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     super.dispose();
   }
 
-  /// Calculates physical spring-elastic resistance.
-  ///
-  /// Starts responsive at ~0.76x of finger movement, smoothly ramping up damping
-  /// as it approaches activation (0.60x), and transitioning to a heavy 0.30x
-  /// rubber-band stretch past the trigger point for a tangible mechanical feel.
+  /// Calculates smooth, direct finger movement offset without rubber-band spring resistance.
   double _computeResistedOffset(double raw) {
     if (raw == 0) return 0;
-    final sign = raw.sign;
-    final abs = raw.abs();
-
-    if (abs <= _kResistanceThreshold) {
-      final t = abs / _kResistanceThreshold;
-      final factor = 0.76 - (0.16 * t);
-      return sign * (abs * factor);
-    } else {
-      const base = _kResistanceThreshold * 0.60;
-      final excess = abs - _kResistanceThreshold;
-      return sign * (base + (excess * 0.30));
-    }
+    return raw;
   }
 
   void _handleDragStart(DragStartDetails details) {

@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../core/models/track.dart';
-import 'expressive_shapes.dart';
 
 /// Stock Google Pixel Material 3 Expressive Album Cover.
 /// Wraps artwork in a vibrant, dynamic Material You container with tonal elevation,
@@ -182,7 +181,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
               Positioned(
                 bottom: 8,
                 right: 8,
-                child: SpringPressScale(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: onPlayTap,
                   child: Container(
                     width: 38,
@@ -214,7 +214,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
     );
 
     if (onPlayTap != null && !showPlayButton) {
-      return SpringPressScale(
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onPlayTap,
         child: coverContent,
       );

@@ -418,7 +418,9 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
         Expanded(
           child: ReorderableListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            physics: const BouncingScrollPhysics(),
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             itemCount: upNext.length,
             // ignore: deprecated_member_use
             onReorder: (oldIndex, newIndex) {
@@ -582,7 +584,9 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-      physics: const BouncingScrollPhysics(),
+      physics: const ClampingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       itemCount: history.length,
       itemBuilder: (context, index) {
         final track = history[index];
@@ -721,7 +725,8 @@ class _QueueTabPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         PixelHaptics.tick();
         onTap();

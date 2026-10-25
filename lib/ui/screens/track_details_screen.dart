@@ -67,7 +67,9 @@ class TrackDetailsScreen extends ConsumerWidget {
 
     return Scaffold(
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         slivers: [
           // ─────────────────────────────────────────────────────────────────
           // 1. M3 Large Collapsing App Bar

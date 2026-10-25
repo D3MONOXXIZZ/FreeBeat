@@ -359,7 +359,9 @@ class _FullscreenLyricsScreenState
                         )
                       : ListView.builder(
                           controller: _scrollController,
-                          physics: const BouncingScrollPhysics(),
+                          physics: const ClampingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
+                          ),
                           padding: const EdgeInsets.fromLTRB(24, 40, 24, 140),
                           itemCount: lyrics.length,
                           itemBuilder: (context, index) {
@@ -843,7 +845,9 @@ class _OnlineLyricsSearchSheetState
                           ),
                         )
                       : ListView.separated(
-                          physics: const BouncingScrollPhysics(),
+                          physics: const ClampingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
+                          ),
                           itemCount: _results.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
                           itemBuilder: (context, index) {

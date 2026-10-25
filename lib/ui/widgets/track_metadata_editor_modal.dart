@@ -230,7 +230,9 @@ class _TrackMetadataEditorSheetState
             padding: EdgeInsets.only(bottom: keyboardBottom),
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              physics: const BouncingScrollPhysics(),
+              physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -650,7 +652,9 @@ class _OnlineArtworkSearchSheetState
                           ),
                         )
                       : GridView.builder(
-                          physics: const BouncingScrollPhysics(),
+                          physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,

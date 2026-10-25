@@ -5,7 +5,6 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
@@ -488,7 +487,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
+                        physics: const ClampingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -777,7 +778,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
+                        physics: const ClampingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1119,7 +1122,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 : null),
         body: CustomScrollView(
           controller: _scrollController,
-          physics: const BouncingScrollPhysics(),
+          physics: const ClampingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
@@ -1529,7 +1534,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 scrollDirection: Axis.horizontal,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                physics: const BouncingScrollPhysics(),
+                physics: const ClampingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
                 children: [
                   _LibraryPillFilter(
                     label: 'All Tracks (${allTracks.length})',
@@ -1822,7 +1829,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const ClampingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
                   itemCount: filteredArtists.length,
@@ -2376,7 +2385,8 @@ class _LibraryPillFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         PixelHaptics.tick();
         onTap();
@@ -2701,7 +2711,8 @@ class _NewPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -2761,7 +2772,8 @@ class _ImportPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -2821,7 +2833,8 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.antiAlias,
@@ -2903,7 +2916,8 @@ class _PlaylistGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(

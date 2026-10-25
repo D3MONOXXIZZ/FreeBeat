@@ -26,7 +26,9 @@ class BluetoothSettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const BouncingScrollPhysics(),
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // 1. Current Output Device & Codec

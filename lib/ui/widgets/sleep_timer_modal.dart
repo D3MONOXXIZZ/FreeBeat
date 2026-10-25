@@ -319,7 +319,8 @@ class _TimerPresetChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         PixelHaptics.tick();
         onTap(duration);

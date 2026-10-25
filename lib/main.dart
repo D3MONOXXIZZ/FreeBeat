@@ -133,6 +133,7 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
             theme: lightTheme,
             darkTheme: darkTheme,
             themeMode: themeMode, // Strictly bound to ThemeMode.system by default
+            scrollBehavior: const SmoothFreeScrollBehavior(),
           builder: (context, child) {
             // Read active effective theme brightness (respects ThemeMode.system / light / dark)
             final effectiveTheme = Theme.of(context);
@@ -156,6 +157,31 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
         ),
       );
       },
+    );
+  }
+}
+
+/// Provides smooth, frictionless free scrolling across the entire app
+/// replacing spring bouncing physics with native Android free ballistic scroll.
+class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
+  const SmoothFreeScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const ClampingScrollPhysics(
+      parent: AlwaysScrollableScrollPhysics(),
+    );
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return StretchingOverscrollIndicator(
+      axisDirection: details.direction,
+      child: child,
     );
   }
 }

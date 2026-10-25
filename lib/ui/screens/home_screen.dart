@@ -5,7 +5,6 @@ import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
 import 'artist_details_screen.dart';
@@ -134,7 +133,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: const ClampingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -390,7 +391,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final importProgress = ref.watch(importProgressProvider);
 
     return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const ClampingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
@@ -403,7 +406,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           leading: Padding(
             padding: const EdgeInsets.only(left: 16),
             child: Center(
-              child: SpringPressScale(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
                   PixelHaptics.tick();
                   Navigator.of(context).push(
@@ -630,7 +634,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(
+                physics: const ClampingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -723,7 +727,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(
+                      physics: const ClampingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -811,7 +815,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 40,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(
+                      physics: const ClampingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
                       ),
                       scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
@@ -1092,7 +1096,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const BouncingScrollPhysics(
+                physics: const ClampingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
                 addAutomaticKeepAlives: false,
@@ -1178,7 +1182,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(
+                  physics: const ClampingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1264,7 +1268,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(
+                  physics: const ClampingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1359,7 +1363,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(
+                  physics: const ClampingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1444,7 +1448,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(
+                  physics: const ClampingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
                   addAutomaticKeepAlives: false,
@@ -1456,7 +1460,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     final artist = artists[idx];
                     return RepaintBoundary(
                       key: ValueKey('home_artist_${artist.name}'),
-                      child: SpringPressScale(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: () {
                           PixelHaptics.tick();
                           if (ref.read(selectedArtistFilterProvider) == artist.name) {
@@ -1555,7 +1560,8 @@ class _PixelCategoryPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
@@ -1610,7 +1616,8 @@ class _PixelPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         PixelHaptics.tick();
         onTap();
@@ -1711,7 +1718,8 @@ class _PixelCoverCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return RepaintBoundary(
-      child: SpringPressScale(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         onLongPress: onOpenOptions,
         child: SizedBox(
@@ -1818,7 +1826,8 @@ class _PixelAlbumCoverCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return RepaintBoundary(
-      child: SpringPressScale(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
           width: cardWidth,

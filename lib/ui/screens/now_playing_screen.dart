@@ -680,7 +680,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: const ClampingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

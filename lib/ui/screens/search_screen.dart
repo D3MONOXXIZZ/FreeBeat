@@ -92,7 +92,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
+          physics: const ClampingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           slivers: [
             // 1. Search Bar Header
             SliverToBoxAdapter(
@@ -177,7 +179,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   itemCount: SearchFilterType.values.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, idx) {
@@ -492,7 +496,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const BouncingScrollPhysics(),
+                      physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                       itemCount: results.artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (context, idx) {
@@ -537,7 +543,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const BouncingScrollPhysics(),
+                      physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                       itemCount: results.playlists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (context, idx) {
@@ -730,7 +738,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

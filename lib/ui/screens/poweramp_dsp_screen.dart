@@ -122,7 +122,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
 
     return Scaffold(
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         slivers: [
           // ───────────────────────────────────────────────────────────────────
           // 1. M3 Top App Bar
@@ -607,7 +609,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              physics: const BouncingScrollPhysics(),
+              physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               child: Row(
                 children: [
                   for (final preset in kBuiltInDspPresets) ...[
@@ -810,7 +814,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             height: 275,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
+              physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1587,7 +1593,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Action buttons: Save EQ, Import, Auto Profiles
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
+                        physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
                         child: Row(
                           children: [
                             FilledButton.tonalIcon(
@@ -1809,7 +1817,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Quick actions
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
+                        physics: const ClampingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
                         child: Row(
                           children: [
                             FilledButton.tonalIcon(

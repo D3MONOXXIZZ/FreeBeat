@@ -4,7 +4,6 @@ import '../../core/models/track.dart';
 import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
-import '../widgets/expressive_shapes.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
 import '../widgets/add_to_playlist_modal.dart';
@@ -71,7 +70,9 @@ class ArtistDetailsScreen extends ConsumerWidget {
       body: Stack(
         children: [
           CustomScrollView(
-            physics: const BouncingScrollPhysics(),
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             slivers: [
           // ─────────────────────────────────────────────────────────────────
           // 1. M3 Large Collapsing App Bar
@@ -246,7 +247,9 @@ class ArtistDetailsScreen extends ConsumerWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const ClampingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   itemCount: albumMap.entries.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -255,7 +258,8 @@ class ArtistDetailsScreen extends ConsumerWidget {
                     final albumTracks = entry.value;
                     final firstTrack = albumTracks.first;
 
-                    return SpringPressScale(
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () {
                         PixelHaptics.tick();
                         ref

@@ -89,8 +89,8 @@ class _SpringPressScaleState extends State<SpringPressScale> {
       onTapCancel: _onTapCancel,
       child: AnimatedScale(
         scale: _pressed ? widget.scaleDown : 1.0,
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutBack,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
         child: widget.child,
       ),
     );

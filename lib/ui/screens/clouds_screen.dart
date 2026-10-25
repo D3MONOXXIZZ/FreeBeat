@@ -30,7 +30,9 @@ class CloudsScreen extends ConsumerWidget {
       bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
-        physics: const BouncingScrollPhysics(),
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
       children: [
         // 1. Header with Title, Settings Icon & Add Cloud Button
         Row(
