@@ -29,6 +29,8 @@ class MiniPlayerDock extends ConsumerWidget {
     PixelHaptics.sheetExpand();
     Navigator.of(context).push(
       PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.transparent,
         pageBuilder: (context, animation, secondaryAnimation) =>
             NowPlayingScreen(
           onOpenDspStudio: onOpenDspStudio ?? () {},
@@ -37,13 +39,17 @@ class MiniPlayerDock extends ConsumerWidget {
           final curved = CurvedAnimation(
             parent: animation,
             curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
           );
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.12),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
           );
         },
       ),

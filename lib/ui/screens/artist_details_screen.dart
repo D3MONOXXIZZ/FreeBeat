@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/metadata/artist_helper.dart';
 import '../../state/app_providers.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
@@ -39,7 +40,7 @@ class ArtistDetailsScreen extends ConsumerWidget {
 
     final allTracks = ref.watch(tracksCatalogProvider);
     final artistTracks = allTracks.where((t) {
-      return t.artist.trim().toLowerCase() == artistName.trim().toLowerCase();
+      return ArtistHelper.trackBelongsToArtist(t, artistName);
     }).toList();
 
     // Unique albums by this artist

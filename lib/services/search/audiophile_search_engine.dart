@@ -1,5 +1,6 @@
 import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
+import '../metadata/artist_helper.dart';
 
 enum SearchFilterType {
   all('All'),
@@ -71,7 +72,8 @@ class AudiophileSearchEngine {
       }
 
       final titleMatch = track.title.toLowerCase().contains(cleanQuery);
-      final artistMatch = track.artist.toLowerCase().contains(cleanQuery);
+      final artistMatch = track.artist.toLowerCase().contains(cleanQuery) ||
+          ArtistHelper.trackBelongsToArtist(track, cleanQuery);
       final albumMatch = track.album.toLowerCase().contains(cleanQuery);
       final codecMatch = track.codec.toLowerCase().contains(cleanQuery) ||
           track.streamUrl.toLowerCase().contains(cleanQuery);
@@ -84,18 +86,17 @@ class AudiophileSearchEngine {
       }
     }
 
-    // 3. Extract matching artists
+    // 3. Extract matching artists (unified individual profiles)
     final matchedArtists = <String>{};
     if (filter == SearchFilterType.all || filter == SearchFilterType.artists) {
       for (final track in allTracks) {
-        if (cleanQuery.isEmpty && filter == SearchFilterType.artists) {
-          if (track.artist.isNotEmpty && track.artist != 'Unknown Artist') {
-            matchedArtists.add(track.artist);
+        final artists = ArtistHelper.extractArtists(track.artist, track.title);
+        for (final a in artists) {
+          if (cleanQuery.isEmpty && filter == SearchFilterType.artists) {
+            matchedArtists.add(a);
+          } else if (cleanQuery.isNotEmpty && a.toLowerCase().contains(cleanQuery)) {
+            matchedArtists.add(a);
           }
-        } else if (cleanQuery.isNotEmpty &&
-            track.artist.toLowerCase().contains(cleanQuery) &&
-            track.artist != 'Unknown Artist') {
-          matchedArtists.add(track.artist);
         }
       }
     }

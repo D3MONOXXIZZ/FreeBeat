@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/cloud_account.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/metadata/artist_helper.dart';
 import '../../state/app_providers.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/material_you_download_button.dart';
@@ -210,20 +211,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             );
                           },
                         ),
-                        ListTile(
-                          leading: const Icon(Icons.person_rounded),
-                          title: Text('View Artist: ${track.artist}',
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          onTap: () {
-                            Navigator.of(ctx).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    ArtistDetailsScreen(artistName: track.artist),
-                              ),
-                            );
-                          },
-                        ),
+                        ...() {
+                          final trackArtists = ArtistHelper.extractArtists(track.artist, track.title);
+                          if (trackArtists.length > 1) {
+                            return trackArtists.map((a) => ListTile(
+                              leading: const Icon(Icons.person_rounded),
+                              title: Text('View Artist: $a',
+                                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ArtistDetailsScreen(artistName: a),
+                                  ),
+                                );
+                              },
+                            ));
+                          }
+                          final aName = trackArtists.isNotEmpty ? trackArtists.first : track.artist;
+                          return [
+                            ListTile(
+                              leading: const Icon(Icons.person_rounded),
+                              title: Text('View Artist: $aName',
+                                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ArtistDetailsScreen(artistName: aName),
+                                  ),
+                                );
+                              },
+                            ),
+                          ];
+                        }(),
                         ListTile(
                           leading: Icon(
                             track.isPinnedOffline

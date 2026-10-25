@@ -28,6 +28,7 @@ import '../services/audio/universal_audio_transcoder_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 import '../services/metadata/artwork_and_lyrics_service.dart';
+import '../services/metadata/artist_helper.dart';
 import '../services/metadata/range_tag_parser.dart';
 import '../services/metadata/track_tag_writer_service.dart';
 
@@ -967,21 +968,46 @@ class AlbumInfo {
   });
 }
 
-/// Dynamic list of artists discovered in the user's catalog
+/// Dynamic list of artists discovered in the user's catalog.
+/// Unifies collaborations, features, and solo tracks into distinct artist profiles.
 final availableArtistsProvider = Provider<List<ArtistInfo>>((ref) {
   final tracks = ref.watch(tracksCatalogProvider);
   final map = <String, List<Track>>{};
+  final canonicalNames = <String, String>{};
+
   for (final t in tracks) {
-    final artist = t.artist.trim().isEmpty ? 'Unknown Artist' : t.artist.trim();
-    map.putIfAbsent(artist, () => []).add(t);
+    final artists = ArtistHelper.extractArtists(t.artist, t.title);
+    if (artists.isEmpty) {
+      final fallback = t.artist.trim().isEmpty ? 'Unknown Artist' : t.artist.trim();
+      final lower = fallback.toLowerCase();
+      canonicalNames.putIfAbsent(lower, () => fallback);
+      final canonical = canonicalNames[lower]!;
+      map.putIfAbsent(canonical, () => []).add(t);
+    } else {
+      for (final a in artists) {
+        final lower = a.toLowerCase();
+        canonicalNames.putIfAbsent(lower, () => a);
+        final canonical = canonicalNames[lower]!;
+        final list = map.putIfAbsent(canonical, () => []);
+        if (!list.contains(t)) {
+          list.add(t);
+        }
+      }
+    }
   }
+
   final list = map.entries.map((e) {
+    final representative = e.value.firstWhere(
+      (t) => t.artworkUrl != null && t.artworkUrl!.isNotEmpty,
+      orElse: () => e.value.first,
+    );
     return ArtistInfo(
       name: e.key,
       trackCount: e.value.length,
-      representativeTrack: e.value.first,
+      representativeTrack: representative,
     );
   }).toList();
+
   list.sort((a, b) => b.trackCount.compareTo(a.trackCount));
   return list;
 });
@@ -1044,9 +1070,9 @@ final filteredTracksProvider = Provider<List<Track>>((ref) {
                 : track.providerType.id == cloudFilter;
     if (!matchesCloud) return false;
 
-    // 2. Artist filter
+    // 2. Artist filter (unifies solo, collaborative, and featured tracks)
     if (artistFilter != null && artistFilter.isNotEmpty) {
-      if (track.artist.toLowerCase() != artistFilter.toLowerCase()) return false;
+      if (!ArtistHelper.trackBelongsToArtist(track, artistFilter)) return false;
     }
 
     // 3. Album filter
@@ -4387,14 +4413,10 @@ final duplicateTracksProvider = Provider<Map<String, List<Track>>>((ref) {
   return map;
 });
 
-/// Memoized list of distinct artists across all indexed library tracks
+/// Memoized list of distinct unified artists across all indexed library tracks
 final allArtistsProvider = Provider<List<String>>((ref) {
-  final allTracks = ref.watch(tracksCatalogProvider);
-  return allTracks
-      .map((t) => t.artist)
-      .where((a) => a.isNotEmpty)
-      .toSet()
-      .toList();
+  final available = ref.watch(availableArtistsProvider);
+  return available.map((a) => a.name).toList();
 });
 
 

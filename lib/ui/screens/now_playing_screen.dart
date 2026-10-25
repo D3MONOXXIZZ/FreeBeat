@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../services/metadata/artwork_palette_extractor.dart';
+import '../../services/metadata/artist_helper.dart';
 import '../../state/app_providers.dart';
 import '../widgets/ab_loop_modal.dart';
 import '../widgets/expressive_shapes.dart';
@@ -252,26 +253,48 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         ? _palette!.rightEdgeColor
         : effectiveDominant;
 
+    final dragDismissProgress = (_dragOffsetY / 400.0).clamp(0.0, 1.0);
+    final blurSigma = (28.0 * (1.0 - dragDismissProgress)).clamp(0.0, 28.0);
+    final backdropDim = (0.50 * (1.0 - dragDismissProgress)).clamp(0.0, 0.50);
     final dragScale = (1.0 - (_dragOffsetY / 1400.0)).clamp(0.92, 1.0);
-    final dragBorderRadius = (_dragOffsetY / 6.0).clamp(0.0, 36.0);
+    final dragBorderRadius = (_dragOffsetY / 5.0).clamp(0.0, 36.0);
+    final sheetOpacity = (1.0 - (_dragOffsetY / 1200.0)).clamp(0.85, 1.0);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onVerticalDragUpdate: _onVerticalDragUpdate,
-        onVerticalDragEnd: _onVerticalDragEnd,
-        child: Transform.translate(
-          offset: Offset(0, _dragOffsetY * 0.85),
-          child: Transform.scale(
-            scale: dragScale,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(dragBorderRadius),
-              child: Stack(
-                children: [
-          // 1. Ambient Dynamic Gradient Background
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 600),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Dynamic Fullscreen Backdrop Blur over underlying screen
+          // Fades smoothly from blur (28.0) to crystal clear (0.0) as the user pulls down to close
+          if (blurSigma > 0.1)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                child: Container(
+                  color: Colors.black.withValues(alpha: backdropDim),
+                ),
+              ),
+            ),
+
+          // 2. Interactive Dismissible Now Playing Sheet
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragUpdate: _onVerticalDragUpdate,
+            onVerticalDragEnd: _onVerticalDragEnd,
+            child: Transform.translate(
+              offset: Offset(0, _dragOffsetY * 0.85),
+              child: Transform.scale(
+                scale: dragScale,
+                child: Opacity(
+                  opacity: sheetOpacity,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(dragBorderRadius),
+                    child: Stack(
+                      children: [
+                        // 1. Ambient Dynamic Gradient Background
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 600),
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               gradient: RadialGradient(
@@ -512,13 +535,60 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                                     track.artist !=
                                         'Connect cloud storage or import songs') {
                                   PixelHaptics.tick();
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => ArtistDetailsScreen(
-                                        artistName: track.artist,
+                                  final artists = ArtistHelper.extractArtists(track.artist, track.title);
+                                  if (artists.length > 1) {
+                                    showModalBottomSheet<void>(
+                                      context: context,
+                                      backgroundColor: cs.surfaceContainerLow,
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                                       ),
-                                    ),
-                                  );
+                                      builder: (ctx) => SafeArea(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const SizedBox(height: 12),
+                                            Container(
+                                              width: 36,
+                                              height: 4,
+                                              decoration: BoxDecoration(
+                                                color: cs.outlineVariant,
+                                                borderRadius: BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                                              child: Text('Artists on this Track',
+                                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            for (final a in artists)
+                                              ListTile(
+                                                leading: const Icon(Icons.person_rounded),
+                                                title: Text(a, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                                onTap: () {
+                                                  Navigator.of(ctx).pop();
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(builder: (_) => ArtistDetailsScreen(artistName: a)),
+                                                  );
+                                                },
+                                              ),
+                                            const SizedBox(height: 12),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    final aName = artists.isNotEmpty ? artists.first : track.artist;
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => ArtistDetailsScreen(
+                                          artistName: aName,
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 }
                               },
                               child: Row(
@@ -709,6 +779,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     ),
   ),
 ),
+),
+),
+],
 ),
 );
   }
