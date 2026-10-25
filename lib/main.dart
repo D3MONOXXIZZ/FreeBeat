@@ -12,6 +12,42 @@ import 'ui/widgets/ultra_free_scroll_physics.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Global release error boundary: log errors and render graceful Material You fallback
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('Uncaught Flutter Error: ${details.exceptionAsString()}');
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: const Color(0xFF0F172A),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: Color(0xFF94A3B8), size: 40),
+              const SizedBox(height: 12),
+              const Text(
+                'Something unexpected occurred.',
+                style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                details.exceptionAsString(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  };
+
   // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
   GestureBinding.instance.resamplingEnabled = true;
 
