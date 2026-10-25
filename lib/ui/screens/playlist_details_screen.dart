@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/playlist.dart';
@@ -728,6 +729,7 @@ class _PlaylistDetailsScreenState
       body: Stack(
         children: [
           CustomScrollView(
+            scrollCacheExtent: const ScrollCacheExtent.pixels(500),
             physics: const ClampingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
@@ -1115,87 +1117,90 @@ class _PlaylistDetailsScreenState
                   final isCurrent = currentTrackId == track.id;
                   final isPlaying = isCurrent && isPlaybackPlaying;
 
-                  return SwipeToQueueWrapper(
-                    key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
-                    track: track,
-                    enableSecondaryAction: false,
-                    child: InkWell(
-                      onTap: () {
-                        PixelHaptics.tick();
-                        ref.read(playbackProvider.notifier).playTrack(
-                              track,
-                              newQueue: playlistTracks,
-                            );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          children: [
-                            // Track index or play indicator
-                            SizedBox(
-                              width: 28,
-                              child: Text(
-                                '${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: isCurrent
-                                      ? cs.primary
-                                      : cs.onSurfaceVariant,
+                  return RepaintBoundary(
+                    key: ValueKey('pl_tile_${livePlaylist.id}_${track.id}_$index'),
+                    child: SwipeToQueueWrapper(
+                      key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
+                      track: track,
+                      enableSecondaryAction: false,
+                      child: InkWell(
+                        onTap: () {
+                          PixelHaptics.tick();
+                          ref.read(playbackProvider.notifier).playTrack(
+                                track,
+                                newQueue: playlistTracks,
+                              );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              // Track index or play indicator
+                              SizedBox(
+                                width: 28,
+                                child: Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: isCurrent
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
-                            ),
-                            MaterialYouAlbumCover(
-                              track: track,
-                              size: 48,
-                              borderRadius: 14,
-                              showQualityBadge: false,
-                              showSourceBadge: false,
-                              isPlaying: isPlaying,
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    track.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: isCurrent
-                                          ? FontWeight.w800
-                                          : FontWeight.w600,
-                                      color: isCurrent
-                                          ? cs.primary
-                                          : cs.onSurface,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${track.artist} • ${_formatTrackDuration(track.durationMs)}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
+                              MaterialYouAlbumCover(
+                                track: track,
+                                size: 48,
+                                borderRadius: 14,
+                                showQualityBadge: false,
+                                showSourceBadge: false,
+                                isPlaying: isPlaying,
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.more_vert_rounded),
-                              color: cs.onSurfaceVariant,
-                              onPressed: () =>
-                                  _showTrackOptionsMenu(track, livePlaylist),
-                            ),
-                          ],
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      track.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: isCurrent
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: isCurrent
+                                            ? cs.primary
+                                            : cs.onSurface,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${track.artist} • ${_formatTrackDuration(track.durationMs)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.more_vert_rounded),
+                                color: cs.onSurfaceVariant,
+                                onPressed: () =>
+                                    _showTrackOptionsMenu(track, livePlaylist),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

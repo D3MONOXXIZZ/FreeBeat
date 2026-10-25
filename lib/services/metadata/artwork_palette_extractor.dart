@@ -70,21 +70,46 @@ class ArtworkPaletteExtractor {
   static final Map<String, ArtworkPalette> _cache = {};
   static http.Client? _httpClient;
 
-  /// Visible for testing to inject mock http client or clear cache
+  /// Maximum number of extracted palettes retained in LRU cache before eviction.
+  static const int maxCacheEntries = 120;
+
+  /// Visible for testing to get current cache size.
+  static int get cacheSize => _cache.length;
+
+  /// Clears the entire palette cache.
   static void clearCache() => _cache.clear();
+
+  /// Trims the cache down to [keepCount] most recently used entries to free memory
+  /// during OS low-memory notifications.
+  static void trimMemory({int keepCount = 10}) {
+    while (_cache.length > keepCount && _cache.isNotEmpty) {
+      _cache.remove(_cache.keys.first);
+    }
+  }
 
   /// Sets an optional HTTP client (useful for unit tests)
   static void setHttpClient(http.Client? client) => _httpClient = client;
 
-  /// Retrieves a previously extracted palette synchronously from in-memory cache.
+  /// Retrieves a previously extracted palette synchronously from in-memory cache,
+  /// refreshing its position as most recently used (LRU).
   static ArtworkPalette? getCached(String? artworkUrlOrPath) {
     if (artworkUrlOrPath == null || artworkUrlOrPath.isEmpty) return null;
-    return _cache[artworkUrlOrPath];
+    final cached = _cache.remove(artworkUrlOrPath);
+    if (cached != null) {
+      _cache[artworkUrlOrPath] = cached;
+      return cached;
+    }
+    return null;
   }
 
-  /// Manually injects a palette into cache (useful for testing or pre-extraction)
+  /// Manually injects a palette into cache (useful for testing or pre-extraction),
+  /// enforcing the LRU capacity ceiling.
   static void injectCached(String key, ArtworkPalette palette) {
+    _cache.remove(key);
     _cache[key] = palette;
+    if (_cache.length > maxCacheEntries) {
+      _cache.remove(_cache.keys.first);
+    }
   }
 
   /// Extracts the palette from an artwork file path, URI, or network URL.
@@ -99,7 +124,9 @@ class ArtworkPaletteExtractor {
 
     final cacheKey = artworkUrlOrPath ?? 'bytes_${bytes.hashCode}';
     if (_cache.containsKey(cacheKey)) {
-      return _cache[cacheKey]!;
+      final cached = _cache.remove(cacheKey)!;
+      _cache[cacheKey] = cached;
+      return cached;
     }
 
     try {
@@ -128,7 +155,11 @@ class ArtworkPaletteExtractor {
       }
 
       final palette = await _extractFromBytes(rawBytes);
+      _cache.remove(cacheKey);
       _cache[cacheKey] = palette;
+      if (_cache.length > maxCacheEntries) {
+        _cache.remove(_cache.keys.first);
+      }
       return palette;
     } catch (_) {
       return ArtworkPalette.fallback;

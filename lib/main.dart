@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'services/metadata/artwork_palette_extractor.dart';
 import 'state/app_providers.dart';
 import 'ui/screens/main_shell.dart';
 import 'ui/theme/pixel_theme.dart';
@@ -13,9 +14,9 @@ void main() {
   // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
   GestureBinding.instance.resamplingEnabled = true;
 
-  // Optimize image cache capacity for high-density 120Hz album cover art & carousels
-  PaintingBinding.instance.imageCache.maximumSize = 2500;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 256 * 1024 * 1024; // 256 MB
+  // Optimize image cache capacity for high-density 120Hz album cover art without OOM risk
+  PaintingBinding.instance.imageCache.maximumSize = 150;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024; // 40 MB
 
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -78,6 +79,15 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
     if (inForeground) {
       ref.read(playbackProvider.notifier).resyncWithActivePlayer();
     }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    super.didHaveMemoryPressure();
+    // Reclaim raster and bitmap memory immediately under OS memory pressure
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    ArtworkPaletteExtractor.trimMemory(keepCount: 5);
   }
 
   @override

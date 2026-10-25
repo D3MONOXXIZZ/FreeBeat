@@ -4058,6 +4058,24 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
   }
 
   final LibraryDatabase? _db;
+  Timer? _reorderDebounceTimer;
+  Playlist? _pendingReorderedPlaylist;
+
+  @override
+  void dispose() {
+    _reorderDebounceTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _flushPendingReorder() async {
+    _reorderDebounceTimer?.cancel();
+    _reorderDebounceTimer = null;
+    final toSave = _pendingReorderedPlaylist;
+    _pendingReorderedPlaylist = null;
+    if (toSave != null && _db != null) {
+      await _db.upsertPlaylist(toSave);
+    }
+  }
 
   Future<void> _loadPlaylists() async {
     if (_db != null) {
@@ -4185,6 +4203,7 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
   }
 
   Future<void> deletePlaylist(String playlistId) async {
+    await _flushPendingReorder();
     await PixelHaptics.tick();
     state = state.where((p) => p.id != playlistId).toList();
     if (_db != null) {
@@ -4324,12 +4343,17 @@ class PlaylistsNotifier extends StateNotifier<List<Playlist>> {
       return p;
     }).toList();
     if (targetUpdated != null && _db != null) {
-      await _db.upsertPlaylist(targetUpdated!);
+      _pendingReorderedPlaylist = targetUpdated;
+      _reorderDebounceTimer?.cancel();
+      _reorderDebounceTimer = Timer(const Duration(milliseconds: 300), () async {
+        await _flushPendingReorder();
+      });
     }
   }
 
   Future<void> removeTracksFromAllPlaylists(List<String> trackIds) async {
     if (trackIds.isEmpty) return;
+    await _flushPendingReorder();
     final idSet = trackIds.toSet();
     final updatedList = <Playlist>[];
     state = state.map((p) {
