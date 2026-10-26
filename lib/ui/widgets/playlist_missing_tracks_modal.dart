@@ -151,8 +151,12 @@ class _PlaylistMissingTracksSheetState
         final seenCount = seenSourceKeys[fullKey] ?? 0;
         seenSourceKeys[fullKey] = seenCount + 1;
 
-        final bool isAlreadyInPlaylist = existingKeys.contains(fullKey) ||
-            (normTitle.length > 4 && existingKeys.contains(normTitle));
+        final bool isAlreadyInPlaylist = PlaylistImportService.findBestMatch(
+              item.title,
+              item.artist,
+              widget.currentTracks,
+            ) !=
+            null;
 
         final bool isDuplicateInSource = seenCount >= 1;
 

@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../core/models/track.dart';
+import '../metadata/artist_helper.dart';
 import 'playlist_missing_tracks_sync_service.dart';
 
 /// Result of an imported playlist analysis.
@@ -51,94 +53,124 @@ class PlaylistImportService {
         .trim();
   }
 
-  /// Finds the best matching track in the user's library.
+  static String _canonicalTitle(String s) {
+    var clean = s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), '') // remove parenthesized details
+        .replaceAll(RegExp(r'\s+[-–—:]\s+.*$'), '') // remove trailing " - Single", " - Studio Version", etc.
+        .replaceAll(RegExp(r'[^\w\s]'), '') // remove punctuation
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    const fluffWords = [
+      'studio version',
+      'single version',
+      'album version',
+      'radio edit',
+      'original mix',
+      'remastered',
+      'remaster',
+      'official audio',
+      'official video',
+      'lyric video',
+    ];
+    for (final fw in fluffWords) {
+      if (clean.endsWith(fw)) {
+        clean = clean.substring(0, clean.length - fw.length).trim();
+      }
+    }
+    return clean;
+  }
+
+  /// Finds the best matching track in the user's library using strict title & artist confidence scoring.
+  ///
+  /// Prevents false substring collisions (e.g. searching for "Love lost" must NOT falsely match
+  /// a completely different song named "Lost").
   static Track? findBestMatch(
     String queryTitle,
     String queryArtist,
     List<Track> libraryTracks,
   ) {
     final cleanQTitle = _normalize(queryTitle);
+    final canonQTitle = _canonicalTitle(queryTitle);
     final cleanQArtist = _normalize(queryArtist);
     if (cleanQTitle.isEmpty) return null;
 
-    // 1. Strict match on normalized title & artist
-    for (final t in libraryTracks) {
-      final tTitle = _normalize(t.title);
-      final tArtist = _normalize(t.artist);
-      if (tTitle == cleanQTitle &&
-          cleanQArtist.isNotEmpty &&
-          tArtist == cleanQArtist) {
-        return t;
-      }
-    }
-
-    // 2. Exact title match with artist token overlap or containment
-    final qArtistTokens = cleanQArtist
-        .split(' ')
-        .where((w) => w.length >= 2)
+    final qArtists = ArtistHelper.extractArtists(queryArtist, queryTitle)
+        .map((a) => _normalize(a))
+        .where((a) => a.isNotEmpty)
         .toSet();
 
-    for (final t in libraryTracks) {
-      final tTitle = _normalize(t.title);
-      if (tTitle == cleanQTitle) {
-        final tArtist = _normalize(t.artist);
-        if (cleanQArtist.isEmpty || tArtist.isEmpty) {
-          return t;
-        }
-        if (tArtist == cleanQArtist ||
-            tArtist.contains(cleanQArtist) ||
-            cleanQArtist.contains(tArtist)) {
-          return t;
-        }
-        final tArtistTokens = tArtist
-            .split(' ')
-            .where((w) => w.length >= 2)
-            .toSet();
-        if (qArtistTokens.intersection(tArtistTokens).isNotEmpty) {
-          return t;
-        }
-      }
-    }
+    Track? bestCandidate;
+    double bestScore = 0.0;
 
-    // 3. Title matches and artist overlaps
     for (final t in libraryTracks) {
       final tTitle = _normalize(t.title);
+      final canonTTitle = _canonicalTitle(t.title);
       final tArtist = _normalize(t.artist);
-      final tArtistTokens = tArtist
-          .split(' ')
-          .where((w) => w.length >= 2)
-          .toSet();
-      if ((tTitle == cleanQTitle ||
-              tTitle.contains(cleanQTitle) ||
-              cleanQTitle.contains(tTitle)) &&
-          (cleanQArtist.isEmpty ||
-              tArtist.isEmpty ||
-              tArtist.contains(cleanQArtist) ||
-              cleanQArtist.contains(tArtist) ||
-              qArtistTokens.intersection(tArtistTokens).isNotEmpty)) {
-        return t;
-      }
-    }
 
-    // 4. Exact title match
-    for (final t in libraryTracks) {
-      final tTitle = _normalize(t.title);
+      // --- 1. TITLE MATCH EVALUATION ---
+      double titleScore = 0.0;
       if (tTitle == cleanQTitle) {
-        return t;
+        // Exact normalized title match: e.g. "love lost" == "love lost"
+        titleScore = 1.0;
+      } else if (canonTTitle.isNotEmpty && canonTTitle == canonQTitle) {
+        // Canonical title match: e.g. "Faasle - Studio Version" vs "Faasle"
+        titleScore = 0.92;
+      } else {
+        // Distinct titles must NEVER match through substring containment!
+        // E.g. "Love lost" must NEVER match "Lost".
+        continue;
+      }
+
+      // --- 2. ARTIST MATCH EVALUATION ---
+      double artistScore = 0.0;
+
+      if (cleanQArtist.isEmpty) {
+        // Query did not provide an artist (title-only lookup)
+        artistScore = 0.65;
+      } else if (tArtist == cleanQArtist) {
+        // Exact normalized artist match
+        artistScore = 1.0;
+      } else {
+        final tArtists = ArtistHelper.extractArtists(t.artist, t.title)
+            .map((a) => _normalize(a))
+            .where((a) => a.isNotEmpty)
+            .toSet();
+
+        final overlap = qArtists.intersection(tArtists);
+        if (overlap.isNotEmpty) {
+          // Participating collaborator overlap: e.g. "Umair, Talha Anjum" and "Talha Anjum"
+          artistScore = (overlap.length / qArtists.length).clamp(0.55, 0.95);
+          if (qArtists.isNotEmpty &&
+              tArtists.isNotEmpty &&
+              qArtists.first == tArtists.first) {
+            artistScore = math.max(artistScore, 0.88);
+          }
+        } else if (tArtist.isNotEmpty &&
+            (tArtist.contains(cleanQArtist) ||
+                cleanQArtist.contains(tArtist))) {
+          artistScore = 0.72;
+        } else {
+          // Both query and candidate have artists, but they have ZERO correlation!
+          // E.g. Query artist is "Adele", candidate artist is "Lionel Richie".
+          // Disqualify this candidate completely.
+          continue;
+        }
+      }
+
+      // Total composite score (weighted towards exact title & artist match)
+      final compositeScore = (titleScore * 0.60) + (artistScore * 0.40);
+
+      // Require high confidence (minimum 0.75) to accept as a library match
+      if (compositeScore >= 0.75 && compositeScore > bestScore) {
+        bestScore = compositeScore;
+        bestCandidate = t;
+        if (bestScore >= 0.99) break;
       }
     }
 
-    // 5. Substring title match
-    for (final t in libraryTracks) {
-      final tTitle = _normalize(t.title);
-      if (tTitle.length > 3 &&
-          cleanQTitle.length > 3 &&
-          (tTitle.contains(cleanQTitle) || cleanQTitle.contains(tTitle))) {
-        return t;
-      }
-    }
-
-    return null;
+    return bestCandidate;
   }
 
   /// Parses M3U or M3U8 string content and matches against library tracks.

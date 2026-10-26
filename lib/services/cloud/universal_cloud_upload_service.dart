@@ -91,25 +91,19 @@ class UniversalCloudUploadService {
       }
     }
 
-    // 2. Normalized filename match (artist + title)
+    // 2. Normalized filename match (artist + title with strict exact title matching)
     for (final f in files) {
-      final name = _normalizeTrackString((f['name'] ?? '').toString());
-      if (cleanArtist.isNotEmpty && cleanTitle.isNotEmpty) {
-        if (name.contains(cleanTitle) && (name.contains(cleanArtist) || (primaryArtist.isNotEmpty && name.contains(primaryArtist)))) {
-          return f;
-        }
-      }
-    }
+      final rawName = (f['name'] ?? '').toString();
+      final baseName = p.basenameWithoutExtension(rawName);
+      final parts = baseName.split(' - ');
+      final fileTitle = _normalizeTrackString(parts.length >= 2 ? parts.sublist(1).join(' - ') : parts.first);
+      final fileArtist = _normalizeTrackString(parts.length >= 2 ? parts.first : '');
 
-    // 3. Title match if candidate title is specific (> 3 chars)
-    if (cleanTitle.length > 3) {
-      for (final f in files) {
-        final name = _normalizeTrackString((f['name'] ?? '').toString());
-        if (name.contains(cleanTitle)) {
-          // If artist is specified, ensure it doesn't contradict
-          if (primaryArtist.isNotEmpty && name.contains(' - ')) {
-            if (!name.contains(primaryArtist)) continue;
-          }
+      if (cleanTitle.isNotEmpty && (fileTitle == cleanTitle || _normalizeTrackString(baseName) == cleanTitle)) {
+        if (cleanArtist.isEmpty ||
+            fileArtist.contains(cleanArtist) ||
+            cleanArtist.contains(fileArtist) ||
+            (primaryArtist.isNotEmpty && fileArtist.contains(primaryArtist))) {
           return f;
         }
       }
@@ -195,8 +189,17 @@ class UniversalCloudUploadService {
         final entities = localMusicDir.listSync();
         for (final entity in entities) {
           if (entity is File) {
-            final fName = _normalizeTrackString(p.basename(entity.path));
-            if (fName.contains(cleanTitle) && (cleanArtist.isEmpty || fName.contains(cleanArtist))) {
+            final baseName = p.basenameWithoutExtension(entity.path);
+            final parts = baseName.split(' - ');
+            final fileTitle = _normalizeTrackString(parts.length >= 2 ? parts.sublist(1).join(' - ') : parts.first);
+            final fileArtist = _normalizeTrackString(parts.length >= 2 ? parts.first : '');
+
+            final isTitleMatch = fileTitle == cleanTitle || _normalizeTrackString(baseName) == cleanTitle;
+            final isArtistMatch = cleanArtist.isEmpty ||
+                fileArtist.contains(cleanArtist) ||
+                cleanArtist.contains(fileArtist);
+
+            if (isTitleMatch && isArtistMatch) {
               final stat = entity.statSync();
               final ext = p.extension(entity.path).replaceFirst('.', '').toLowerCase();
               final calculatedKbps = (stat.size > 0 && expectedDurationMs != null && expectedDurationMs > 0)
