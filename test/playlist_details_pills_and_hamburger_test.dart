@@ -73,10 +73,16 @@ void main() {
       // 3. Verify all options are present in the popup menu
       expect(find.textContaining('Sync (Spotify)'), findsOneWidget);
       expect(find.text('Import Songs'), findsOneWidget);
+      expect(find.text('Show Missing Tracks'), findsOneWidget);
       expect(find.text('Edit Playlist'), findsOneWidget);
       expect(find.text('Share & QR Code'), findsOneWidget);
       expect(find.text('Export .M3U8'), findsOneWidget);
       expect(find.text('Delete Playlist'), findsOneWidget);
+
+      // 4. Tap Show Missing Tracks to verify modal opens
+      await tester.tap(find.text('Show Missing Tracks'));
+      await tester.pumpAndSettle();
+      expect(find.text('Missing & Skipped Tracks'), findsOneWidget);
     });
 
     testWidgets('Renders 3 equal-size action pills (Download, Import, Sync) under Play and Shuffle', (tester) async {

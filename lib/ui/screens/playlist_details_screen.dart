@@ -14,6 +14,7 @@ import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
 import '../widgets/playlist_import_modal.dart';
+import '../widgets/playlist_missing_tracks_modal.dart';
 import '../widgets/playlist_qr_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
@@ -771,6 +772,13 @@ class _PlaylistDetailsScreenState
                           targetPlaylist: livePlaylist,
                         );
                         break;
+                      case 'missing_tracks':
+                        showPlaylistMissingTracksModal(
+                          context,
+                          playlist: livePlaylist,
+                          currentTracks: playlistTracks,
+                        );
+                        break;
                       case 'edit':
                         _showRenameDialog(livePlaylist);
                         break;
@@ -818,6 +826,21 @@ class _PlaylistDetailsScreenState
                             const Expanded(
                               child: Text(
                                 'Import Songs',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'missing_tracks',
+                        child: Row(
+                          children: [
+                            Icon(Icons.playlist_remove_rounded, color: cs.primary, size: 20),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Show Missing Tracks',
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                             ),
