@@ -6,7 +6,9 @@ import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
 import '../../services/engine/track_resolution_gateway.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/metadata/artist_helper.dart';
 import '../../services/playlist/playlist_import_service.dart';
+import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../screens/search_screen.dart';
 import 'ultra_free_scroll_physics.dart';
@@ -107,6 +109,65 @@ class _PlaylistMissingTracksSheetState
         .trim();
   }
 
+  static String _canonicalTitle(String s) {
+    var clean = s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\(\[\{].*?[\)\]\}]'), '')
+        .replaceAll(RegExp(r'\s+[-–—:]\s+.*$'), '')
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    const fluffWords = [
+      'studio version',
+      'single version',
+      'album version',
+      'radio edit',
+      'original mix',
+      'remastered',
+      'remaster',
+      'official audio',
+      'official video',
+      'lyric video',
+    ];
+    for (final fw in fluffWords) {
+      if (clean.endsWith(fw)) {
+        clean = clean.substring(0, clean.length - fw.length).trim();
+      }
+    }
+    return clean;
+  }
+
+  static bool _areSameSong(
+    String title1,
+    String artist1,
+    String title2,
+    String artist2,
+  ) {
+    final canon1 = _canonicalTitle(title1);
+    final canon2 = _canonicalTitle(title2);
+    if (canon1 != canon2) return false;
+
+    final cleanA1 = _normalize(artist1);
+    final cleanA2 = _normalize(artist2);
+    if (cleanA1.isEmpty || cleanA2.isEmpty || cleanA1 == cleanA2) return true;
+
+    final artists1 = ArtistHelper.extractArtists(artist1, title1)
+        .map((a) => _normalize(a))
+        .where((a) => a.isNotEmpty)
+        .toSet();
+    final artists2 = ArtistHelper.extractArtists(artist2, title2)
+        .map((a) => _normalize(a))
+        .where((a) => a.isNotEmpty)
+        .toSet();
+
+    if (artists1.isNotEmpty && artists2.isNotEmpty) {
+      final overlap = artists1.intersection(artists2);
+      if (overlap.isNotEmpty) return true;
+    }
+    return false;
+  }
+
   Future<void> _analyzeSource(String url) async {
     final cleanUrl = url.trim();
     if (cleanUrl.isEmpty) {
@@ -127,29 +188,29 @@ class _PlaylistMissingTracksSheetState
         [], // empty library to inspect ALL source tracks
       );
 
-      _totalSourceCount = importResult.totalParsed;
+      final sourceTracks = importResult.rawSourceTracks.isNotEmpty
+          ? importResult.rawSourceTracks
+          : importResult.missingTracks;
 
-      // 2. Build fast lookup of tracks currently in the local playlist
-      final existingKeys = <String>{};
-      for (final t in widget.currentTracks) {
-        existingKeys.add('${_normalize(t.title)}:::${_normalize(t.artist)}');
-        if (t.title.isNotEmpty) {
-          existingKeys.add(_normalize(t.title));
-        }
-      }
+      _totalSourceCount = importResult.totalParsed > 0
+          ? importResult.totalParsed
+          : sourceTracks.length;
 
-      // 3. Track duplicates and missing entries
-      final seenSourceKeys = <String, int>{};
+      // 2. Track seen items in source to detect intra-source duplicates
+      final seenSourceItems = <MissingTrackItem>[];
+      final seenSourceIndices = <int>[];
       final missing = <_DiscoveredMissingTrack>[];
 
-      for (int i = 0; i < importResult.missingTracks.length; i++) {
-        final item = importResult.missingTracks[i];
-        final normTitle = _normalize(item.title);
-        final normArtist = _normalize(item.artist);
-        final fullKey = '$normTitle:::$normArtist';
-
-        final seenCount = seenSourceKeys[fullKey] ?? 0;
-        seenSourceKeys[fullKey] = seenCount + 1;
+      for (int i = 0; i < sourceTracks.length; i++) {
+        final item = sourceTracks[i];
+        final int firstSeenIdx = seenSourceItems.indexWhere(
+          (seen) => _areSameSong(
+            seen.title,
+            seen.artist,
+            item.title,
+            item.artist,
+          ),
+        );
 
         final bool isAlreadyInPlaylist = PlaylistImportService.findBestMatch(
               item.title,
@@ -158,9 +219,8 @@ class _PlaylistMissingTracksSheetState
             ) !=
             null;
 
-        final bool isDuplicateInSource = seenCount >= 1;
-
-        if (isDuplicateInSource) {
+        if (firstSeenIdx != -1) {
+          final originalPos = seenSourceIndices[firstSeenIdx];
           missing.add(
             _DiscoveredMissingTrack(
               sourceIndex: i + 1,
@@ -171,37 +231,42 @@ class _PlaylistMissingTracksSheetState
               sourceUrl: item.sourceUrl,
               artworkUrl: item.preferredArtworkUrl,
               reason: isAlreadyInPlaylist
-                  ? 'Duplicate in source playlist (already in your playlist)'
-                  : 'Duplicate entry in source playlist',
+                  ? 'Duplicate in source playlist (already in your playlist; duplicate of #$originalPos)'
+                  : 'Duplicate entry in source playlist (duplicate of #$originalPos)',
               isDuplicate: true,
             ),
           );
-        } else if (!isAlreadyInPlaylist) {
-          String reason = 'Stream not found or below confidence threshold';
-          final lower = '${item.title} ${item.artist}'.toLowerCase();
-          if (lower.contains('acoustic') ||
-              lower.contains('unplugged') ||
-              lower.contains('akustik')) {
-            reason = 'Acoustic / Unplugged cut (no authentic stream match)';
-          } else if (lower.contains('reprise') || lower.contains('remix')) {
-            reason = 'Special version / Reprise mismatch';
-          } else if (lower.contains('live')) {
-            reason = 'Live version (rejected by studio audio filter)';
-          }
+        } else {
+          seenSourceItems.add(item);
+          seenSourceIndices.add(i + 1);
 
-          missing.add(
-            _DiscoveredMissingTrack(
-              sourceIndex: i + 1,
-              title: item.title,
-              artist: item.artist,
-              album: item.album,
-              durationMs: item.expectedDurationMs,
-              sourceUrl: item.sourceUrl,
-              artworkUrl: item.preferredArtworkUrl,
-              reason: reason,
-              isDuplicate: false,
-            ),
-          );
+          if (!isAlreadyInPlaylist) {
+            String reason = 'Stream not found or below confidence threshold';
+            final lower = '${item.title} ${item.artist}'.toLowerCase();
+            if (lower.contains('acoustic') ||
+                lower.contains('unplugged') ||
+                lower.contains('akustik')) {
+              reason = 'Acoustic / Unplugged cut (no authentic stream match)';
+            } else if (lower.contains('reprise') || lower.contains('remix')) {
+              reason = 'Special version / Reprise mismatch';
+            } else if (lower.contains('live')) {
+              reason = 'Live version (rejected by studio audio filter)';
+            }
+
+            missing.add(
+              _DiscoveredMissingTrack(
+                sourceIndex: i + 1,
+                title: item.title,
+                artist: item.artist,
+                album: item.album,
+                durationMs: item.expectedDurationMs,
+                sourceUrl: item.sourceUrl,
+                artworkUrl: item.preferredArtworkUrl,
+                reason: reason,
+                isDuplicate: false,
+              ),
+            );
+          }
         }
       }
 
@@ -521,7 +586,7 @@ class _PlaylistMissingTracksSheetState
               ],
 
               // Summary Stats & Action Pills
-              if (_missingItems.isNotEmpty) ...[
+              if (_missingItems.isNotEmpty || _totalSourceCount > 0) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                   child: Row(
@@ -536,7 +601,7 @@ class _PlaylistMissingTracksSheetState
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          'Source: $_totalSourceCount • Playlist: ${widget.currentTracks.length}',
+                          'Source: $_totalSourceCount • Playlist: ${widget.currentTracks.length}${duplicateCount > 0 ? " • Duplicates: $duplicateCount" : ""}${missingCount > 0 ? " • Missing: $missingCount" : ""}',
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
@@ -545,18 +610,19 @@ class _PlaylistMissingTracksSheetState
                         ),
                       ),
                       const Spacer(),
-                      OutlinedButton.icon(
-                        onPressed: _copyMissingListToClipboard,
-                        icon: const Icon(Icons.copy_rounded, size: 14),
-                        label: const Text(
-                          'Copy List',
-                          style: TextStyle(fontSize: 11.5),
+                      if (_missingItems.isNotEmpty)
+                        OutlinedButton.icon(
+                          onPressed: _copyMissingListToClipboard,
+                          icon: const Icon(Icons.copy_rounded, size: 14),
+                          label: const Text(
+                            'Copy List',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            shape: const StadiumBorder(),
+                          ),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          shape: const StadiumBorder(),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -628,16 +694,20 @@ class _PlaylistMissingTracksSheetState
                                   ),
                                   const SizedBox(height: 14),
                                   Text(
-                                    _missingItems.isEmpty
-                                        ? 'No missing tracks detected.'
-                                        : 'No tracks match this filter.',
+                                    missingCount == 0 && duplicateCount > 0
+                                        ? 'All unique songs present!'
+                                        : (_missingItems.isEmpty
+                                            ? 'No missing tracks detected.'
+                                            : 'No tracks match this filter.'),
                                     style: textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'All parsed songs are present in this playlist.',
+                                    missingCount == 0 && duplicateCount > 0
+                                        ? 'All unique songs are already in your playlist. The $duplicateCount additional entries on the source playlist are duplicate tracks.'
+                                        : 'All parsed songs are present in this playlist.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       fontSize: 12.5,

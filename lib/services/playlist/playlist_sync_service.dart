@@ -184,13 +184,23 @@ class PlaylistSyncService {
                   : 'source'));
 
       if (totalNew == 0) {
+        final totalInSource = importResult.totalParsed;
+        final currentCount = playlist.trackIds.length;
+        final duplicateDifference = totalInSource > currentCount
+            ? totalInSource - currentCount
+            : 0;
+
+        final countDetails = duplicateDifference > 0
+            ? '$totalInSource tracks checked: $currentCount unique, $duplicateDifference duplicate source entries'
+            : '$totalInSource tracks checked';
+
         return PlaylistSyncOutcome(
           isSuccess: true,
           totalFoundInSource: importResult.totalParsed,
           newMatchedTracksCount: 0,
           newMissingTracksCount: 0,
           message:
-              'Playlist is already up to date with $sourceName (${importResult.totalParsed} tracks checked). Note: Newly added songs on $sourceName may take 1-2 minutes to propagate across their CDN.',
+              'Playlist is already up to date with $sourceName ($countDetails). Note: Newly added songs on $sourceName may take 1-2 minutes to propagate across their CDN.',
         );
       }
 

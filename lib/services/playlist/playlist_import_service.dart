@@ -15,17 +15,20 @@ class PlaylistImportResult {
     required this.matchedTracks,
     required this.unmatchedTrackNames,
     List<MissingTrackItem>? missingTracks,
+    List<MissingTrackItem>? rawSourceTracks,
     required this.totalParsed,
     this.sourceType = 'text',
     this.artworkUrl,
-  }) : missingTracks = missingTracks ??
-            unmatchedTrackNames.map(MissingTrackItem.fromString).toList();
+  })  : missingTracks = missingTracks ??
+            unmatchedTrackNames.map(MissingTrackItem.fromString).toList(),
+        rawSourceTracks = rawSourceTracks ?? const [];
 
   final String title;
   final String description;
   final List<Track> matchedTracks;
   final List<String> unmatchedTrackNames;
   final List<MissingTrackItem> missingTracks;
+  final List<MissingTrackItem> rawSourceTracks;
   final int totalParsed;
   final String sourceType; // 'spotify', 'apple', 'youtube', 'm3u', 'text', 'csv'
   final String? artworkUrl;
@@ -1493,12 +1496,27 @@ class PlaylistImportService {
       }
     }
 
+    final List<MissingTrackItem> rawSourceTracks = entries
+        .map(
+          (e) => MissingTrackItem(
+            title: e.title,
+            artist: e.artist,
+            expectedDurationMs: e.durationMs,
+            preferredArtworkUrl: e.artworkUrl,
+            previewAudioUrl: e.previewAudioUrl,
+            album: e.album,
+            sourceUrl: e.urlOrPath,
+          ),
+        )
+        .toList();
+
     return PlaylistImportResult(
       title: title,
       description: description,
       matchedTracks: matched,
       unmatchedTrackNames: unmatched,
       missingTracks: missingTrackItems,
+      rawSourceTracks: rawSourceTracks,
       totalParsed: entries.length,
       sourceType: sourceType,
       artworkUrl: effectiveArtwork,
