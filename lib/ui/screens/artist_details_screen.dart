@@ -11,6 +11,7 @@ import '../widgets/mini_player_dock.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Expressive Artist Details Page.
@@ -73,10 +74,8 @@ class ArtistDetailsScreen extends ConsumerWidget {
       body: Stack(
         children: [
           CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(500),
-            physics: const UltraFreeScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
+            scrollCacheExtent: const ScrollCacheExtent.pixels(600),
+            physics: buildSuperSmoothScrollPhysics(),
             slivers: [
           // ─────────────────────────────────────────────────────────────────
           // 1. M3 Large Collapsing App Bar
@@ -251,12 +250,10 @@ class ArtistDetailsScreen extends ConsumerWidget {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 172,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   itemCount: albumMap.entries.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {

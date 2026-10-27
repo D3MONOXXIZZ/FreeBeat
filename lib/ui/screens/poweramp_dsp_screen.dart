@@ -9,6 +9,7 @@ import '../../state/app_providers.dart';
 import '../widgets/rotary_knob.dart';
 import '../widgets/signal_path_sheet.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Smart EQ 10-Band Equalizer, Preamp, Exact Numeric Tuning, Rotary Tone & Spatial DSP Studio.
 /// Strictly implements Screen 8 ("# Equalizer & Audio Settings") in Figma inspiration:
@@ -123,9 +124,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
 
     return Scaffold(
       body: CustomScrollView(
-        physics: const UltraFreeScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
+        physics: buildSuperSmoothScrollPhysics(),
         slivers: [
           // ───────────────────────────────────────────────────────────────────
           // 1. M3 Top App Bar
@@ -610,9 +609,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              physics: const UltraFreeScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
+              physics: buildSuperSmoothScrollPhysics(),
               child: Row(
                 children: [
                   for (final preset in kBuiltInDspPresets) ...[
@@ -815,9 +812,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
             height: 275,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              physics: const UltraFreeScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
+              physics: buildSuperSmoothScrollPhysics(),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1570,8 +1565,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
               expand: false,
               builder: (_, scrollController) {
                 return SafeArea(
-                  child: ListView(
+                  child: SuperListView(
                     controller: scrollController,
+                    physics: buildSuperSmoothScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     children: [
                       Row(
@@ -1594,9 +1590,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Action buttons: Save EQ, Import, Auto Profiles
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const UltraFreeScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
+                        physics: buildSuperSmoothScrollPhysics(),
                         child: Row(
                           children: [
                             FilledButton.tonalIcon(
@@ -1788,8 +1782,9 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
               expand: false,
               builder: (_, scrollController) {
                 return SafeArea(
-                  child: ListView(
+                  child: SuperListView(
                     controller: scrollController,
+                    physics: buildSuperSmoothScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     children: [
                       Row(
@@ -1818,9 +1813,7 @@ class _PowerampDspScreenState extends ConsumerState<PowerampDspScreen>
                       // Quick actions
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        physics: const UltraFreeScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
+                        physics: buildSuperSmoothScrollPhysics(),
                         child: Row(
                           children: [
                             FilledButton.tonalIcon(

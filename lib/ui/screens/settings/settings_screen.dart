@@ -36,9 +36,7 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const UltraFreeScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
+        physics: buildSuperSmoothScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // Category 1: Preferences (Appearance & Audio Quality)

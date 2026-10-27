@@ -5,6 +5,7 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import 'generative_playlist_cover.dart';
 import 'ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Shows the Material 3 Expressive "Add to Playlist" bottom sheet modal.
 Future<void> showAddToPlaylistModal(
@@ -285,15 +286,13 @@ class _AddToPlaylistSheetState extends ConsumerState<_AddToPlaylistSheet> {
                         ),
                       ),
                     )
-                  : ListView.separated(
+                  : SuperListView.separated(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      physics: const UltraFreeScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
+                      physics: buildSuperSmoothScrollPhysics(),
                       itemCount: playlists.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 4),
                       itemBuilder: (context, idx) {

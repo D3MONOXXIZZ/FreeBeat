@@ -12,6 +12,7 @@ import 'state/app_providers.dart';
 import 'ui/screens/main_shell.dart';
 import 'ui/theme/pixel_theme.dart';
 import 'ui/widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -224,15 +225,17 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
   }
 }
 
-/// Provides smooth, frictionless free scrolling across the entire app
-/// with zero drag resistance, uncapped fling velocity, and minimal gradual slow down.
+/// Provides smooth, frictionless fluid scrolling across the entire app
+/// backed by [SuperRangeMaintainingScrollPhysics] and [UltraFreeScrollPhysics].
 class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
   const SmoothFreeScrollBehavior();
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
-    return const UltraFreeScrollPhysics(
-      parent: AlwaysScrollableScrollPhysics(),
+    return const SuperRangeMaintainingScrollPhysics(
+      parent: UltraFreeScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
     );
   }
 

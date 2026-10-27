@@ -21,6 +21,7 @@ import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 import 'track_details_screen.dart';
 
 /// Stock Google Pixel Material 3 Playlist Details Screen.
@@ -598,9 +599,7 @@ class _PlaylistDetailsScreenState
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const UltraFreeScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
+                    physics: buildSuperSmoothScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -732,10 +731,8 @@ class _PlaylistDetailsScreenState
       body: Stack(
         children: [
           CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(500),
-            physics: const UltraFreeScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
+            scrollCacheExtent: const ScrollCacheExtent.pixels(600),
+            physics: buildSuperSmoothScrollPhysics(),
             slivers: [
           // 1. Sleek App Bar
           SliverAppBar(
@@ -1141,7 +1138,7 @@ class _PlaylistDetailsScreenState
               ),
             )
           else
-            SliverList(
+            SuperSliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final track = playlistTracks[index];

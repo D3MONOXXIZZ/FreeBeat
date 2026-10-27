@@ -17,6 +17,7 @@ import 'artist_details_screen.dart';
 import 'playlist_details_screen.dart';
 import 'track_details_screen.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Stock Google Pixel Material 3 Expressive Global Search & Audiophile Filtering Screen.
 /// Provides real-time instant search across all connected clouds and local storage with
@@ -94,9 +95,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
-          physics: const UltraFreeScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
+          physics: buildSuperSmoothScrollPhysics(),
           slivers: [
             // 1. Search Bar Header
             SliverToBoxAdapter(
@@ -178,12 +177,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 44,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   itemCount: SearchFilterType.values.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, idx) {
@@ -495,12 +492,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: 104,
-                    child: ListView.separated(
+                    child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                      physics: buildSuperSmoothScrollPhysics(),
                       itemCount: results.artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (context, idx) {
@@ -542,12 +537,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: 140,
-                    child: ListView.separated(
+                    child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                      physics: buildSuperSmoothScrollPhysics(),
                       itemCount: results.playlists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (context, idx) {
@@ -631,7 +624,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     ),
                   ),
                 ),
-                SliverList(
+                SuperSliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, idx) {
                       final track = results.tracks[idx];
@@ -744,9 +737,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                    physics: buildSuperSmoothScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

@@ -28,9 +28,7 @@ class BatterySettingsScreen extends ConsumerWidget {
         ),
       ),
       body: ListView(
-        physics: const UltraFreeScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
+        physics: buildSuperSmoothScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // 1. Live Device Battery Status Hero Card

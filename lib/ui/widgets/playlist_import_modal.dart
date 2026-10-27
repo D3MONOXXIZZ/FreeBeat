@@ -13,6 +13,8 @@ import '../../state/app_providers.dart';
 import '../screens/playlist_details_screen.dart';
 import 'material_you_album_cover.dart';
 import 'platform_app_icons.dart';
+import 'ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Opens the Material 3 Expressive Playlist Importer modal.
 Future<void> showPlaylistImportModal(BuildContext context, {Playlist? targetPlaylist}) {
@@ -968,7 +970,8 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
 
             // List of matched tracks
             Flexible(
-              child: ListView.separated(
+              child: SuperListView.separated(
+                physics: buildSuperSmoothScrollPhysics(),
                 shrinkWrap: true,
                 itemCount: _result!.matchedTracks.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),

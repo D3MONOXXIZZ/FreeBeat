@@ -27,6 +27,7 @@ import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import '../widgets/expressive_shapes.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Stock Google Pixel Material 3 Expressive Library Screen.
 /// Strictly implements Screen 5 ("# Your Library") in Figma inspiration:
@@ -483,9 +484,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const UltraFreeScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
+                        physics: buildSuperSmoothScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -793,9 +792,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const Divider(height: 1),
                     Flexible(
                       child: SingleChildScrollView(
-                        physics: const UltraFreeScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
+                        physics: buildSuperSmoothScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1133,10 +1130,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 : null),
         body: CustomScrollView(
           controller: _scrollController,
-          physics: const UltraFreeScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(500),
+          physics: buildSuperSmoothScrollPhysics(),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(600),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar
@@ -1541,13 +1536,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           SliverToBoxAdapter(
             child: SizedBox(
               height: 52,
-              child: ListView(
+              child: SuperListView(
                 scrollDirection: Axis.horizontal,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                physics: const UltraFreeScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
+                physics: buildSuperSmoothScrollPhysics(),
                 children: [
                   _LibraryPillFilter(
                     label: 'All Tracks (${allTracks.length})',
@@ -1837,12 +1830,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 94,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
                   itemCount: filteredArtists.length,

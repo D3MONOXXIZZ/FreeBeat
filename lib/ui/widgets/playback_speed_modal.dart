@@ -170,9 +170,7 @@ class PlaybackSpeedModal extends ConsumerWidget {
               // Preset Speed Chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                physics: const UltraFreeScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
+                physics: buildSuperSmoothScrollPhysics(),
                 child: Row(
                   children: _speedPresets.map((speed) {
                     final isSelected = (currentSpeed - speed).abs() < 0.02;

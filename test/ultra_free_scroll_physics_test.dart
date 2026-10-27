@@ -1,19 +1,21 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/main.dart';
 import 'package:freebeat/ui/widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('UltraFreeScrollPhysics Unit & Deceleration Tests', () {
-    test('Zero touch drag resistance and motion threshold', () {
+    test('Standard touch slop motion threshold and direct in-range 1:1 motion', () {
       const physics = UltraFreeScrollPhysics();
 
-      // Zero drag threshold (null in Flutter implies default immediate drag detection)
-      expect(physics.dragStartDistanceMotionThreshold, isNull);
+      // Motion threshold delegates to standard kTouchSlop to prevent micro-jitters
+      expect(physics.dragStartDistanceMotionThreshold, kTouchSlop);
 
-      // User offset is returned 1:1 without dampening or resistance
+      // User offset is returned 1:1 without dampening when within range
       final position = FixedScrollMetrics(
         minScrollExtent: 0,
         maxScrollExtent: 10000,
@@ -27,20 +29,20 @@ void main() {
       expect(physics.applyPhysicsToUserOffset(position, -120.0), -120.0);
     });
 
-    test('Uncapped velocity and low min fling speed', () {
+    test('Balanced velocity cap and responsive min fling speed', () {
       const physics = UltraFreeScrollPhysics();
 
-      // Unrestricted max velocity (150k px/s) allows user to fling at any speed
-      expect(physics.maxFlingVelocity, 150000.0);
+      // Capped maximum velocity (8,000 px/s) guarantees locked 120Hz/60Hz frame budgets
+      expect(physics.maxFlingVelocity, 8000.0);
 
-      // Low min fling velocity allows gentle gestures to trigger free glide
-      expect(physics.minFlingVelocity, 8.0);
+      // Responsive min fling velocity allows gentle gestures to trigger fluid glide
+      expect(physics.minFlingVelocity, 35.0);
 
-      // Default minimal friction constant
-      expect(physics.friction, 0.00075);
+      // Default smooth fluid friction constant (0.012 vs standard Android 0.015)
+      expect(physics.friction, 0.012);
     });
 
-    test('Friction of 0.00075 results in vastly extended free-scroll distance vs standard', () {
+    test('Fluid friction of 0.012 glides further than stock Android without runaway speeds', () {
       const ultraPhysics = UltraFreeScrollPhysics();
       const standardPhysics = ClampingScrollPhysics();
 
@@ -53,29 +55,27 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-      // Simulate a fling of 3000 px/s
-      final ultraSim = ultraPhysics.createBallisticSimulation(position, 3000.0);
-      final standardSim = standardPhysics.createBallisticSimulation(position, 3000.0);
+      // Simulate a normal fling of 2000 px/s
+      final ultraSim = ultraPhysics.createBallisticSimulation(position, 2000.0);
+      final standardSim = standardPhysics.createBallisticSimulation(position, 2000.0);
 
       expect(ultraSim, isNotNull);
       expect(standardSim, isNotNull);
 
-      // Compare final distance traveled
       final standardClamping = standardSim as ClampingScrollSimulation;
       final ultraClamping = ultraSim as ClampingScrollSimulation;
 
-      // Ultra free scroll distance should be significantly greater (~10x+ further)
-      expect(ultraClamping.friction, 0.00075);
+      expect(ultraClamping.friction, 0.012);
       expect(standardClamping.friction, 0.015);
 
-      // Sample position at t = 1.0 second
+      // Sample position at t = 1.0 second: 0.012 glides slightly further and smoother
       final ultraPosAt1s = ultraClamping.x(1.0);
       final standardPosAt1s = standardClamping.x(1.0);
 
       expect(ultraPosAt1s - 1000, greaterThan(standardPosAt1s - 1000));
     });
 
-    test('Clamps cleanly at edges without spring bouncing', () {
+    test('Clamps cleanly at edges without spring bouncing when in bounds', () {
       const physics = UltraFreeScrollPhysics();
 
       final atTopPosition = FixedScrollMetrics(
@@ -102,7 +102,7 @@ void main() {
   });
 
   group('SmoothFreeScrollBehavior Integration Tests', () {
-    testWidgets('SmoothFreeScrollBehavior provides UltraFreeScrollPhysics', (tester) async {
+    testWidgets('SmoothFreeScrollBehavior provides SuperRangeMaintainingScrollPhysics wrapping UltraFreeScrollPhysics', (tester) async {
       await tester.pumpWidget(const Directionality(
         textDirection: TextDirection.ltr,
         child: SizedBox(),
@@ -111,7 +111,9 @@ void main() {
       final element = tester.element(find.byType(SizedBox));
 
       final physics = behavior.getScrollPhysics(element);
-      expect(physics, isA<UltraFreeScrollPhysics>());
+      expect(physics, isA<SuperRangeMaintainingScrollPhysics>());
+      final superPhysics = physics as SuperRangeMaintainingScrollPhysics;
+      expect(superPhysics.parent, isA<UltraFreeScrollPhysics>());
     });
   });
 }

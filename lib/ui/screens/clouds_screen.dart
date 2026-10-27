@@ -10,6 +10,7 @@ import '../widgets/pending_import_track_tile.dart';
 import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/settings_screen.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Clean, focused Cloud Storage Hub (Google Material 3 Expressive).
 /// Dedicated solely to managing connected cloud drives, 1-tap cloud authorization,
@@ -29,11 +30,9 @@ class CloudsScreen extends ConsumerWidget {
 
     return SafeArea(
       bottom: false,
-      child: ListView(
+      child: SuperListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
-        physics: const UltraFreeScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
+        physics: buildSuperSmoothScrollPhysics(),
       children: [
         // 1. Header with Title, Settings Icon & Add Cloud Button
         Row(

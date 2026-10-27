@@ -12,6 +12,7 @@ import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../screens/search_screen.dart';
 import 'ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 /// Opens the Material 3 Expressive Missing & Skipped Tracks inspector modal.
 Future<void> showPlaylistMissingTracksModal(
@@ -718,9 +719,9 @@ class _PlaylistMissingTracksSheetState
                               ),
                             ),
                           )
-                        : ListView.builder(
+                        : SuperListView.builder(
                             controller: scrollController,
-                            physics: const UltraFreeScrollPhysics(),
+                            physics: buildSuperSmoothScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                             itemCount: filteredItems.length,
                             itemBuilder: (ctx, idx) {

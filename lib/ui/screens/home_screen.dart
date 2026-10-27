@@ -18,6 +18,7 @@ import '../widgets/expressive_shapes.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 enum _HomeCategoryFilter {
   all('All', Icons.grid_view_rounded),
@@ -136,9 +137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const Divider(height: 1),
                 Flexible(
                   child: SingleChildScrollView(
-                    physics: const UltraFreeScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
+                    physics: buildSuperSmoothScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -414,9 +413,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final importProgress = ref.watch(importProgressProvider);
 
     return CustomScrollView(
-      physics: const UltraFreeScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
+      physics: buildSuperSmoothScrollPhysics(),
       scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
@@ -654,13 +651,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             padding: const EdgeInsets.only(top: 10, bottom: 8),
             child: SizedBox(
               height: 46,
-              child: ListView(
+              child: SuperListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const UltraFreeScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+                physics: buildSuperSmoothScrollPhysics(),
+                cacheExtent: 300,
                 children: [
                   for (final cat in _HomeCategoryFilter.values) ...[
                     _PixelCategoryPill(
@@ -748,12 +743,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 40,
-                    child: ListView.separated(
+                    child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const UltraFreeScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+                      physics: buildSuperSmoothScrollPhysics(),
+                      cacheExtent: 300,
                       itemCount: artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -836,12 +829,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 40,
-                    child: ListView.separated(
+                    child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
-                      physics: const UltraFreeScrollPhysics(
-                        parent: AlwaysScrollableScrollPhysics(),
-                      ),
-                      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+                      physics: buildSuperSmoothScrollPhysics(),
+                      cacheExtent: 300,
                       itemCount: albums.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -1116,15 +1107,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SliverToBoxAdapter(
             child: SizedBox(
               height: 254,
-              child: ListView.separated(
+              child: SuperListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                physics: const UltraFreeScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
+                physics: buildSuperSmoothScrollPhysics(),
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
-                scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+                cacheExtent: 500,
                 itemCount: tracks.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 14),
                 itemBuilder: (context, idx) {
@@ -1202,15 +1191,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 216,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+                  cacheExtent: 500,
                   itemCount: albums.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1288,15 +1275,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 254,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+                  cacheExtent: 500,
                   itemCount: allTracks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1383,15 +1368,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 254,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+                  cacheExtent: 500,
                   itemCount: topPicks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1468,15 +1451,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 124,
-                child: ListView.separated(
+                child: SuperListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  physics: const UltraFreeScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  scrollCacheExtent: const ScrollCacheExtent.viewport(2.0),
+                  cacheExtent: 500,
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
