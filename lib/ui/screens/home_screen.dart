@@ -414,7 +414,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return CustomScrollView(
       physics: buildSuperSmoothScrollPhysics(),
-      scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(450),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions
@@ -655,7 +655,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 physics: buildSuperSmoothScrollPhysics(),
-                cacheExtent: 600,
+                cacheExtent: 250,
                 children: [
                   for (final cat in _HomeCategoryFilter.values) ...[
                     _PixelCategoryPill(
@@ -746,7 +746,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: buildSuperSmoothScrollPhysics(),
-                      cacheExtent: 600,
+                      cacheExtent: 250,
                       itemCount: artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -832,7 +832,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: buildSuperSmoothScrollPhysics(),
-                      cacheExtent: 600,
+                      cacheExtent: 250,
                       itemCount: albums.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -1112,8 +1112,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 physics: buildSuperSmoothScrollPhysics(),
                 addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                cacheExtent: 800,
+                addRepaintBoundaries: false,
+                cacheExtent: 300,
                 itemCount: tracks.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 14),
                 itemBuilder: (context, idx) {
@@ -1196,8 +1196,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
-                  cacheExtent: 800,
+                  addRepaintBoundaries: false,
+                  cacheExtent: 300,
                   itemCount: albums.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1280,8 +1280,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
-                  cacheExtent: 800,
+                  addRepaintBoundaries: false,
+                  cacheExtent: 300,
                   itemCount: allTracks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1373,8 +1373,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
-                  cacheExtent: 800,
+                  addRepaintBoundaries: false,
+                  cacheExtent: 300,
                   itemCount: topPicks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1456,16 +1456,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
-                  cacheExtent: 800,
+                  addRepaintBoundaries: false,
+                  cacheExtent: 300,
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
                     final artist = artists[idx];
-                    return RepaintBoundary(
+                    return GestureDetector(
                       key: ValueKey('home_artist_${artist.name}'),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
+                      behavior: HitTestBehavior.opaque,
                         onTap: () {
                           PixelHaptics.tick();
                           if (ref.read(selectedArtistFilterProvider) == artist.name) {
@@ -1528,9 +1527,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                           ],
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
                 ),
               ),
             ),
@@ -1721,10 +1719,9 @@ class _PixelCoverCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return RepaintBoundary(
-      child: SizedBox(
-        width: cardWidth,
-        child: Column(
+    return SizedBox(
+      width: cardWidth,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1815,8 +1812,7 @@ class _PixelCoverCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -1839,10 +1835,9 @@ class _PixelAlbumCoverCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return RepaintBoundary(
-      child: SizedBox(
-        width: cardWidth,
-        child: Column(
+    return SizedBox(
+      width: cardWidth,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1891,8 +1886,7 @@ class _PixelAlbumCoverCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 

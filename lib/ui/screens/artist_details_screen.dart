@@ -74,7 +74,7 @@ class ArtistDetailsScreen extends ConsumerWidget {
       body: Stack(
         children: [
           CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+            scrollCacheExtent: const ScrollCacheExtent.pixels(450),
             physics: buildSuperSmoothScrollPhysics(),
             slivers: [
           // ─────────────────────────────────────────────────────────────────
@@ -367,36 +367,33 @@ class ArtistDetailsScreen extends ConsumerWidget {
                             endIndent: 16,
                             color: cs.outlineVariant.withValues(alpha: 0.25),
                           ),
-                        RepaintBoundary(
-                          key: ValueKey('artist_tile_${artistTracks[i].id}'),
-                          child: SwipeToQueueWrapper(
+                        SwipeToQueueWrapper(
+                          track: artistTracks[i],
+                          child: _ArtistTrackTile(
                             track: artistTracks[i],
-                            child: _ArtistTrackTile(
-                              track: artistTracks[i],
-                              isCurrent: currentTrackId == artistTracks[i].id,
-                              isPlaying:
-                                  currentTrackId == artistTracks[i].id &&
-                                      isPlaybackPlaying,
-                              durationText:
-                                  _formatDuration(artistTracks[i].durationMs),
-                              onTap: () {
-                                ref
-                                    .read(playbackProvider.notifier)
-                                    .playTrack(artistTracks[i], newQueue: artistTracks);
-                              },
-                              onOpenDetails: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => TrackDetailsScreen(
-                                      track: artistTracks[i],
-                                    ),
+                            isCurrent: currentTrackId == artistTracks[i].id,
+                            isPlaying:
+                                currentTrackId == artistTracks[i].id &&
+                                    isPlaybackPlaying,
+                            durationText:
+                                _formatDuration(artistTracks[i].durationMs),
+                            onTap: () {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .playTrack(artistTracks[i], newQueue: artistTracks);
+                            },
+                            onOpenDetails: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TrackDetailsScreen(
+                                    track: artistTracks[i],
                                   ),
-                                );
-                              },
-                              onAddToPlaylist: () {
-                                showAddToPlaylistModal(context, artistTracks[i]);
-                              },
-                            ),
+                                ),
+                              );
+                            },
+                            onAddToPlaylist: () {
+                              showAddToPlaylistModal(context, artistTracks[i]);
+                            },
                           ),
                         ),
                       ],

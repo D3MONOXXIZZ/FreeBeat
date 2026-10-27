@@ -76,10 +76,14 @@ class MaterialYouAlbumCover extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Artwork / Procedural Material You Cover (isolated raster layer)
-            RepaintBoundary(
-              child: _buildCoverImage(context, trackColor, cs),
-            ),
+            // 1. Artwork / Procedural Material You Cover
+            // Only isolate raster layer for large hero artwork (> 120dp), NOT list thumbnails (size <= 64)
+            // to prevent 100+ GPU render pass allocations during scrolling
+            size > 120
+                ? RepaintBoundary(
+                    child: _buildCoverImage(context, trackColor, cs),
+                  )
+                : _buildCoverImage(context, trackColor, cs),
 
             // 2. Subtle Bottom Gradient Scrim for Contrast (only on larger cards with text/badges)
             if (size > 52 || showQualityBadge || showSourceBadge)

@@ -972,7 +972,7 @@ class _PlaylistImportSheetState extends ConsumerState<_PlaylistImportSheet> {
             Flexible(
               child: SuperListView.separated(
                 physics: buildSuperSmoothScrollPhysics(),
-                cacheExtent: 1500,
+                cacheExtent: 400,
                 shrinkWrap: true,
                 itemCount: _result!.matchedTracks.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),

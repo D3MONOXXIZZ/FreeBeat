@@ -731,7 +731,7 @@ class _PlaylistDetailsScreenState
       body: Stack(
         children: [
           CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+            scrollCacheExtent: const ScrollCacheExtent.pixels(450),
             physics: buildSuperSmoothScrollPhysics(),
             slivers: [
           // 1. Sleek App Bar
@@ -1145,13 +1145,11 @@ class _PlaylistDetailsScreenState
                   final isCurrent = currentTrackId == track.id;
                   final isPlaying = isCurrent && isPlaybackPlaying;
 
-                  return RepaintBoundary(
-                    key: ValueKey('pl_tile_${livePlaylist.id}_${track.id}_$index'),
-                    child: SwipeToQueueWrapper(
-                      key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
-                      track: track,
-                      enableSecondaryAction: false,
-                      child: SpringPressScale(
+                  return SwipeToQueueWrapper(
+                    key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
+                    track: track,
+                    enableSecondaryAction: false,
+                    child: SpringPressScale(
                         scaleDown: 0.985,
                         onTap: () {
                           PixelHaptics.tick();
@@ -1232,9 +1230,8 @@ class _PlaylistDetailsScreenState
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
                 childCount: playlistTracks.length,
               ),
             ),

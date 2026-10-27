@@ -1017,6 +1017,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         (p) => p.currentTrack.id.isNotEmpty && p.queue.isNotEmpty,
       ),
     );
+    final currentTrackId = ref.watch(
+      playbackProvider.select((p) => p.currentTrack.id),
+    );
+    final isPlaybackPlaying = ref.watch(
+      playbackProvider.select((p) => p.isPlaying),
+    );
     // Align with mini player when music is active (58.0 + Scaffold's 16.0 margin = 74.0dp, exactly matching the mini player from 74-124dp above screen bottom)
     // When no track is active, sit comfortably above the navigation pill (8.0 + 16.0 = 24.0dp)
     final bottomFabPadding = hasActiveTrack ? 58.0 : 8.0;
@@ -1131,7 +1137,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         body: CustomScrollView(
           controller: _scrollController,
           physics: buildSuperSmoothScrollPhysics(),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(450),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar
@@ -2278,77 +2284,61 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                 ),
               ),
-              // 3. Fully Virtualized O(1) Fixed Extent Track List with RepaintBoundary per item for locked 120Hz scrolling
+              // 3. Fully Virtualized O(1) Fixed Extent Track List for locked 120Hz scrolling
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 160),
-                sliver: DecoratedSliver(
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerLow,
-                    border: Border(
-                      top: importProgress.pendingTracks.isEmpty
-                          ? BorderSide(
-                              color: cs.outlineVariant.withValues(alpha: 0.25),
-                              width: 1,
-                            )
-                          : BorderSide.none,
-                      bottom: BorderSide(
-                        color: cs.outlineVariant.withValues(alpha: 0.25),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  sliver: SliverFixedExtentList(
-                    itemExtent: _LibraryTrackTile.tileHeight,
-                    delegate: SliverChildBuilderDelegate(
-                      (context, i) {
-                        final track = filtered[i];
-                        return RepaintBoundary(
-                          key: ValueKey('tile_boundary_${track.id}'),
-                          child: SwipeToQueueWrapper(
-                            key: ValueKey('swipe_${track.id}'),
-                            track: track,
-                            enabled: !_isMultiSelect,
-                            child: _LibraryTrackTile(
-                              key: ValueKey('track_${track.id}'),
-                              track: track,
-                              isMultiSelect: _isMultiSelect,
-                              isSelected: _selectedTrackIds.contains(track.id),
-                              onSelectToggle: () => _toggleSelectTrack(track.id),
-                              onTap: () {
-                                if (_isMultiSelect) {
-                                  _toggleSelectTrack(track.id);
-                                } else {
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(track);
-                                }
-                              },
-                              onLongPress: () {
-                                if (_isMultiSelect) {
-                                  _toggleSelectTrack(track.id);
-                                } else {
-                                  _enterMultiSelect(track.id);
-                                }
-                              },
-                              onToggleFavorite: () {
-                                ref
-                                    .read(tracksCatalogProvider.notifier)
-                                    .toggleFavorite(track.id);
-                              },
-                              onTogglePin: () {
-                                ref
-                                    .read(tracksCatalogProvider.notifier)
-                                    .togglePinOffline(track.id);
-                              },
-                              onOptionsTap: () => _showTrackOptions(track),
-                            ),
-                          ),
-                        );
-                      },
-                      childCount: filtered.length,
-                      addAutomaticKeepAlives: false,
-                      addRepaintBoundaries: false,
-                    ),
+                sliver: SliverFixedExtentList(
+                  itemExtent: _LibraryTrackTile.tileHeight,
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) {
+                      final track = filtered[i];
+                      final isCurrent = currentTrackId == track.id;
+                      final isPlaying = isCurrent && isPlaybackPlaying;
+                      return SwipeToQueueWrapper(
+                        key: ValueKey('swipe_${track.id}'),
+                        track: track,
+                        enabled: !_isMultiSelect,
+                        child: _LibraryTrackTile(
+                          key: ValueKey('track_${track.id}'),
+                          track: track,
+                          isCurrent: isCurrent,
+                          isPlaying: isPlaying,
+                          isMultiSelect: _isMultiSelect,
+                          isSelected: _selectedTrackIds.contains(track.id),
+                          onSelectToggle: () => _toggleSelectTrack(track.id),
+                          onTap: () {
+                            if (_isMultiSelect) {
+                              _toggleSelectTrack(track.id);
+                            } else {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .playTrack(track);
+                            }
+                          },
+                          onLongPress: () {
+                            if (_isMultiSelect) {
+                              _toggleSelectTrack(track.id);
+                            } else {
+                              _enterMultiSelect(track.id);
+                            }
+                          },
+                          onToggleFavorite: () {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .toggleFavorite(track.id);
+                          },
+                          onTogglePin: () {
+                            ref
+                                .read(tracksCatalogProvider.notifier)
+                                .togglePinOffline(track.id);
+                          },
+                          onOptionsTap: () => _showTrackOptions(track),
+                        ),
+                      );
+                    },
+                    childCount: filtered.length,
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: false,
                   ),
                 ),
               ),
@@ -2427,7 +2417,7 @@ class _LibraryPillFilter extends StatelessWidget {
   }
 }
 
-class _LibraryTrackTile extends ConsumerWidget {
+class _LibraryTrackTile extends StatelessWidget {
   const _LibraryTrackTile({
     super.key,
     required this.track,
@@ -2435,6 +2425,8 @@ class _LibraryTrackTile extends ConsumerWidget {
     required this.onToggleFavorite,
     required this.onTogglePin,
     required this.onOptionsTap,
+    required this.isCurrent,
+    required this.isPlaying,
     this.isMultiSelect = false,
     this.isSelected = false,
     this.onSelectToggle,
@@ -2446,6 +2438,8 @@ class _LibraryTrackTile extends ConsumerWidget {
   final VoidCallback onToggleFavorite;
   final VoidCallback onTogglePin;
   final VoidCallback onOptionsTap;
+  final bool isCurrent;
+  final bool isPlaying;
   final bool isMultiSelect;
   final bool isSelected;
   final VoidCallback? onSelectToggle;
@@ -2454,17 +2448,8 @@ class _LibraryTrackTile extends ConsumerWidget {
   static const double tileHeight = 72.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    // Localized fine-grained selectors: only rebuilds this specific tile
-    // when its own active playback or isPlaying state changes
-    final isCurrent = ref.watch(playbackProvider.select(
-      (p) => p.currentTrack.id == track.id,
-    ));
-    final isPlaying = isCurrent && ref.watch(playbackProvider.select(
-      (p) => p.isPlaying,
-    ));
 
     final totalSeconds = (track.durationMs / 1000).floor().clamp(0, 86400);
     final minutes = totalSeconds ~/ 60;
