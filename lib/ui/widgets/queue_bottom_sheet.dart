@@ -585,6 +585,7 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
     return SuperListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       physics: buildSuperSmoothScrollPhysics(),
+      cacheExtent: 1500,
       itemCount: history.length,
       itemBuilder: (context, index) {
         final track = history[index];

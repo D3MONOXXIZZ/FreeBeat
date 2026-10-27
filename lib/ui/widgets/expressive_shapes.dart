@@ -34,8 +34,9 @@ class _SpringPressScaleState extends State<SpringPressScale> {
 
   void _onTapDown(TapDownDetails details) {
     _pressTimer?.cancel();
-    // 30ms micro-debounce: instantaneous to human touch while letting rapid scroll flings claim gesture arena
-    _pressTimer = Timer(const Duration(milliseconds: 30), () {
+    // 100ms standard Material press timeout: lets vertical scroll gestures claim the arena
+    // without triggering premature setState re-renders or haptic ticks on items during scrolls
+    _pressTimer = Timer(const Duration(milliseconds: 100), () {
       if (mounted) {
         setState(() => _pressed = true);
         PixelHaptics.tick(intensity: 0.35);

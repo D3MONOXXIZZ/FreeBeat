@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
 
@@ -17,10 +16,10 @@ import 'package:super_sliver_list/super_sliver_list.dart';
 class UltraFreeScrollPhysics extends ClampingScrollPhysics {
   const UltraFreeScrollPhysics({
     super.parent,
-    this.friction = 0.012,
+    this.friction = 0.0095,
   });
 
-  /// Deceleration friction constant. Default is 0.012 (stock Android is 0.015).
+  /// Deceleration friction constant. Default is 0.0095 (~35% smoother and more fluid than stock Android 0.015).
   final double friction;
 
   @override
@@ -49,10 +48,10 @@ class UltraFreeScrollPhysics extends ClampingScrollPhysics {
   }
 
   @override
-  double? get dragStartDistanceMotionThreshold => kTouchSlop;
+  double? get dragStartDistanceMotionThreshold => 3.5;
 
   @override
-  double get minFlingVelocity => 35.0;
+  double get minFlingVelocity => 25.0;
 
   @override
   double get maxFlingVelocity => 8000.0;
@@ -100,7 +99,7 @@ class UltraFreeScrollPhysics extends ClampingScrollPhysics {
 /// wrapping [UltraFreeScrollPhysics] for jitter-free list layout and flings.
 ScrollPhysics buildSuperSmoothScrollPhysics({
   ScrollPhysics? parent,
-  double friction = 0.012,
+  double friction = 0.0095,
 }) {
   return SuperRangeMaintainingScrollPhysics(
     parent: UltraFreeScrollPhysics(

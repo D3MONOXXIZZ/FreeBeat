@@ -414,7 +414,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return CustomScrollView(
       physics: buildSuperSmoothScrollPhysics(),
-      scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions
@@ -655,7 +655,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 physics: buildSuperSmoothScrollPhysics(),
-                cacheExtent: 300,
+                cacheExtent: 600,
                 children: [
                   for (final cat in _HomeCategoryFilter.values) ...[
                     _PixelCategoryPill(
@@ -746,7 +746,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: buildSuperSmoothScrollPhysics(),
-                      cacheExtent: 300,
+                      cacheExtent: 600,
                       itemCount: artists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -832,7 +832,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: SuperListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: buildSuperSmoothScrollPhysics(),
-                      cacheExtent: 300,
+                      cacheExtent: 600,
                       itemCount: albums.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, idx) {
@@ -1113,7 +1113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 physics: buildSuperSmoothScrollPhysics(),
                 addAutomaticKeepAlives: false,
                 addRepaintBoundaries: true,
-                cacheExtent: 500,
+                cacheExtent: 800,
                 itemCount: tracks.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 14),
                 itemBuilder: (context, idx) {
@@ -1197,7 +1197,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  cacheExtent: 500,
+                  cacheExtent: 800,
                   itemCount: albums.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1281,7 +1281,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  cacheExtent: 500,
+                  cacheExtent: 800,
                   itemCount: allTracks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1374,7 +1374,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  cacheExtent: 500,
+                  cacheExtent: 800,
                   itemCount: topPicks.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {
@@ -1457,7 +1457,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   physics: buildSuperSmoothScrollPhysics(),
                   addAutomaticKeepAlives: false,
                   addRepaintBoundaries: true,
-                  cacheExtent: 500,
+                  cacheExtent: 800,
                   itemCount: artists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
                   itemBuilder: (context, idx) {

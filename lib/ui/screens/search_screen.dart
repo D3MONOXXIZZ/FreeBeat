@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
@@ -96,6 +97,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: SafeArea(
         child: CustomScrollView(
           physics: buildSuperSmoothScrollPhysics(),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
           slivers: [
             // 1. Search Bar Header
             SliverToBoxAdapter(

@@ -1131,7 +1131,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         body: CustomScrollView(
           controller: _scrollController,
           physics: buildSuperSmoothScrollPhysics(),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(600),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar

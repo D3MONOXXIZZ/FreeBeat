@@ -722,6 +722,7 @@ class _PlaylistMissingTracksSheetState
                         : SuperListView.builder(
                             controller: scrollController,
                             physics: buildSuperSmoothScrollPhysics(),
+                            cacheExtent: 1500,
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                             itemCount: filteredItems.length,
                             itemBuilder: (ctx, idx) {

@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/main.dart';
@@ -9,11 +8,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('UltraFreeScrollPhysics Unit & Deceleration Tests', () {
-    test('Standard touch slop motion threshold and direct in-range 1:1 motion', () {
+    test('Responsive touch slop motion threshold and direct in-range 1:1 motion', () {
       const physics = UltraFreeScrollPhysics();
 
-      // Motion threshold delegates to standard kTouchSlop to prevent micro-jitters
-      expect(physics.dragStartDistanceMotionThreshold, kTouchSlop);
+      // Motion threshold is tuned to 3.5 to eliminate 18px dead-zone delays on touch
+      expect(physics.dragStartDistanceMotionThreshold, 3.5);
 
       // User offset is returned 1:1 without dampening when within range
       final position = FixedScrollMetrics(
@@ -36,13 +35,13 @@ void main() {
       expect(physics.maxFlingVelocity, 8000.0);
 
       // Responsive min fling velocity allows gentle gestures to trigger fluid glide
-      expect(physics.minFlingVelocity, 35.0);
+      expect(physics.minFlingVelocity, 25.0);
 
-      // Default smooth fluid friction constant (0.012 vs standard Android 0.015)
-      expect(physics.friction, 0.012);
+      // Default smooth fluid friction constant (0.0095 vs standard Android 0.015)
+      expect(physics.friction, 0.0095);
     });
 
-    test('Fluid friction of 0.012 glides further than stock Android without runaway speeds', () {
+    test('Fluid friction of 0.0095 glides further than stock Android without runaway speeds', () {
       const ultraPhysics = UltraFreeScrollPhysics();
       const standardPhysics = ClampingScrollPhysics();
 
@@ -65,7 +64,7 @@ void main() {
       final standardClamping = standardSim as ClampingScrollSimulation;
       final ultraClamping = ultraSim as ClampingScrollSimulation;
 
-      expect(ultraClamping.friction, 0.012);
+      expect(ultraClamping.friction, 0.0095);
       expect(standardClamping.friction, 0.015);
 
       // Sample position at t = 1.0 second: 0.012 glides slightly further and smoother

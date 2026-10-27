@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
@@ -427,14 +428,58 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
             ],
           );
 
-    return GestureDetector(
-      onHorizontalDragStart: _handleDragStart,
-      onHorizontalDragUpdate: _handleDragUpdate,
-      onHorizontalDragEnd: _handleDragEnd,
-      onHorizontalDragCancel: _handleDragCancel,
+    if (!widget.enabled) {
+      return content;
+    }
+
+    return RawGestureDetector(
       behavior: HitTestBehavior.translucent,
+      gestures: <Type, GestureRecognizerFactory>{
+        _DirectionalHorizontalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<_DirectionalHorizontalDragGestureRecognizer>(
+          () => _DirectionalHorizontalDragGestureRecognizer(debugOwner: this),
+          (_DirectionalHorizontalDragGestureRecognizer instance) {
+            instance
+              ..onStart = _handleDragStart
+              ..onUpdate = _handleDragUpdate
+              ..onEnd = _handleDragEnd
+              ..onCancel = _handleDragCancel;
+          },
+        ),
+      },
       child: content,
     );
+  }
+}
+
+/// A specialized [HorizontalDragGestureRecognizer] that immediately yields to vertical
+/// list scrolling if the touch gesture displacement is predominantly vertical.
+/// This completely eliminates gesture arena lag and hesitation during rapid list scrolling.
+class _DirectionalHorizontalDragGestureRecognizer
+    extends HorizontalDragGestureRecognizer {
+  _DirectionalHorizontalDragGestureRecognizer({super.debugOwner});
+
+  Offset? _startPosition;
+
+  @override
+  void addPointer(PointerDownEvent event) {
+    _startPosition = event.position;
+    super.addPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent && _startPosition != null) {
+      final delta = event.position - _startPosition!;
+      // If motion is predominantly vertical, instantly forfeit horizontal drag
+      // so vertical scrolling takes over with zero hesitation and zero latency!
+      if (delta.dy.abs() > delta.dx.abs() * 0.70 && delta.dy.abs() > 4.0) {
+        resolve(GestureDisposition.rejected);
+        _startPosition = null;
+        return;
+      }
+    }
+    super.handleEvent(event);
   }
 }
 
