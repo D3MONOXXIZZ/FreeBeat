@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
@@ -200,10 +201,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
   Widget _buildArtworkBackdrop(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      return Image.network(
-        url,
+      return CachedNetworkImage(
+        imageUrl: url,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        memCacheWidth: 256,
+        memCacheHeight: 256,
+        maxWidthDiskCache: 512,
+        maxHeightDiskCache: 512,
+        fadeInDuration: const Duration(milliseconds: 200),
+        errorWidget: (_, __, ___) => const SizedBox.shrink(),
       );
     }
     final file = File(url);
@@ -780,12 +786,18 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                               ),
                             ],
                           ),
-                          child: Icon(
-                            isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 38,
-                            color: cs.onPrimaryContainer,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, animation) =>
+                                ScaleTransition(scale: animation, child: child),
+                            child: Icon(
+                              isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              key: ValueKey<bool>(isPlaying),
+                              size: 38,
+                              color: cs.onPrimaryContainer,
+                            ),
                           ),
                         ),
                       ),

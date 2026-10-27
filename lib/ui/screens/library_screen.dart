@@ -25,7 +25,7 @@ import '../widgets/playlist_import_modal.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/swipe_to_queue_wrapper.dart';
 import '../widgets/track_metadata_editor_modal.dart';
-import '../widgets/expressive_shapes.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
 
@@ -1111,7 +1111,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   onOptions: _selectedTrackIds.isEmpty
                       ? null
                       : () => _showBatchTrackOptions(selectedTracks),
-                ),
+                ).animate().fadeIn(duration: 200.ms).slideY(
+                      begin: 0.15,
+                      end: 0,
+                      duration: 200.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
               )
             : (widget.showFab
                 ? Padding(
@@ -1131,7 +1136,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           size: 26,
                         ),
                       ),
-                    ),
+                    ).animate().scale(
+                          duration: 250.ms,
+                          curve: Curves.easeOutBack,
+                        ),
                   )
                 : null),
         body: CustomScrollView(
@@ -1847,24 +1855,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   itemBuilder: (context, index) {
                     final artist = filteredArtists[index];
                     final isSelected = _selectedArtist == artist;
-                    return SpringPressScale(
-                      scaleDown: 0.92,
-                      onTap: () {
-                        PixelHaptics.tick();
-                        setState(() {
-                          _selectedArtist = isSelected ? null : artist;
-                        });
-                      },
-                      onLongPress: () {
-                        PixelHaptics.medium();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ArtistDetailsScreen(artistName: artist),
-                          ),
-                        );
-                      },
-                      child: Column(
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(32),
+                        onTap: () {
+                          PixelHaptics.tick();
+                          setState(() {
+                            _selectedArtist = isSelected ? null : artist;
+                          });
+                        },
+                        onLongPress: () {
+                          PixelHaptics.medium();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ArtistDetailsScreen(artistName: artist),
+                            ),
+                          );
+                        },
+                        child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
@@ -1910,8 +1920,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           ),
                         ],
                       ),
-                    );
-                  },
+                    ),
+                  );
+                },
                 ),
               ),
             ),
@@ -2717,52 +2728,55 @@ class _NewPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      scaleDown: 0.96,
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.primary.withValues(alpha: 0.45),
-            width: 1.5,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.primary.withValues(alpha: 0.45),
+              width: 1.5,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                shape: BoxShape.circle,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.add_rounded,
+                  color: cs.onPrimaryContainer,
+                  size: 32,
+                ),
               ),
-              child: Icon(
-                Icons.add_rounded,
-                color: cs.onPrimaryContainer,
-                size: 32,
+              const SizedBox(height: 12),
+              Text(
+                'New Playlist',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                  color: cs.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'New Playlist',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 14.5,
-                color: cs.onSurface,
+              const SizedBox(height: 4),
+              Text(
+                'Custom curation',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: cs.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Custom curation',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2778,52 +2792,55 @@ class _ImportPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      scaleDown: 0.96,
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.secondary.withValues(alpha: 0.45),
-            width: 1.5,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.secondary.withValues(alpha: 0.45),
+              width: 1.5,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: cs.secondaryContainer,
-                shape: BoxShape.circle,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.file_download_outlined,
+                  color: cs.onSecondaryContainer,
+                  size: 28,
+                ),
               ),
-              child: Icon(
-                Icons.file_download_outlined,
-                color: cs.onSecondaryContainer,
-                size: 28,
+              const SizedBox(height: 12),
+              Text(
+                'Import Playlist',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                  color: cs.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Import Playlist',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 14.5,
-                color: cs.onSurface,
+              const SizedBox(height: 4),
+              Text(
+                'Spotify, Apple, YouTube, .M3U',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: cs.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Spotify, Apple, YouTube, .M3U',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2839,68 +2856,71 @@ class _SpotifyAppleImportBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      scaleDown: 0.98,
-      onTap: onTap,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.35),
-            width: 1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const PlatformAppIconGroup(size: 28, spacing: 8),
-                const Spacer(),
-                FilledButton.tonalIcon(
-                  onPressed: onTap,
-                  icon: const Icon(Icons.download_rounded, size: 16),
-                  label: const Text('Import'),
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const PlatformAppIconGroup(size: 28, spacing: 8),
+                  const Spacer(),
+                  FilledButton.tonalIcon(
+                    onPressed: onTap,
+                    icon: const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Import'),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      shape: const StadiumBorder(),
                     ),
-                    shape: const StadiumBorder(),
                   ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Import Playlists & Tracks',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                  letterSpacing: -0.2,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Import Playlists & Tracks',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
-                letterSpacing: -0.2,
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              'Paste Spotify, Apple Music, or YouTube links, tracklists, or .M3U8',
-              style: TextStyle(
-                fontSize: 12,
-                color: cs.onSurfaceVariant,
+              const SizedBox(height: 3),
+              Text(
+                'Paste Spotify, Apple Music, or YouTube links, tracklists, or .M3U8',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2922,77 +2942,80 @@ class _PlaylistGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      scaleDown: 0.96,
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.35),
-            width: 1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
           ),
-        ),
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Center(
-                child: GenerativePlaylistCover(
-                  playlist: playlist,
-                  tracks: tracks,
-                  size: double.infinity,
-                  borderRadius: 18,
-                  showBadge: true,
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Center(
+                  child: GenerativePlaylistCover(
+                    playlist: playlist,
+                    tracks: tracks,
+                    size: double.infinity,
+                    borderRadius: 18,
+                    showBadge: true,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                playlist.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  playlist.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                children: [
-                  if (playlist.isSmart) ...[
-                    Icon(
-                      Icons.auto_awesome_rounded,
-                      size: 11,
-                      color: cs.primary,
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Expanded(
-                    child: Text(
-                      playlist.isSmart
-                          ? '${playlist.trackCount} tracks • Smart'
-                          : '${playlist.trackCount} tracks',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: cs.onSurfaceVariant,
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    if (playlist.isSmart) ...[
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 11,
+                        color: cs.primary,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        playlist.isSmart
+                            ? '${playlist.trackCount} tracks • Smart'
+                            : '${playlist.trackCount} tracks',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-          ],
+              const SizedBox(height: 4),
+            ],
+          ),
         ),
       ),
     );

@@ -192,11 +192,17 @@ class MiniPlayerDock extends ConsumerWidget {
                           backgroundColor: cs.primaryContainer,
                           foregroundColor: cs.onPrimaryContainer,
                         ),
-                        child: Icon(
-                          isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 19,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          transitionBuilder: (child, animation) =>
+                              ScaleTransition(scale: animation, child: child),
+                          child: Icon(
+                            isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            key: ValueKey<bool>(isPlaying),
+                            size: 19,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 2),

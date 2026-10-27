@@ -34,6 +34,8 @@ dependencies:
   super_sliver_list: ^0.4.1
   zero_scroll: ^0.0.2
   silky_scroll: ^2.6.4
+  cached_network_image: ^4.0.5
+  flutter_animate: ^4.5.2
 
 dev_dependencies:
   flutter_test:

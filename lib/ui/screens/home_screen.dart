@@ -14,7 +14,7 @@ import 'track_details_screen.dart';
 import 'search_screen.dart';
 import '../widgets/add_to_playlist_modal.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
-import '../widgets/expressive_shapes.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../widgets/remove_track_dialog.dart';
 import '../widgets/track_metadata_editor_modal.dart';
 import '../widgets/ultra_free_scroll_physics.dart';
@@ -1400,7 +1400,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     );
                   },
                 ),
-              ),
+              ).animate().fadeIn(duration: 250.ms).slideY(
+                    begin: 0.05,
+                    end: 0,
+                    duration: 250.ms,
+                    curve: Curves.easeOutCubic,
+                  ),
             ),
           ],
 
@@ -1618,21 +1623,23 @@ class _PixelPlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return SpringPressScale(
-      scaleDown: 0.97,
-      onTap: () {
-        PixelHaptics.tick();
-        onTap();
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.35),
-            width: 1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () {
+          PixelHaptics.tick();
+          onTap();
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.35),
+              width: 1,
+            ),
           ),
-        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
@@ -1689,7 +1696,8 @@ class _PixelPlaylistCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -1725,19 +1733,22 @@ class _PixelCoverCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            SpringPressScale(
-              scaleDown: 0.96,
-              onTap: onTap,
-              onLongPress: onOpenOptions,
-              child: MaterialYouAlbumCover(
-                track: track,
-                size: cardWidth,
-                borderRadius: 24,
-                showQualityBadge: true,
-                showSourceBadge: true,
-                showPlayButton: true,
-                isPlaying: isPlaying,
-                onPlayTap: onTap,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: onTap,
+                onLongPress: onOpenOptions,
+                child: MaterialYouAlbumCover(
+                  track: track,
+                  size: cardWidth,
+                  borderRadius: 24,
+                  showQualityBadge: true,
+                  showSourceBadge: true,
+                  showPlayButton: true,
+                  isPlaying: isPlaying,
+                  onPlayTap: onTap,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1841,17 +1852,20 @@ class _PixelAlbumCoverCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            SpringPressScale(
-              scaleDown: 0.96,
-              onTap: onTap,
-              child: MaterialYouAlbumCover(
-                track: album.representativeTrack,
-                size: cardWidth,
-                borderRadius: 24,
-                showQualityBadge: false,
-                showSourceBadge: true,
-                showPlayButton: true,
-                onPlayTap: onPlay,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: onTap,
+                child: MaterialYouAlbumCover(
+                  track: album.representativeTrack,
+                  size: cardWidth,
+                  borderRadius: 24,
+                  showQualityBadge: false,
+                  showSourceBadge: true,
+                  showPlayButton: true,
+                  onPlayTap: onPlay,
+                ),
               ),
             ),
             const SizedBox(height: 8),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
@@ -128,10 +129,15 @@ class GenerativePlaylistCover extends StatelessWidget {
         playlist.customArtworkUrl!.isNotEmpty) {
       final art = playlist.customArtworkUrl!;
       if (art.startsWith('http://') || art.startsWith('https://')) {
-        return Image.network(
-          art,
+        return CachedNetworkImage(
+          imageUrl: art,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildTileOrGenerative(context, seed, cs),
+          memCacheWidth: size.isFinite ? (size * 2).round().clamp(128, 512) : 512,
+          memCacheHeight: size.isFinite ? (size * 2).round().clamp(128, 512) : 512,
+          maxWidthDiskCache: 512,
+          maxHeightDiskCache: 512,
+          fadeInDuration: const Duration(milliseconds: 150),
+          errorWidget: (_, __, ___) => _buildTileOrGenerative(context, seed, cs),
         );
       }
       final file = File(art);
@@ -218,7 +224,21 @@ class GenerativePlaylistCover extends StatelessWidget {
   Widget _buildTile(Track track) {
     final art = track.artworkUrl!;
     if (art.startsWith('http://') || art.startsWith('https://')) {
-      return Image.network(art, fit: BoxFit.cover);
+      return CachedNetworkImage(
+        imageUrl: art,
+        fit: BoxFit.cover,
+        memCacheWidth: 256,
+        memCacheHeight: 256,
+        maxWidthDiskCache: 256,
+        maxHeightDiskCache: 256,
+        fadeInDuration: const Duration(milliseconds: 150),
+        errorWidget: (_, __, ___) => Container(
+          color: track.dominantColor,
+          child: const Center(
+            child: Icon(Icons.music_note_rounded, color: Colors.white70, size: 16),
+          ),
+        ),
+      );
     }
     final file = File(art);
     if (file.existsSync()) {

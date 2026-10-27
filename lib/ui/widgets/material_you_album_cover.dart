@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/track.dart';
 
@@ -238,14 +239,17 @@ class MaterialYouAlbumCover extends StatelessWidget {
           : 512;
 
       if (art.startsWith('http://') || art.startsWith('https://')) {
-        return Image.network(
-          art,
+        return CachedNetworkImage(
+          imageUrl: art,
           fit: BoxFit.cover,
-          cacheWidth: targetCache,
-          cacheHeight: targetCache,
-          gaplessPlayback: true,
-          filterQuality: size > 80 ? FilterQuality.medium : FilterQuality.low,
-          errorBuilder: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
+          memCacheWidth: targetCache,
+          memCacheHeight: targetCache,
+          maxWidthDiskCache: 512,
+          maxHeightDiskCache: 512,
+          fadeInDuration: const Duration(milliseconds: 150),
+          fadeOutDuration: const Duration(milliseconds: 100),
+          placeholder: (_, __) => _buildProceduralMaterialYouArt(context, trackColor, cs),
+          errorWidget: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
       } else {
         return Image.file(
