@@ -51,10 +51,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
   String? _lastArtworkKey;
   late final AnimationController _auraAnimController;
   late final AnimationController _springResetController;
+  late final AnimationController _dismissController;
   Animation<double>? _springResetAnim;
   Animation<double>? _artSpringAnim;
+  Animation<double>? _dismissAnim;
   double _dragOffsetY = 0.0;
   double _artDragX = 0.0;
+  bool _isDismissing = false;
 
   @override
   void initState() {
@@ -75,16 +78,52 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         setState(() => _artDragX = _artSpringAnim!.value);
       }
     });
+
+    _dismissController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _dismissController.addListener(() {
+      if (_dismissAnim != null) {
+        setState(() => _dragOffsetY = _dismissAnim!.value);
+      }
+    });
   }
 
   @override
   void dispose() {
     _auraAnimController.dispose();
     _springResetController.dispose();
+    _dismissController.dispose();
     super.dispose();
   }
 
+  void _collapsePlayer() {
+    if (_isDismissing || !mounted) return;
+    _isDismissing = true;
+    PixelHaptics.tick();
+    final screenHeight = MediaQuery.of(context).size.height;
+    final remaining = (screenHeight - _dragOffsetY).clamp(0.0, screenHeight);
+    final durationMs = (remaining / screenHeight * 240).round().clamp(150, 260);
+
+    _dismissController.duration = Duration(milliseconds: durationMs);
+    _dismissAnim = Tween<double>(
+      begin: _dragOffsetY,
+      end: screenHeight,
+    ).animate(CurvedAnimation(
+      parent: _dismissController,
+      curve: Curves.easeInCubic,
+    ));
+
+    _dismissController.forward(from: 0.0).then((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
   void _onVerticalDragUpdate(DragUpdateDetails details) {
+    if (_isDismissing) return;
     final dy = details.delta.dy;
     if (_dragOffsetY + dy >= 0) {
       setState(() {
@@ -94,10 +133,10 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
+    if (_isDismissing) return;
     final vy = details.primaryVelocity ?? 0.0;
-    if (_dragOffsetY > 120 || vy > 650) {
-      PixelHaptics.sheetExpand();
-      Navigator.of(context).pop();
+    if (_dragOffsetY > 110 || vy > 400) {
+      _collapsePlayer();
     } else if (_dragOffsetY > 0) {
       _springResetAnim = Tween<double>(
         begin: _dragOffsetY,
@@ -254,83 +293,126 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         ? _palette!.rightEdgeColor
         : effectiveDominant;
 
-    final dragDismissProgress = (_dragOffsetY / 400.0).clamp(0.0, 1.0);
-    final blurSigma = (28.0 * (1.0 - dragDismissProgress)).clamp(0.0, 28.0);
-    final backdropDim = (0.50 * (1.0 - dragDismissProgress)).clamp(0.0, 0.50);
-    final dragScale = (1.0 - (_dragOffsetY / 1400.0)).clamp(0.92, 1.0);
-    final dragBorderRadius = (_dragOffsetY / 5.0).clamp(0.0, 36.0);
-    final sheetOpacity = (1.0 - (_dragOffsetY / 1200.0)).clamp(0.85, 1.0);
+    final topPadding = MediaQuery.of(context).padding.top;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final cardTopMargin = topPadding > 0 ? topPadding + 6.0 : 16.0;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Dynamic Fullscreen Backdrop Blur over underlying screen
-          // Fades smoothly from blur (28.0) to crystal clear (0.0) as the user pulls down to close
-          if (blurSigma > 0.1)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-                child: Container(
-                  color: Colors.black.withValues(alpha: backdropDim),
+    final dismissFraction = (screenHeight > 0)
+        ? (_dragOffsetY / screenHeight).clamp(0.0, 1.0)
+        : 0.0;
+    final blurSigma = (24.0 * (1.0 - dismissFraction)).clamp(0.0, 24.0);
+    final backdropDim = (0.54 * (1.0 - dismissFraction)).clamp(0.0, 0.54);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _collapsePlayer();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Dynamic Fullscreen Backdrop Blur & Scrim
+            if (blurSigma > 0.1)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: backdropDim),
+                  ),
                 ),
               ),
-            ),
 
-          // 2. Interactive Dismissible Now Playing Sheet
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragUpdate: _onVerticalDragUpdate,
-            onVerticalDragEnd: _onVerticalDragEnd,
-            child: Transform.translate(
-              offset: Offset(0, _dragOffsetY * 0.85),
-              child: Transform.scale(
-                scale: dragScale,
-                child: Opacity(
-                  opacity: sheetOpacity,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(dragBorderRadius),
-                    child: Stack(
-                      children: [
-                        // 1. Ambient Dynamic Gradient Background
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 600),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0.0, -0.42),
-                radius: 1.45,
-                colors: [
-                  effectiveDominant.withValues(alpha: 0.42),
-                  effectiveEdge.withValues(alpha: 0.22),
-                  cs.surface.withValues(alpha: 0.95),
-                  cs.surfaceContainerLowest,
-                ],
-                stops: const [0.0, 0.40, 0.78, 1.0],
+            // 2. Backdrop Tap Target to dismiss card
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _collapsePlayer,
+                child: const SizedBox.expand(),
               ),
             ),
-          ),
 
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: Column(
-                children: [
-                  // 2. Top Bar: Collapse, Connected Output Chip, EQ Action
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 32,
+            // 3. Interactive Dismissible Now Playing Card Sheet (Matching "More" Card Architecture)
+            Positioned(
+              top: cardTopMargin,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragUpdate: _onVerticalDragUpdate,
+                onVerticalDragEnd: _onVerticalDragEnd,
+                child: Transform.translate(
+                  offset: Offset(0, _dragOffsetY),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLowest,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 28,
+                          spreadRadius: 2,
+                          offset: const Offset(0, -6),
                         ),
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          Navigator.of(context).pop();
-                        },
-                      ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                      child: Stack(
+                        children: [
+                          // 1. Ambient Dynamic Gradient Background
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOutCubic,
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: const Alignment(0.0, -0.42),
+                                radius: 1.45,
+                                colors: [
+                                  effectiveDominant.withValues(alpha: 0.42),
+                                  effectiveEdge.withValues(alpha: 0.22),
+                                  cs.surface.withValues(alpha: 0.95),
+                                  cs.surfaceContainerLowest,
+                                ],
+                                stops: const [0.0, 0.40, 0.78, 1.0],
+                              ),
+                            ),
+                          ),
+
+                          SafeArea(
+                            top: false,
+                            bottom: true,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                              child: Column(
+                                children: [
+                                  // Drag Handle Pill (Matching "More" Card)
+                                  Center(
+                                    child: Container(
+                                      width: 38,
+                                      height: 4.5,
+                                      margin: const EdgeInsets.only(top: 8, bottom: 4),
+                                      decoration: BoxDecoration(
+                                        color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                                        borderRadius: BorderRadius.circular(2.5),
+                                      ),
+                                    ),
+                                  ),
+
+                                  // 2. Top Bar: Collapse, Connected Output Chip, EQ Action
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                          size: 32,
+                                        ),
+                                        onPressed: _collapsePlayer,
+                                      ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -783,6 +865,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 ),
 ),
 ],
+),
 ),
 );
   }

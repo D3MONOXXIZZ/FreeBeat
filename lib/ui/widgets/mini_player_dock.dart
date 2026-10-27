@@ -31,6 +31,8 @@ class MiniPlayerDock extends ConsumerWidget {
       PageRouteBuilder<void>(
         opaque: false,
         barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
         pageBuilder: (context, animation, secondaryAnimation) =>
             NowPlayingScreen(
           onOpenDspStudio: onOpenDspStudio ?? () {},
@@ -41,15 +43,12 @@ class MiniPlayerDock extends ConsumerWidget {
             curve: Curves.easeOutCubic,
             reverseCurve: Curves.easeInCubic,
           );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.12),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 1.0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
           );
         },
       ),
