@@ -28,6 +28,7 @@ import '../services/audio/universal_audio_transcoder_service.dart';
 import '../services/discovery/local_media_server_discovery_service.dart';
 import '../services/haptics/pixel_haptics.dart';
 import '../services/metadata/artwork_and_lyrics_service.dart';
+import '../services/metadata/artwork_extractor.dart';
 import '../services/metadata/artist_helper.dart';
 import '../services/metadata/range_tag_parser.dart';
 import '../services/metadata/track_tag_writer_service.dart';
@@ -2400,7 +2401,19 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _isPreloadingNext = true;
     _preloadedTrackId = nextTrack.id;
     try {
-      final source = await _createAudioSource(nextTrack);
+      final catalog = _ref.read(tracksCatalogProvider);
+      final freshNext =
+          catalog.firstWhere((t) => t.id == nextTrack.id, orElse: () => nextTrack);
+
+      // Preload next track's artwork into Android cache 8 seconds ahead of crossfade!
+      final art = freshNext.artworkUrl ?? ArtworkExtractor.getCachedArtworkPath(freshNext.id);
+      if (art != null && art.isNotEmpty) {
+        unawaited(_ref.read(powerampDspServiceProvider).preloadArtwork(art));
+      } else {
+        unawaited(_ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(freshNext));
+      }
+
+      final source = await _createAudioSource(freshNext);
       if (!_isCrossfading && _preloadedTrackId == nextTrack.id && mounted) {
         await inactive.setAudioSource(source);
         await inactive.setVolume(0.0);
@@ -2422,6 +2435,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final incomingPlayer = _inactivePlayer;
     if (outgoingPlayer == null || incomingPlayer == null) return;
 
+    final catalog = _ref.read(tracksCatalogProvider);
+    final freshNextTrack = catalog.firstWhere(
+      (t) => t.id == nextTrack.id,
+      orElse: () => nextTrack,
+    );
+
     _isCrossfading = true;
 
     try {
@@ -2433,12 +2452,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         }
       }
 
-      final wasPreloaded = _preloadedTrackId == nextTrack.id &&
+      final wasPreloaded = _preloadedTrackId == freshNextTrack.id &&
           incomingPlayer.audioSource != null &&
           incomingPlayer.playerState.processingState != ProcessingState.idle;
 
       if (!wasPreloaded) {
-        final source = await _createAudioSource(nextTrack);
+        final source = await _createAudioSource(freshNextTrack);
         await incomingPlayer.setAudioSource(source);
       }
       _preloadedTrackId = null;
@@ -2468,11 +2487,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       // Update state to the new track so that NowPlayingScreen, MiniPlayer,
       // and Android notification immediately show the new track and progress from 0:00:
       state = state.copyWith(
-        currentTrack: nextTrack,
+        currentTrack: freshNextTrack,
         positionMs: 0,
       );
-      _syncForegroundNotification(track: nextTrack, isPlaying: true);
+      _syncForegroundNotification(track: freshNextTrack, isPlaying: true);
       _savePlaybackState();
+
+      if (freshNextTrack.artworkUrl == null || freshNextTrack.artworkUrl!.isEmpty) {
+        unawaited(_ref.read(tracksCatalogProvider.notifier).enrichTrackArtwork(freshNextTrack));
+      }
 
       final startMs = DateTime.now().millisecondsSinceEpoch;
       double lastVolOut = 1.0;
@@ -2539,6 +2562,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       _ref.read(powerampDspServiceProvider).attachAudioSession(sessionId);
       _ref.read(powerampDspServiceProvider).applyDspState(_ref.read(powerampDspProvider));
     }
+    _syncForegroundNotification(track: state.currentTrack, isPlaying: true);
     unawaited(_preloadUpcomingQueueTracks());
   }
 
@@ -2593,13 +2617,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final isPowerSaver = _ref.read(effectivePowerSaverActiveProvider);
     final isLocal = (t.localCachePath != null && File(t.localCachePath!).existsSync()) ||
         (!t.streamUrl.startsWith('http://') && !t.streamUrl.startsWith('https://'));
+    final effectiveArtwork = (t.artworkUrl != null && t.artworkUrl!.isNotEmpty)
+        ? t.artworkUrl
+        : ArtworkExtractor.getCachedArtworkPath(t.id);
     try {
       final dspSvc = _ref.read(powerampDspServiceProvider);
       dspSvc.startForegroundPlayback(
         title: t.title,
         artist: t.artist,
         album: t.album,
-        artworkPath: t.artworkUrl,
+        artworkPath: effectiveArtwork,
         durationMs: t.durationMs,
         positionMs: state.positionMs,
         isPlaying: playing,

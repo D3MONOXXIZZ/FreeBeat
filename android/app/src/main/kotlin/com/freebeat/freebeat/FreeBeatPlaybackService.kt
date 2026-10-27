@@ -31,6 +31,7 @@ import androidx.core.app.ServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 
 
@@ -70,6 +71,61 @@ class FreeBeatPlaybackService : Service() {
         private var cachedDominantColor: Int = 0
         private var cachedTitle: String = ""
         private var cachedArtBitmap: Bitmap? = null
+        private var isCachedBitmapFallback: Boolean = false
+
+        fun scaleToSafeDimensions(bitmap: Bitmap, maxDim: Int = 384): Bitmap {
+            val width = bitmap.width
+            val height = bitmap.height
+            if (width <= maxDim && height <= maxDim) return bitmap
+            val ratio = width.toFloat() / height.toFloat()
+            val targetWidth: Int
+            val targetHeight: Int
+            if (ratio > 1.0f) {
+                targetWidth = maxDim
+                targetHeight = (maxDim / ratio).toInt().coerceAtLeast(1)
+            } else {
+                targetHeight = maxDim
+                targetWidth = (maxDim * ratio).toInt().coerceAtLeast(1)
+            }
+            return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+        }
+
+        fun preloadArtworkUrl(context: Context, urlStr: String, onLoaded: ((Bitmap) -> Unit)? = null) {
+            Thread {
+                try {
+                    val hash = urlStr.hashCode().toString()
+                    val cacheFile = File(context.cacheDir, "art_$hash.jpg")
+                    if (!cacheFile.exists() || cacheFile.length() <= 200) {
+                        val url = URL(urlStr)
+                        val conn = url.openConnection() as HttpURLConnection
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        conn.instanceFollowRedirects = true
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; FreeBeat/1.0)")
+                        if (conn.responseCode in 200..299) {
+                            val tempFile = File(context.cacheDir, "art_${hash}.tmp")
+                            conn.inputStream.use { input ->
+                                tempFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            if (tempFile.exists() && tempFile.length() > 200) {
+                                tempFile.renameTo(cacheFile)
+                            } else {
+                                tempFile.delete()
+                            }
+                        }
+                    }
+                    if (cacheFile.exists() && cacheFile.length() > 200) {
+                        val bmp = BitmapFactory.decodeFile(cacheFile.absolutePath)
+                        if (bmp != null) {
+                            val scaled = scaleToSafeDimensions(bmp)
+                            onLoaded?.invoke(scaled)
+                        }
+                    }
+                } catch (_: Throwable) {}
+            }.start()
+        }
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -149,14 +205,24 @@ class FreeBeatPlaybackService : Service() {
                 val oldRepeat = repeatMode
                 val oldColor = currentDominantColor
 
+                val newTitle = intent.getStringExtra("title")
+                val isTrackTransition = !newTitle.isNullOrEmpty() && newTitle != oldTitle
+
                 intent.getStringExtra("title")?.let { if (it.isNotEmpty()) currentTitle = it }
                 intent.getStringExtra("artist")?.let { if (it.isNotEmpty()) currentArtist = it }
                 intent.getStringExtra("album")?.let { if (it.isNotEmpty()) currentAlbum = it }
 
-                // CRITICAL: Only update artworkPath if non-null and not empty so position updates don't wipe out artwork
-                val artArg = intent.getStringExtra("artworkPath")
-                if (!artArg.isNullOrEmpty()) {
-                    currentArtworkPath = artArg
+                if (intent.hasExtra("artworkPath")) {
+                    currentArtworkPath = intent.getStringExtra("artworkPath")
+                } else if (isTrackTransition) {
+                    currentArtworkPath = null
+                }
+
+                if (isTrackTransition) {
+                    // Track changed: clear previous track's cached art bitmap so it never leaks
+                    cachedArtBitmap = null
+                    cachedArtworkPath = null
+                    isCachedBitmapFallback = false
                 }
 
                 if (intent.hasExtra("durationMs")) {
@@ -652,43 +718,31 @@ class FreeBeatPlaybackService : Service() {
         return "Phone Speaker"
     }
 
-    private fun scaleToSafeDimensions(bitmap: Bitmap, maxDim: Int = 384): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        if (width <= maxDim && height <= maxDim) return bitmap
-        val ratio = width.toFloat() / height.toFloat()
-        val targetWidth: Int
-        val targetHeight: Int
-        if (ratio > 1.0f) {
-            targetWidth = maxDim
-            targetHeight = (maxDim / ratio).toInt().coerceAtLeast(1)
-        } else {
-            targetHeight = maxDim
-            targetWidth = (maxDim * ratio).toInt().coerceAtLeast(1)
-        }
-        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-    }
-
     private fun loadArtworkBitmap(path: String?, title: String, dominantColor: Int): Bitmap {
-        if (cachedArtBitmap != null && path == cachedArtworkPath && dominantColor == cachedDominantColor && title == cachedTitle) {
+        if (cachedArtBitmap != null &&
+            !isCachedBitmapFallback &&
+            path == cachedArtworkPath &&
+            dominantColor == cachedDominantColor &&
+            title == cachedTitle) {
             return cachedArtBitmap!!
         }
-        val resolved = resolveArtworkBitmap(path, title, dominantColor)
+        val (resolved, isFallback) = resolveArtworkBitmap(path, title, dominantColor)
         cachedArtworkPath = path
         cachedDominantColor = dominantColor
         cachedTitle = title
         cachedArtBitmap = resolved
+        isCachedBitmapFallback = isFallback
         return resolved
     }
 
-    private fun resolveArtworkBitmap(path: String?, title: String, dominantColor: Int): Bitmap {
+    private fun resolveArtworkBitmap(path: String?, title: String, dominantColor: Int): Pair<Bitmap, Boolean> {
         if (!path.isNullOrEmpty()) {
             // 1. Android SAF content:// URI
             if (path.startsWith("content://")) {
                 try {
                     contentResolver.openInputStream(Uri.parse(path))?.use { stream ->
                         val bmp = BitmapFactory.decodeStream(stream)
-                        if (bmp != null) return scaleToSafeDimensions(bmp)
+                        if (bmp != null) return scaleToSafeDimensions(bmp) to false
                     }
                 } catch (_: Throwable) {}
             }
@@ -698,7 +752,7 @@ class FreeBeatPlaybackService : Service() {
                 val file = File(path)
                 if (file.exists() && file.length() > 200) {
                     val bmp = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bmp != null) return scaleToSafeDimensions(bmp)
+                    if (bmp != null) return scaleToSafeDimensions(bmp) to false
                 }
             } catch (_: Throwable) {}
 
@@ -709,30 +763,44 @@ class FreeBeatPlaybackService : Service() {
                     val cacheFile = File(cacheDir, "art_$hash.jpg")
                     if (cacheFile.exists() && cacheFile.length() > 200) {
                         val bmp = BitmapFactory.decodeFile(cacheFile.absolutePath)
-                        if (bmp != null) return scaleToSafeDimensions(bmp)
+                        if (bmp != null) return scaleToSafeDimensions(bmp) to false
                     } else {
-                        // Download asynchronously and refresh notification
-                        Thread {
-                            try {
-                                val url = URL(path)
-                                val conn = url.openConnection()
-                                conn.connectTimeout = 4000
-                                conn.readTimeout = 4000
-                                conn.getInputStream().use { input ->
-                                    cacheFile.outputStream().use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
+                        // Download asynchronously and immediately update notification upon completion
+                        preloadArtworkUrl(this, path) { downloadedBmp ->
+                            if (currentArtworkPath == path) {
+                                cachedArtBitmap = downloadedBmp
+                                cachedArtworkPath = path
+                                cachedDominantColor = currentDominantColor
+                                cachedTitle = currentTitle
+                                isCachedBitmapFallback = false
                                 updateNotification()
-                            } catch (_: Throwable) {}
-                        }.start()
+                            }
+                        }
                     }
                 } catch (_: Throwable) {}
             }
         }
 
-        // 4. Procedural High-Res Monet Cover with Vinyl Grooves & Initials
-        return scaleToSafeDimensions(createProceduralCover(title, dominantColor))
+        // 4. Check app's album art directory in filesDir or app_flutter as fallback
+        try {
+            val sanitizedTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            val artDirs = listOf(
+                File(filesDir.parentFile, "app_flutter/album_art"),
+                File(filesDir, "album_art")
+            )
+            for (artDir in artDirs) {
+                if (artDir.exists()) {
+                    val artFile = File(artDir, "$sanitizedTitle.jpg")
+                    if (artFile.exists() && artFile.length() > 200) {
+                        val bmp = BitmapFactory.decodeFile(artFile.absolutePath)
+                        if (bmp != null) return scaleToSafeDimensions(bmp) to false
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 5. Procedural High-Res Monet Cover with Vinyl Grooves & Initials (temporary fallback)
+        return scaleToSafeDimensions(createProceduralCover(title, dominantColor)) to true
     }
 
     private fun createProceduralCover(title: String, dominantColor: Int): Bitmap {

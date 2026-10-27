@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'services/metadata/artwork_extractor.dart';
 import 'services/metadata/artwork_palette_extractor.dart';
 import 'state/app_providers.dart';
 import 'ui/screens/main_shell.dart';
@@ -50,6 +52,9 @@ void main() {
 
   // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
   GestureBinding.instance.resamplingEnabled = true;
+
+  // Initialize album artwork cache directory ahead of time
+  unawaited(ArtworkExtractor.init());
 
   // Optimize image cache capacity for high-density 120Hz album cover art without OOM risk
   PaintingBinding.instance.imageCache.maximumSize = 150;

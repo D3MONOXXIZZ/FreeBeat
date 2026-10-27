@@ -393,6 +393,17 @@ class MainActivity : FlutterActivity() {
                         requestNotificationPermissionIfNeeded()
                         result.success(true)
                     }
+                    "preloadArtwork" -> {
+                        try {
+                            val artworkUrl = call.argument<String>("artworkUrl")
+                            if (!artworkUrl.isNullOrEmpty() && (artworkUrl.startsWith("http://") || artworkUrl.startsWith("https://"))) {
+                                FreeBeatPlaybackService.preloadArtworkUrl(this, artworkUrl)
+                            }
+                            result.success(true)
+                        } catch (_: Throwable) {
+                            result.success(false)
+                        }
+                    }
                     "isWifiConnected" -> {
                         val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
                         val activeNetwork = cm?.activeNetwork

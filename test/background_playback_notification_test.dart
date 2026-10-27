@@ -118,7 +118,16 @@ void main() {
       isTrue,
     );
 
-    // 3. Stop foreground playback
+    // 3. Preload artwork ahead of crossfade
+    await dspService.preloadArtwork('https://example.com/art.jpg');
+    expect(
+      dspCalls.any((call) =>
+          call.method == 'preloadArtwork' &&
+          call.arguments['artworkUrl'] == 'https://example.com/art.jpg'),
+      isTrue,
+    );
+
+    // 4. Stop foreground playback
     await dspService.stopForegroundPlayback();
     expect(
       dspCalls.any((call) => call.method == 'stopForegroundPlayback'),

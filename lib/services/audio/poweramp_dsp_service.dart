@@ -133,6 +133,14 @@ class PowerampDspService {
     } catch (_) {}
   }
 
+  Future<void> preloadArtwork(String? artworkUrl) async {
+    if (artworkUrl == null || artworkUrl.isEmpty) return;
+    if (!artworkUrl.startsWith('http://') && !artworkUrl.startsWith('https://')) return;
+    try {
+      await _channel.invokeMethod('preloadArtwork', {'artworkUrl': artworkUrl});
+    } catch (_) {}
+  }
+
   Future<void> stopForegroundPlayback() async {
     try {
       await _channel.invokeMethod('stopForegroundPlayback');

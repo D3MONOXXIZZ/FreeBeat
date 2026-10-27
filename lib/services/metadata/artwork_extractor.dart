@@ -9,6 +9,11 @@ import 'package:path_provider/path_provider.dart';
 class ArtworkExtractor {
   static Directory? _artDirectory;
 
+  /// Initializes the album artwork directory cache.
+  static Future<Directory> init() async {
+    return _getArtworkDirectory();
+  }
+
   static Future<Directory> _getArtworkDirectory() async {
     if (_artDirectory != null && _artDirectory!.existsSync()) {
       return _artDirectory!;
@@ -20,6 +25,18 @@ class ArtworkExtractor {
     }
     _artDirectory = artDir;
     return artDir;
+  }
+
+  /// Returns the cached album artwork file path for [trackId] if it exists on disk.
+  static String? getCachedArtworkPath(String trackId) {
+    if (_artDirectory != null && _artDirectory!.existsSync()) {
+      final sanitizedId = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final targetFile = File(p.join(_artDirectory!.path, '$sanitizedId.jpg'));
+      if (targetFile.existsSync() && targetFile.lengthSync() > 100) {
+        return targetFile.path;
+      }
+    }
+    return null;
   }
 
   /// Cleans raw image or frame payload bytes by locating the true image magic (JPEG, PNG).
