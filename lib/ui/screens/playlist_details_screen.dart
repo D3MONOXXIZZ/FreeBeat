@@ -1149,8 +1149,9 @@ class _PlaylistDetailsScreenState
                     key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
                     track: track,
                     enableSecondaryAction: false,
-                    child: SpringPressScale(
-                        scaleDown: 0.985,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
                         onTap: () {
                           PixelHaptics.tick();
                           ref.read(playbackProvider.notifier).playTrack(
@@ -1230,8 +1231,9 @@ class _PlaylistDetailsScreenState
                           ),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  );
+                },
                 childCount: playlistTracks.length,
               ),
             ),

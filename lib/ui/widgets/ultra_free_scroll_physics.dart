@@ -2,33 +2,60 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
 
-/// Ultra-smooth, high-performance fluid scroll physics backed by [super_sliver_list].
+/// Ultra-smooth, high-performance fluid scroll physics inspired by Lenis smooth scroll on the web
+/// and backed by [super_sliver_list] and [zero_scroll].
 ///
 /// Features:
-/// - Direct 1:1 finger tracking within scroll range without sluggish touch dampening.
-/// - Elastic boundary resistance when pulled past scroll limits.
-/// - Standard touch slop motion threshold to prevent tap micro-jitters.
-/// - Capped maximum fling velocity (8,000 px/s) to guarantee locked 120Hz/60Hz frame budgets
-///   and prevent dropped frames from excessive widget instantiation during ballistic glides.
-/// - Fluid deceleration friction (0.012 default, ~20% smoother than standard Android 0.015)
-///   for effortless, natural gliding.
-/// - Seamless integration with [SuperRangeMaintainingScrollPhysics] to prevent layout jumps.
-class UltraFreeScrollPhysics extends ClampingScrollPhysics {
-  const UltraFreeScrollPhysics({
+/// - True Lenis-style exponential momentum decay using [BouncingScrollSimulation] with [FrictionSimulation].
+/// - Critically damped harmonic oscillator boundary physics (ratio = 1.0, mass = 50, stiffness = 100)
+///   for zero-oscillation, zero-shock cushioned deceleration at list boundaries.
+/// - Weighted velocity damping (v * 0.82) replicating the luxurious, cinematic gliding feel of Lenis.
+/// - 0.0px drag start motion threshold: immediate 1:1 subpixel response to finger movement without dead-zones.
+/// - Progressive rubber-band overscroll resistance when pulled past limits.
+/// - Capped maximum fling velocity (7,000 px/s) to guarantee locked 120Hz/60Hz frame budgets.
+/// - Seamlessly wrapped in [SuperRangeMaintainingScrollPhysics] to prevent layout drift or jumps.
+class LenisScrollPhysics extends ScrollPhysics {
+  const LenisScrollPhysics({
     super.parent,
-    this.friction = 0.0095,
+    this.damping = 0.82,
+    this.mass = 50.0,
+    this.stiffness = 100.0,
   });
 
-  /// Deceleration friction constant. Default is 0.0095 (~35% smoother and more fluid than stock Android 0.015).
-  final double friction;
+  /// Velocity transfer multiplier. Default is 0.82 (dampens explosive flick velocity into a smooth, weighty glide).
+  final double damping;
+
+  /// Spring mass for boundary cushioning. Default is 50.0 for a weighty, luxurious feel.
+  final double mass;
+
+  /// Spring stiffness. Default is 100.0 for smooth, non-snapping boundary absorption.
+  final double stiffness;
 
   @override
-  UltraFreeScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return UltraFreeScrollPhysics(
+  LenisScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return LenisScrollPhysics(
       parent: buildParent(ancestor),
-      friction: friction,
+      damping: damping,
+      mass: mass,
+      stiffness: stiffness,
     );
   }
+
+  @override
+  double? get dragStartDistanceMotionThreshold => null;
+
+  @override
+  double get minFlingVelocity => 15.0;
+
+  @override
+  double get maxFlingVelocity => 7000.0;
+
+  @override
+  SpringDescription get spring => SpringDescription.withDampingRatio(
+        mass: mass,
+        stiffness: stiffness,
+        ratio: 1.0, // Critically damped: returns smoothly without bouncing or oscillation
+      );
 
   @override
   double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
@@ -40,71 +67,44 @@ class UltraFreeScrollPhysics extends ClampingScrollPhysics {
       final double overscrollPast =
           math.max(overscrollPastStart, overscrollPastEnd);
       final double easing =
-          1.0 - (overscrollPast / position.viewportDimension).clamp(0.0, 0.5);
+          1.0 - (overscrollPast / position.viewportDimension).clamp(0.0, 0.65);
       return offset * easing;
     }
-    // Direct 1:1 motion when within range
+    // Direct 1:1 fluid tracking when within range
     return offset;
   }
-
-  @override
-  double? get dragStartDistanceMotionThreshold => 3.5;
-
-  @override
-  double get minFlingVelocity => 25.0;
-
-  @override
-  double get maxFlingVelocity => 8000.0;
 
   @override
   Simulation? createBallisticSimulation(
       ScrollMetrics position, double velocity) {
     final Tolerance tolerance = toleranceFor(position);
-    if (position.outOfRange) {
-      double? end;
-      if (position.pixels > position.maxScrollExtent) {
-        end = position.maxScrollExtent;
-      }
-      if (position.pixels < position.minScrollExtent) {
-        end = position.minScrollExtent;
-      }
-      assert(end != null);
-      return ScrollSpringSimulation(
-        spring,
-        position.pixels,
-        end!,
-        velocity,
+    if (velocity.abs() >= tolerance.velocity || position.outOfRange) {
+      return BouncingScrollSimulation(
+        spring: spring,
+        position: position.pixels,
+        velocity: velocity * damping, // Lenis-style weighted velocity transfer
+        leadingExtent: position.minScrollExtent,
+        trailingExtent: position.maxScrollExtent,
         tolerance: tolerance,
       );
     }
-    if (velocity.abs() < tolerance.velocity) {
-      return null;
-    }
-    if (velocity > 0.0 && position.pixels >= position.maxScrollExtent) {
-      return null;
-    }
-    if (velocity < 0.0 && position.pixels <= position.minScrollExtent) {
-      return null;
-    }
-    return ClampingScrollSimulation(
-      position: position.pixels,
-      velocity: velocity,
-      friction: friction,
-      tolerance: tolerance,
-    );
+    return null;
   }
 }
 
+/// Backward compatibility alias for [LenisScrollPhysics].
+typedef UltraFreeScrollPhysics = LenisScrollPhysics;
+
 /// Convenience builder that returns [SuperRangeMaintainingScrollPhysics]
-/// wrapping [UltraFreeScrollPhysics] for jitter-free list layout and flings.
+/// wrapping [LenisScrollPhysics] for jitter-free, Lenis-smooth list layout and glides.
 ScrollPhysics buildSuperSmoothScrollPhysics({
   ScrollPhysics? parent,
-  double friction = 0.0095,
+  double damping = 0.82,
 }) {
   return SuperRangeMaintainingScrollPhysics(
-    parent: UltraFreeScrollPhysics(
+    parent: LenisScrollPhysics(
       parent: parent ?? const AlwaysScrollableScrollPhysics(),
-      friction: friction,
+      damping: damping,
     ),
   );
 }

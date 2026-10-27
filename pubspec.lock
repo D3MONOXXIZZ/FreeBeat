@@ -704,6 +704,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.1"
+  silky_scroll:
+    dependency: "direct main"
+    description:
+      name: silky_scroll
+      sha256: "8595e55b763981dc6748f26d88596ed31c2169cd47bf04af39ee4ba9ab8544f6"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.6.4"
   simple_sparse_list:
     dependency: transitive
     description:
@@ -981,6 +989,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
+  zero_scroll:
+    dependency: "direct main"
+    description:
+      name: zero_scroll
+      sha256: "6e85b4c26549d1779961d2d3d841973aad7a5c7a3291f403a573fe1c8fbce25d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.2"
 sdks:
   dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0"

@@ -473,7 +473,7 @@ class _DirectionalHorizontalDragGestureRecognizer
       final delta = event.position - _startPosition!;
       // If motion is predominantly vertical, instantly forfeit horizontal drag
       // so vertical scrolling takes over with zero hesitation and zero latency!
-      if (delta.dy.abs() > delta.dx.abs() * 0.70 && delta.dy.abs() > 4.0) {
+      if (delta.dy.abs() > delta.dx.abs() * 0.70 && delta.dy.abs() > 1.2) {
         resolve(GestureDisposition.rejected);
         _startPosition = null;
         return;

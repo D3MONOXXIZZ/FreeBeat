@@ -7,12 +7,12 @@ import 'package:super_sliver_list/super_sliver_list.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('UltraFreeScrollPhysics Unit & Deceleration Tests', () {
-    test('Responsive touch slop motion threshold and direct in-range 1:1 motion', () {
-      const physics = UltraFreeScrollPhysics();
+  group('LenisScrollPhysics Unit & Inertia Tests', () {
+    test('Responsive null motion threshold and direct in-range 1:1 motion', () {
+      const physics = LenisScrollPhysics();
 
-      // Motion threshold is tuned to 3.5 to eliminate 18px dead-zone delays on touch
-      expect(physics.dragStartDistanceMotionThreshold, 3.5);
+      // Motion threshold is null for instantaneous Lenis-style subpixel touch response
+      expect(physics.dragStartDistanceMotionThreshold, isNull);
 
       // User offset is returned 1:1 without dampening when within range
       final position = FixedScrollMetrics(
@@ -29,21 +29,20 @@ void main() {
     });
 
     test('Balanced velocity cap and responsive min fling speed', () {
-      const physics = UltraFreeScrollPhysics();
+      const physics = LenisScrollPhysics();
 
-      // Capped maximum velocity (8,000 px/s) guarantees locked 120Hz/60Hz frame budgets
-      expect(physics.maxFlingVelocity, 8000.0);
+      // Capped maximum velocity (7,000 px/s) guarantees locked 120Hz/60Hz frame budgets
+      expect(physics.maxFlingVelocity, 7000.0);
 
       // Responsive min fling velocity allows gentle gestures to trigger fluid glide
-      expect(physics.minFlingVelocity, 25.0);
+      expect(physics.minFlingVelocity, 15.0);
 
-      // Default smooth fluid friction constant (0.0095 vs standard Android 0.015)
-      expect(physics.friction, 0.0095);
+      // Default smooth velocity damping factor
+      expect(physics.damping, 0.82);
     });
 
-    test('Fluid friction of 0.0095 glides further than stock Android without runaway speeds', () {
-      const ultraPhysics = UltraFreeScrollPhysics();
-      const standardPhysics = ClampingScrollPhysics();
+    test('Creates BouncingScrollSimulation with critically damped spring and weighted velocity', () {
+      const physics = LenisScrollPhysics();
 
       final position = FixedScrollMetrics(
         minScrollExtent: 0,
@@ -55,53 +54,36 @@ void main() {
       );
 
       // Simulate a normal fling of 2000 px/s
-      final ultraSim = ultraPhysics.createBallisticSimulation(position, 2000.0);
-      final standardSim = standardPhysics.createBallisticSimulation(position, 2000.0);
+      final sim = physics.createBallisticSimulation(position, 2000.0);
 
-      expect(ultraSim, isNotNull);
-      expect(standardSim, isNotNull);
+      expect(sim, isNotNull);
+      expect(sim, isA<BouncingScrollSimulation>());
 
-      final standardClamping = standardSim as ClampingScrollSimulation;
-      final ultraClamping = ultraSim as ClampingScrollSimulation;
-
-      expect(ultraClamping.friction, 0.0095);
-      expect(standardClamping.friction, 0.015);
-
-      // Sample position at t = 1.0 second: 0.012 glides slightly further and smoother
-      final ultraPosAt1s = ultraClamping.x(1.0);
-      final standardPosAt1s = standardClamping.x(1.0);
-
-      expect(ultraPosAt1s - 1000, greaterThan(standardPosAt1s - 1000));
+      final bouncingSim = sim as BouncingScrollSimulation;
+      // Critically damped spring damping coefficient c = 2 * ratio * sqrt(mass * stiffness)
+      expect(bouncingSim.spring.damping, closeTo(141.42, 0.1));
     });
 
-    test('Clamps cleanly at edges without spring bouncing when in bounds', () {
-      const physics = UltraFreeScrollPhysics();
+    test('Progressive rubber-band easing when pulled past boundaries', () {
+      const physics = LenisScrollPhysics();
 
       final atTopPosition = FixedScrollMetrics(
         minScrollExtent: 0,
         maxScrollExtent: 10000,
-        pixels: 0,
+        pixels: -50,
         viewportDimension: 800,
         axisDirection: AxisDirection.down,
         devicePixelRatio: 1.0,
       );
 
-      // Scrolling up past minScrollExtent clamps
-      final boundaryTop = physics.applyBoundaryConditions(atTopPosition, -50.0);
-      expect(boundaryTop, -50.0);
-
-      // Moving inward is allowed (returns 0.0)
-      final inwardMove = physics.applyBoundaryConditions(atTopPosition, 50.0);
-      expect(inwardMove, 0.0);
-
-      // Negative velocity when already at min extent creates no simulation
-      final noSim = physics.createBallisticSimulation(atTopPosition, -500.0);
-      expect(noSim, isNull);
+      // Pulling past boundary dampens offset
+      final easedOffset = physics.applyPhysicsToUserOffset(atTopPosition, -50.0);
+      expect(easedOffset.abs(), lessThan(50.0));
     });
   });
 
   group('SmoothFreeScrollBehavior Integration Tests', () {
-    testWidgets('SmoothFreeScrollBehavior provides SuperRangeMaintainingScrollPhysics wrapping UltraFreeScrollPhysics', (tester) async {
+    testWidgets('SmoothFreeScrollBehavior provides SuperRangeMaintainingScrollPhysics wrapping LenisScrollPhysics', (tester) async {
       await tester.pumpWidget(const Directionality(
         textDirection: TextDirection.ltr,
         child: SizedBox(),
@@ -112,7 +94,7 @@ void main() {
       final physics = behavior.getScrollPhysics(element);
       expect(physics, isA<SuperRangeMaintainingScrollPhysics>());
       final superPhysics = physics as SuperRangeMaintainingScrollPhysics;
-      expect(superPhysics.parent, isA<UltraFreeScrollPhysics>());
+      expect(superPhysics.parent, isA<LenisScrollPhysics>());
     });
   });
 }

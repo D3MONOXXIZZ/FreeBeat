@@ -32,6 +32,8 @@ dependencies:
   dart_des: ^1.0.2
   flutter_displaymode: ^0.7.0
   super_sliver_list: ^0.4.1
+  zero_scroll: ^0.0.2
+  silky_scroll: ^2.6.4
 
 dev_dependencies:
   flutter_test:

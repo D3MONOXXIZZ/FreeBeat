@@ -2458,39 +2458,39 @@ class _LibraryTrackTile extends StatelessWidget {
 
     return SizedBox(
       height: tileHeight,
-      child: SpringPressScale(
-        scaleDown: 0.985,
-        onTap: () {
-          PixelHaptics.tick();
-          if (isMultiSelect) {
-            onSelectToggle?.call();
-          } else {
-            onTap();
-          }
-        },
-        onLongPress: () {
-          PixelHaptics.sheetExpand();
-          if (onLongPress != null) {
-            onLongPress!();
-          } else {
-            onOptionsTap();
-          }
-        },
-        child: Container(
-          height: tileHeight,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? cs.primaryContainer.withValues(alpha: 0.35)
-                : Colors.transparent,
-            border: Border(
-              bottom: BorderSide(
-                color: cs.outlineVariant.withValues(alpha: 0.18),
-                width: 1.0,
+      child: Material(
+        color: isSelected
+            ? cs.primaryContainer.withValues(alpha: 0.35)
+            : Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            PixelHaptics.tick();
+            if (isMultiSelect) {
+              onSelectToggle?.call();
+            } else {
+              onTap();
+            }
+          },
+          onLongPress: () {
+            PixelHaptics.sheetExpand();
+            if (onLongPress != null) {
+              onLongPress!();
+            } else {
+              onOptionsTap();
+            }
+          },
+          child: Container(
+            height: tileHeight,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: cs.outlineVariant.withValues(alpha: 0.18),
+                  width: 1.0,
+                ),
               ),
             ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (isMultiSelect) ...[
@@ -2617,8 +2617,9 @@ class _LibraryTrackTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _BatchActionsFloatingBar extends StatelessWidget {
