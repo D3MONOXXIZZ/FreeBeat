@@ -1,9 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:freebeat/core/models/playlist.dart';
-import 'package:freebeat/core/models/track.dart';
-import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/services/playlist/playlist_import_service.dart';
-import 'package:freebeat/services/playlist/playlist_sync_service.dart';
 
 void main() {
   group('Playlist Duplicate Detection & Sync Messaging', () {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../screens/now_playing_screen.dart';
+import 'expressive_shapes.dart';
 import 'material_you_album_cover.dart';
 
 /// Floating Material You Mini Player Dock.
@@ -41,7 +42,7 @@ class MiniPlayerDock extends ConsumerWidget {
           final curved = CurvedAnimation(
             parent: animation,
             curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
+            reverseCurve: Curves.easeOutCubic,
           );
           return SlideTransition(
             position: Tween<Offset>(
@@ -77,20 +78,22 @@ class MiniPlayerDock extends ConsumerWidget {
       child: SizedBox(
         width: fullWidth ? double.infinity : (width ?? 320),
         height: 50,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: SpringPressScale(
+          scaleDown: 0.98,
           onTap: () => _openNowPlaying(context),
-          onHorizontalDragEnd: (details) {
-            final vx = details.primaryVelocity ?? 0;
-            if (vx < -250) {
-              PixelHaptics.tick();
-              ref.read(playbackProvider.notifier).skipNext();
-            } else if (vx > 250) {
-              PixelHaptics.tick();
-              ref.read(playbackProvider.notifier).skipPrevious();
-            }
-          },
-          child: Container(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: (details) {
+              final vx = details.primaryVelocity ?? 0;
+              if (vx < -250) {
+                PixelHaptics.tick();
+                ref.read(playbackProvider.notifier).skipNext();
+              } else if (vx > 250) {
+                PixelHaptics.tick();
+                ref.read(playbackProvider.notifier).skipPrevious();
+              }
+            },
+            child: Container(
             decoration: BoxDecoration(
               color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(100),
@@ -235,6 +238,7 @@ class MiniPlayerDock extends ConsumerWidget {
             ),
           ),
         ),
+      ),
       ),
     ),
   );

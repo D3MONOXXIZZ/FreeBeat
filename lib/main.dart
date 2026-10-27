@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'services/metadata/artwork_extractor.dart';
 import 'services/metadata/artwork_palette_extractor.dart';
@@ -11,8 +13,17 @@ import 'ui/screens/main_shell.dart';
 import 'ui/theme/pixel_theme.dart';
 import 'ui/widgets/ultra_free_scroll_physics.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Unlock peak display refresh rate (90Hz / 120Hz / 144Hz) on Android devices
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      await FlutterDisplayMode.setHighRefreshRate();
+    } catch (e) {
+      debugPrint('High refresh rate unlock note: $e');
+    }
+  }
 
   // Global release error boundary: log errors and render graceful Material You fallback
   FlutterError.onError = (FlutterErrorDetails details) {

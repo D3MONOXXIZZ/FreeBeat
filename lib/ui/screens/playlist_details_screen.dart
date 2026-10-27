@@ -10,6 +10,7 @@ import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../services/playlist/playlist_sync_service.dart';
 import '../../state/app_providers.dart';
 import '../widgets/cloud_sync_progress_banner.dart';
+import '../widgets/expressive_shapes.dart';
 import '../widgets/generative_playlist_cover.dart';
 import '../widgets/material_you_album_cover.dart';
 import '../widgets/mini_player_dock.dart';
@@ -974,64 +975,70 @@ class _PlaylistDetailsScreenState
                   Row(
                     children: [
                       Expanded(
-                        child: FilledButton.icon(
-                          onPressed: playlistTracks.isNotEmpty
-                              ? () {
-                                  PixelHaptics.playPauseToggle();
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(
-                                        playlistTracks.first,
-                                        newQueue: playlistTracks,
-                                      );
-                                }
-                              : null,
-                          icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text(
-                            'Play All',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                        child: SpringPressScale(
+                          scaleDown: 0.96,
+                          child: FilledButton.icon(
+                            onPressed: playlistTracks.isNotEmpty
+                                ? () {
+                                    PixelHaptics.playPauseToggle();
+                                    ref
+                                        .read(playbackProvider.notifier)
+                                        .playTrack(
+                                          playlistTracks.first,
+                                          newQueue: playlistTracks,
+                                        );
+                                  }
+                                : null,
+                            icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                            label: const Text(
+                              'Play All',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: playlistTracks.isNotEmpty
-                              ? () {
-                                  PixelHaptics.playPauseToggle();
-                                  final shuffled =
-                                      List<Track>.from(playlistTracks)
-                                        ..shuffle();
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(
-                                        shuffled.first,
-                                        newQueue: shuffled,
-                                        isShuffle: true,
-                                      );
-                                }
-                              : null,
-                          icon: const Icon(Icons.shuffle_rounded, size: 20),
-                          label: const Text(
-                            'Shuffle',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
+                        child: SpringPressScale(
+                          scaleDown: 0.96,
+                          child: FilledButton.tonalIcon(
+                            onPressed: playlistTracks.isNotEmpty
+                                ? () {
+                                    PixelHaptics.playPauseToggle();
+                                    final shuffled =
+                                        List<Track>.from(playlistTracks)
+                                          ..shuffle();
+                                    ref
+                                        .read(playbackProvider.notifier)
+                                        .playTrack(
+                                          shuffled.first,
+                                          newQueue: shuffled,
+                                          isShuffle: true,
+                                        );
+                                  }
+                                : null,
+                            icon: const Icon(Icons.shuffle_rounded, size: 20),
+                            label: const Text(
+                              'Shuffle',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
                             ),
                           ),
                         ),
@@ -1147,7 +1154,8 @@ class _PlaylistDetailsScreenState
                       key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
                       track: track,
                       enableSecondaryAction: false,
-                      child: InkWell(
+                      child: SpringPressScale(
+                        scaleDown: 0.985,
                         onTap: () {
                           PixelHaptics.tick();
                           ref.read(playbackProvider.notifier).playTrack(
@@ -1282,8 +1290,8 @@ class _SmallActionPill extends StatelessWidget {
       message: tooltip,
       child: Opacity(
         opacity: isEnabled ? 1.0 : 0.45,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: SpringPressScale(
+          scaleDown: 0.95,
           onTap: onPressed,
           child: Container(
             height: 38,

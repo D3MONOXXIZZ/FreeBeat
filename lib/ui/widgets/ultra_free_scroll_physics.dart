@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 /// Ultra-smooth, frictionless free scroll physics for horizontal and vertical scrolling.
@@ -58,7 +57,7 @@ class UltraFreeScrollPhysics extends ClampingScrollPhysics {
         spring,
         position.pixels,
         end!,
-        math.min(0.0, velocity),
+        velocity,
         tolerance: tolerance,
       );
     }

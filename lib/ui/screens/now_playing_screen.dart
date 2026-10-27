@@ -112,7 +112,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
       end: screenHeight,
     ).animate(CurvedAnimation(
       parent: _dismissController,
-      curve: Curves.easeInCubic,
+      curve: Curves.easeOutCubic,
     ));
 
     _dismissController.forward(from: 0.0).then((_) {
@@ -300,8 +300,6 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     final dismissFraction = (screenHeight > 0)
         ? (_dragOffsetY / screenHeight).clamp(0.0, 1.0)
         : 0.0;
-    final blurSigma = (24.0 * (1.0 - dismissFraction)).clamp(0.0, 24.0);
-    final backdropDim = (0.54 * (1.0 - dismissFraction)).clamp(0.0, 0.54);
 
     return PopScope(
       canPop: false,
@@ -314,13 +312,16 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Dynamic Fullscreen Backdrop Blur & Scrim
-            if (blurSigma > 0.1)
+            // 1. Dynamic Fullscreen Backdrop Blur & Scrim (GPU-cached static blur with alpha modulation)
+            if (dismissFraction < 0.99)
               Positioned.fill(
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-                  child: Container(
-                    color: Colors.black.withValues(alpha: backdropDim),
+                child: Opacity(
+                  opacity: (1.0 - dismissFraction).clamp(0.0, 1.0),
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.54),
+                    ),
                   ),
                 ),
               ),

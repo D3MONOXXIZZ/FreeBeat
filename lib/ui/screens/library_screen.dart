@@ -2482,7 +2482,8 @@ class _LibraryTrackTile extends ConsumerWidget {
 
     return SizedBox(
       height: tileHeight,
-      child: InkWell(
+      child: SpringPressScale(
+        scaleDown: 0.985,
         onTap: () {
           PixelHaptics.tick();
           if (isMultiSelect) {

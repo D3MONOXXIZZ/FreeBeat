@@ -34,11 +34,11 @@ class _SpringPressScaleState extends State<SpringPressScale> {
 
   void _onTapDown(TapDownDetails details) {
     _pressTimer?.cancel();
-    // 180ms debounce ensures that horizontal or vertical swipe flings across lists
-    // do not trigger micro-jitters by prematurely shrinking and restoring the card.
-    _pressTimer = Timer(const Duration(milliseconds: 180), () {
+    // 30ms micro-debounce: instantaneous to human touch while letting rapid scroll flings claim gesture arena
+    _pressTimer = Timer(const Duration(milliseconds: 30), () {
       if (mounted) {
         setState(() => _pressed = true);
+        PixelHaptics.tick(intensity: 0.35);
       }
     });
   }
@@ -51,7 +51,7 @@ class _SpringPressScaleState extends State<SpringPressScale> {
     } else if (wasPending && mounted) {
       // For quick deliberate taps, show a brief spring-press response
       setState(() => _pressed = true);
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Future.delayed(const Duration(milliseconds: 80), () {
         if (mounted) {
           setState(() => _pressed = false);
         }
@@ -89,8 +89,10 @@ class _SpringPressScaleState extends State<SpringPressScale> {
       onTapCancel: _onTapCancel,
       child: AnimatedScale(
         scale: _pressed ? widget.scaleDown : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
+        duration: _pressed
+            ? const Duration(milliseconds: 90)
+            : const Duration(milliseconds: 180),
+        curve: _pressed ? Curves.easeOutCubic : Curves.easeOutBack,
         child: widget.child,
       ),
     );
