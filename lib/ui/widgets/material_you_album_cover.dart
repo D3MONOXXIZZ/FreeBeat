@@ -39,7 +39,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
   /// Prevents allocating new [File] and [ResizeImage] instances on every scroll frame.
   static final Map<String, ImageProvider> _providerCache = <String, ImageProvider>{};
 
-  static ImageProvider _getCachedFileProvider(String path, int targetCache) {
+  static ImageProvider getCachedFileProvider(String path, int targetCache) {
     final key = '$path|$targetCache';
     final existing = _providerCache[key];
     if (existing != null) return existing;
@@ -288,7 +288,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
         );
       } else {
         return Image(
-          image: _getCachedFileProvider(art, targetCache),
+          image: getCachedFileProvider(art, targetCache),
           fit: BoxFit.cover,
           gaplessPlayback: true,
           filterQuality: FilterQuality.low,

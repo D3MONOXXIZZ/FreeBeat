@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:math' as math;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +60,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
   bool _isSearchFocused = false;
+  bool _hasPrewarmedArtwork = false;
+
+  void _prewarmVisibleThumbnails(List<Track> tracks) {
+    if (_hasPrewarmedArtwork || !mounted) return;
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    _hasPrewarmedArtwork = true;
+    final count = math.min(tracks.length, 30);
+    for (int i = 0; i < count; i++) {
+      final t = tracks[i];
+      final art = t.artworkUrl;
+      if (art != null && art.isNotEmpty) {
+        try {
+          if (art.startsWith('http://') || art.startsWith('https://')) {
+            precacheImage(
+              CachedNetworkImageProvider(art, maxWidth: 144, maxHeight: 144),
+              context,
+            );
+          } else {
+            precacheImage(
+              MaterialYouAlbumCover.getCachedFileProvider(art, 144),
+              context,
+            );
+          }
+        } catch (_) {}
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -961,6 +991,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final allTracks = ref.watch(tracksCatalogProvider);
+    if (allTracks.isNotEmpty && !_hasPrewarmedArtwork) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _prewarmVisibleThumbnails(allTracks);
+      });
+    }
     final importProgress = ref.watch(importProgressProvider);
     final allPlaylists = ref.watch(smartPlaylistsProvider);
     final duplicateMap = ref.watch(duplicateTracksProvider);
@@ -994,6 +1029,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
       return true;
     }).toList();
+    final trackIndexMap = {for (int i = 0; i < filtered.length; i++) filtered[i].id: i};
 
     final filteredPlaylists = query.isEmpty
         ? allPlaylists
@@ -1145,7 +1181,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         body: CustomScrollView(
           controller: _scrollController,
           physics: buildSuperSmoothScrollPhysics(),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(500),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(2500),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar
@@ -2348,8 +2384,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       );
                     },
                     childCount: filtered.length,
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String> && key.value.startsWith('swipe_')) {
+                        final id = key.value.substring(6);
+                        return trackIndexMap[id];
+                      }
+                      return null;
+                    },
                     addAutomaticKeepAlives: false,
                     addRepaintBoundaries: true,
+                    addSemanticIndexes: false,
                   ),
                 ),
               ),
@@ -2462,10 +2506,7 @@ class _LibraryTrackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    final totalSeconds = (track.durationMs / 1000).floor().clamp(0, 86400);
-    final minutes = totalSeconds ~/ 60;
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    final durationText = '$minutes:$seconds';
+    final durationText = track.formattedDuration;
 
     // Ultra-lean zero-Material, zero-FocusNode, zero-Tooltip tile for <1.5ms row inflation at 120Hz
     return GestureDetector(
@@ -2561,7 +2602,7 @@ class _LibraryTrackTile extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            track.codec.toUpperCase(),
+                            track.codecUpper,
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w800,

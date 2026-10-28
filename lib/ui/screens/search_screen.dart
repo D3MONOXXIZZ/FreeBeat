@@ -97,7 +97,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: SafeArea(
         child: CustomScrollView(
           physics: buildSuperSmoothScrollPhysics(),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(450),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
           slivers: [
             // 1. Search Bar Header
             SliverToBoxAdapter(

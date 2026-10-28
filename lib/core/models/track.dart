@@ -96,6 +96,15 @@ class Track {
 
   Duration get duration => Duration(milliseconds: durationMs);
 
+  String get formattedDuration {
+    final totalSeconds = (durationMs / 1000).floor().clamp(0, 86400);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  String get codecUpper => codec.toUpperCase();
+
   Track copyWith({
     String? id,
     String? accountId,

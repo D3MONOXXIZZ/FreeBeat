@@ -1,21 +1,34 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Native-grade 120Hz Android scroll physics optimized for Pixel LTPO displays.
 ///
-/// Extends [ClampingScrollPhysics] so boundary conditions pair properly with
-/// Android's [StretchingOverscrollIndicator] (preventing conflicting overscroll simulations),
-/// and prevents duplicate chaining when applied at both [ScrollBehavior] and [ScrollView] levels.
+/// Features:
+/// - Extends [ClampingScrollPhysics] so boundary conditions pair properly with
+///   Android's [StretchingOverscrollIndicator] (preventing conflicting overscroll simulations).
+/// - Tuned low friction (0.0080) for silky, effortless Lenis-style momentum gliding.
+/// - Critically damped spring boundary recovery (zeta = 1.0) for zero oscillation.
+/// - Deduplication in [applyTo] to prevent double friction chaining.
 class LenisScrollPhysics extends ClampingScrollPhysics {
   const LenisScrollPhysics({
     super.parent,
     this.damping = 1.0,
     this.mass = 0.5,
     this.stiffness = 100.0,
+    this.friction = 0.0080,
   });
 
   final double damping;
   final double mass;
   final double stiffness;
+  final double friction;
+
+  @override
+  SpringDescription get spring => SpringDescription(
+        mass: mass,
+        stiffness: stiffness,
+        damping: 2.0 * math.sqrt(mass * stiffness),
+      );
 
   @override
   LenisScrollPhysics applyTo(ScrollPhysics? ancestor) {
@@ -29,6 +42,7 @@ class LenisScrollPhysics extends ClampingScrollPhysics {
       damping: damping,
       mass: mass,
       stiffness: stiffness,
+      friction: friction,
     );
   }
 
@@ -69,7 +83,8 @@ class LenisScrollPhysics extends ClampingScrollPhysics {
     }
     return ClampingScrollSimulation(
       position: position.pixels,
-      velocity: velocity,
+      velocity: velocity * damping,
+      friction: friction,
       tolerance: tolerance,
     );
   }
@@ -82,9 +97,11 @@ typedef UltraFreeScrollPhysics = LenisScrollPhysics;
 ScrollPhysics buildSuperSmoothScrollPhysics({
   ScrollPhysics? parent,
   double damping = 1.0,
+  double friction = 0.0080,
 }) {
   return LenisScrollPhysics(
     parent: parent ?? const AlwaysScrollableScrollPhysics(),
     damping: damping,
+    friction: friction,
   );
 }
