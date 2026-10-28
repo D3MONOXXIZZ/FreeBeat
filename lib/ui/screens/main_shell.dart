@@ -13,12 +13,6 @@ import 'library_screen.dart';
 import 'now_playing_screen.dart';
 import 'poweramp_dsp_screen.dart';
 
-/// Main Google Pixel Material 3 Navigation Shell.
-/// Optimized for 120Hz scrolling:
-/// - Wraps each tab inside [IndexedStack] with [TickerMode] and [RepaintBoundary]
-///   so offscreen tabs never tick animations or dirty layers while scrolling Library.
-/// - Wraps [bottomNavigationBar] in a [RepaintBoundary] so 200ms mini-player progress
-///   updates never force re-composition of the scrolling body behind `extendBody: true`.
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 

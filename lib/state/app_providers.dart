@@ -699,12 +699,11 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
 
   void _enrichMissingArtwork(List<Track> tracks) {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    final ref = _ref;
+    if (ref == null) return;
     unawaited(() async {
-      // Wait 3 seconds after startup before background artwork enrichment so initial scrolling is 100% uncontended
-      await Future<void>.delayed(const Duration(seconds: 3));
+      await Future<void>.delayed(const Duration(seconds: 5));
       if (!mounted) return;
-      final ref = _ref;
-      if (ref == null) return;
       final artworkSvc = ref.read(artworkAndLyricsServiceProvider);
       final updatedBatch = <String, Track>{};
 
@@ -714,13 +713,11 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
         final needsArtist = ArtworkAndLyricsService.isInvalidOrGenericArtist(t.artist);
         if (needsArtwork || needsArtist) {
           try {
-            // Yield 50ms between tracks so main isolate frame budget (8.33ms) is never starved during scroll
-            await Future<void>.delayed(const Duration(milliseconds: 50));
+            await Future<void>.delayed(const Duration(milliseconds: 80));
             final enriched = await artworkSvc.enrichTrackArtwork(t);
             if (enriched != t) {
               updatedBatch[enriched.id] = enriched;
-              // Commit in batches of 20 instead of rebuilding all 592 tracks on every single item
-              if (updatedBatch.length >= 20) {
+              if (updatedBatch.length >= 25) {
                 final batchList = updatedBatch.values.toList();
                 state = state.map((item) => updatedBatch[item.id] ?? item).toList();
                 if (_db != null) {

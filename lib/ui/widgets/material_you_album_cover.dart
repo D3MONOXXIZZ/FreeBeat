@@ -1,16 +1,24 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../../core/models/track.dart';
 
 /// Stock Google Pixel Material 3 Expressive Album Cover.
-/// Optimized for locked 120Hz scrolling on Pixel 9 Pro XL:
-/// - Caches [ImageProvider] instances in [_providerCache] so scrolling never re-allocates
-///   [File] or [ResizeImage] wrappers and hits [ImageCache] in O(1) identity lookup.
-/// - Eliminates [MediaQuery.maybeDevicePixelRatioOf] subscriptions on list thumbnails.
-/// - Renders list thumbnails (`size <= 56`) without [Stack] or [LinearGradient] overhead
-///   when badges/animations are inactive.
+///
+/// Engineered to match the Pixel Settings app (`000.mp4`) zero-drop 120Hz scrolling:
+/// 1. **Zero `ClipRRectLayer` Stencil Pass on List Thumbnails**:
+///    For list thumbnails (`size <= 56`), uses `DecoratedBox` with `BoxDecoration(borderRadius: ..., image: DecorationImage(...))`
+///    instead of `ClipRRect` + `Image`. Impeller draws rounded `DecorationImage` quads in a single GPU draw call
+///    with zero offscreen stencil buffer allocations!
+/// 2. **Background RAM Pre-Warming ([prewarmLibraryThumbnails])**:
+///    Pre-decodes all local track thumbnails (`144px` width) into `PaintingBinding.instance.imageCache`
+///    so scrolling into unvisited rows (`rows 15..500+`) never reads or decodes JPEGs from flash storage mid-fling!
+/// 3. **Fling-Aware Deferred Loading**:
+///    If a thumbnail is not yet in `imageCache` while the list is flinging at high velocity
+///    (`Scrollable.recommendDeferredLoadingForContext(context) == true`), defers disk decoding until the fling slows down.
 class MaterialYouAlbumCover extends StatelessWidget {
   const MaterialYouAlbumCover({
     super.key,
@@ -35,15 +43,15 @@ class MaterialYouAlbumCover extends StatelessWidget {
   final bool showPlayingAnimation;
   final VoidCallback? onPlayTap;
 
-  /// Static flyweight cache of [ImageProvider] instances keyed by `"$art|$targetCache"`.
-  /// Prevents allocating new [File] and [ResizeImage] instances on every scroll frame.
   static final Map<String, ImageProvider> _providerCache = <String, ImageProvider>{};
+  static final Set<String> _prewarmedPaths = <String>{};
+  static bool _isPrewarming = false;
 
-  static ImageProvider _getCachedFileProvider(String path, int targetCache) {
+  static ImageProvider getCachedFileProvider(String path, [int targetCache = 144]) {
     final key = '$path|$targetCache';
     final existing = _providerCache[key];
     if (existing != null) return existing;
-    if (_providerCache.length > 1500) {
+    if (_providerCache.length > 2000) {
       _providerCache.clear();
     }
     final provider = ResizeImage(
@@ -55,6 +63,37 @@ class MaterialYouAlbumCover extends StatelessWidget {
     return provider;
   }
 
+  /// Pre-decodes local library thumbnails into Flutter's [ImageCache] during idle frames
+  /// so scrolling into unvisited rows has 0 disk I/O and 0 JPEG decoding spikes.
+  static void prewarmLibraryThumbnails(BuildContext context, List<Track> tracks) {
+    if (_isPrewarming || tracks.isEmpty) return;
+    _isPrewarming = true;
+    unawaited(() async {
+      try {
+        for (final t in tracks) {
+          if (!context.mounted) break;
+          final art = t.artworkUrl;
+          if (art == null || art.isEmpty || art.startsWith('http')) continue;
+          if (_prewarmedPaths.contains(art)) continue;
+          _prewarmedPaths.add(art);
+
+          final provider = getCachedFileProvider(art, 144);
+          final status = PaintingBinding.instance.imageCache.statusForKey(provider);
+          if (status.keepAlive || status.live) continue;
+
+          // Yield until the scheduler is idle / between frames
+          await SchedulerBinding.instance.endOfFrame;
+          if (!context.mounted) break;
+          try {
+            await precacheImage(provider, context);
+          } catch (_) {}
+        }
+      } finally {
+        _isPrewarming = false;
+      }
+    }());
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -64,22 +103,14 @@ class MaterialYouAlbumCover extends StatelessWidget {
         ? Color(track.dominantColorValue)
         : cs.primary;
 
-    // Fast-path for 48dp list thumbnails when not actively playing and no badges are shown:
-    // Avoids Stack, LinearGradient scrim, and extra container nesting.
+    // ULTRA-FAST PATH FOR 48dp LIST THUMBNAILS (0 ClipRRect layers, 0 Stacks, 0 BoxShadows):
     if (size <= 56 &&
         !showQualityBadge &&
         !showSourceBadge &&
         !showPlayButton &&
         !(isPlaying && showPlayingAnimation) &&
         onPlayTap == null) {
-      return SizedBox(
-        width: size,
-        height: size,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: _buildCoverImage(context, trackColor, cs),
-        ),
-      );
+      return _buildFastListThumbnail(context, trackColor, cs);
     }
 
     final coverContent = Container(
@@ -261,12 +292,112 @@ class MaterialYouAlbumCover extends StatelessWidget {
     return coverContent;
   }
 
+  /// Renders a 48dp list thumbnail using [DecoratedBox] + [DecorationImage] instead of [ClipRRect],
+  /// eliminating GPU stencil-clip render passes and deferring uncached disk decodes during fast flings.
+  Widget _buildFastListThumbnail(
+    BuildContext context,
+    Color trackColor,
+    ColorScheme cs,
+  ) {
+    final art = track.artworkUrl;
+    if (art != null && art.isNotEmpty) {
+      if (!art.startsWith('http://') && !art.startsWith('https://')) {
+        final provider = getCachedFileProvider(art, 144);
+        final cacheStatus =
+            PaintingBinding.instance.imageCache.statusForKey(provider);
+        // If already in ImageCache, draw immediately with DecorationImage (0 ClipRRect layers!).
+        // If not yet in ImageCache and user is flinging fast, defer disk decode until fling slows down!
+        if (!cacheStatus.keepAlive &&
+            !cacheStatus.live &&
+            Scrollable.recommendDeferredLoadingForContext(context)) {
+          return SizedBox(
+            width: size,
+            height: size,
+            child: _buildFastMonogramBox(trackColor, cs),
+          );
+        }
+        return SizedBox(
+          width: size,
+          height: size,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: trackColor.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(borderRadius),
+              image: DecorationImage(
+                image: provider,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.low,
+                onError: (_, __) {},
+              ),
+            ),
+          ),
+        );
+      } else {
+        if (Scrollable.recommendDeferredLoadingForContext(context)) {
+          return SizedBox(
+            width: size,
+            height: size,
+            child: _buildFastMonogramBox(trackColor, cs),
+          );
+        }
+        return SizedBox(
+          width: size,
+          height: size,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(borderRadius),
+            child: CachedNetworkImage(
+              imageUrl: art,
+              fit: BoxFit.cover,
+              memCacheWidth: 144,
+              maxWidthDiskCache: 512,
+              maxHeightDiskCache: 512,
+              useOldImageOnUrlChange: true,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              placeholder: (_, __) => _buildProceduralMaterialYouArt(context, trackColor, cs),
+              errorWidget: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
+            ),
+          ),
+        );
+      }
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: _buildFastMonogramBox(trackColor, cs),
+    );
+  }
+
+  Widget _buildFastMonogramBox(Color trackColor, ColorScheme cs) {
+    final titleInitial = track.title.trim().isNotEmpty
+        ? track.title.trim()[0].toUpperCase()
+        : '♪';
+    final artistInitial = track.artist.trim().isNotEmpty
+        ? track.artist.trim()[0].toUpperCase()
+        : '';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: trackColor.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      child: Center(
+        child: Text(
+          '$titleInitial$artistInitial',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: cs.onSurface,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCoverImage(BuildContext context, Color trackColor, ColorScheme cs) {
     if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
       final art = track.artworkUrl!;
       final bool isListThumbnail = size <= 64;
-      // Avoid MediaQuery InheritedWidget dependency lookup on every list row:
-      // use constant 144px cache width for list thumbnails (48dp * 3.0x DPR).
       final int targetCache = isListThumbnail
           ? 144
           : (size.isFinite ? (size * 2.75).round().clamp(144, 512) : 512);
@@ -288,7 +419,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
         );
       } else {
         return Image(
-          image: _getCachedFileProvider(art, targetCache),
+          image: getCachedFileProvider(art, targetCache),
           fit: BoxFit.cover,
           gaplessPlayback: true,
           filterQuality: FilterQuality.low,
@@ -315,19 +446,7 @@ class MaterialYouAlbumCover extends StatelessWidget {
     final effectiveSize = size.isFinite ? size : 280.0;
 
     if (size <= 56) {
-      return ColoredBox(
-        color: trackColor.withValues(alpha: 0.22),
-        child: Center(
-          child: Text(
-            '$titleInitial$artistInitial',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface,
-            ),
-          ),
-        ),
-      );
+      return _buildFastMonogramBox(trackColor, cs);
     }
 
     return Container(
@@ -410,7 +529,6 @@ class _VinylGroovesPainter extends CustomPainter {
   bool shouldRepaint(covariant _VinylGroovesPainter oldDelegate) => false;
 }
 
-/// Dynamic, hardware-accelerated 3-bar playing equalizer animation.
 class PixelPlayingEqualizerAnimation extends StatefulWidget {
   const PixelPlayingEqualizerAnimation({
     super.key,

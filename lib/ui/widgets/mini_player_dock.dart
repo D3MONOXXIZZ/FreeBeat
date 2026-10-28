@@ -6,11 +6,6 @@ import '../../state/app_providers.dart';
 import '../screens/now_playing_screen.dart';
 import 'material_you_album_cover.dart';
 
-/// Floating Material You Mini Player Dock.
-/// Optimized for 120Hz scrolling:
-/// - Replaces expensive custom [ClipPath] ([ExpressiveSuperellipseClipper]) with hardware-accelerated
-///   [ClipRRect] and [RoundedRectangleBorder] so Impeller renders the floating dock without stencil path tessellation.
-/// - Isolates the entire dock inside a [RepaintBoundary].
 class MiniPlayerDock extends ConsumerWidget {
   const MiniPlayerDock({
     super.key,

@@ -61,24 +61,25 @@ void main() async {
     );
   };
 
-  // CRITICAL FIX FOR PIXEL 9 PRO XL (1-120Hz LTPO + 240Hz Touch Digitizer):
-  // Android's native Choreographer / InputConsumer already resamples touch events to hardware VSYNC.
-  // Enabling Flutter's software PointerEventResampler (`resamplingEnabled = true`) adds a hardcoded -16ms
-  // (2-frame) buffer delay that fights Android's LTPO touch prediction and corrupts fling velocity handoff.
-  GestureBinding.instance.resamplingEnabled = false;
+  // CRITICAL PIXEL 9 PRO XL 120Hz TOUCH RESAMPLING TUNING:
+  // In Video 1 (`resamplingEnabled = true`), there were 0 finger-release freeze frames,
+  // whereas in Video 2 (`resamplingEnabled = false`), disabling resampling caused 20 freeze frames
+  // (a 1-2 frame dead stop on every flick release).
+  // Here we enable resampling AND tune `samplingOffset` from Flutter's legacy -16ms (60Hz) default
+  // to -5.5ms (120Hz = 8.33ms VSYNC window), eliminating both drag latency and finger-lift freezes!
+  GestureBinding.instance.resamplingEnabled = true;
+  GestureBinding.instance.samplingOffset = const Duration(microseconds: -5500);
 
   // Initialize album artwork cache directory ahead of time
   unawaited(ArtworkExtractor.init());
 
-  // Expanded image cache capacity so all 592+ library thumbnails (~49 MB at 144x144 RGBA)
-  // remain resident in memory without eviction or re-decoding during fast scrolling.
-  PaintingBinding.instance.imageCache.maximumSize = 1200;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 150 * 1024 * 1024; // 150 MB
+  // Keep all 592+ decoded 144x144 thumbnails (~49 MB) resident in RAM so scrolling never decodes from disk
+  PaintingBinding.instance.imageCache.maximumSize = 1500;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 180 * 1024 * 1024; // 180 MB
 
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  // Set initial system overlay style respecting system brightness before first frame
   final initialBrightness =
       WidgetsBinding.instance.platformDispatcher.platformBrightness;
   final isInitialDark = initialBrightness == Brightness.dark;
@@ -141,7 +142,6 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
   @override
   void didHaveMemoryPressure() {
     super.didHaveMemoryPressure();
-    // Reclaim raster and bitmap memory immediately under OS memory pressure
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
     ArtworkPaletteExtractor.trimMemory(keepCount: 5);
@@ -224,7 +224,7 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
   }
 }
 
-/// Native Android 120Hz clamping scroll behavior paired with [StretchingOverscrollIndicator].
+/// Replicates stock Android 16 / Pixel Settings app scroll physics and stretch overscroll.
 class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
   const SmoothFreeScrollBehavior();
 

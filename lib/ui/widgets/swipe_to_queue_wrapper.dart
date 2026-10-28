@@ -8,11 +8,11 @@ import '../../state/app_providers.dart';
 /// A Material You wrapper that allows swiping horizontally on any track list item
 /// to append the track to the playback queue (or perform custom secondary actions).
 ///
-/// Optimized for 120Hz scrolling:
-/// - Does NOT add a duplicate inner [RepaintBoundary] (since [SliverChildBuilderDelegate]
-///   already wraps each item in a single [RepaintBoundary], avoiding double offscreen texture allocation).
-/// - Yields immediately to vertical scroll gestures unless horizontal movement is >2x vertical movement.
-class SwipeToQueueWrapper extends ConsumerStatefulWidget {
+/// Optimized to match Pixel Settings app (`000.mp4`) 120Hz scrolling:
+/// - Plain [StatefulWidget] instead of [ConsumerStatefulWidget] (eliminates per-row
+///   `ConsumerStatefulElement` / `ProviderScope` registration during fast scrolling;
+///   only reads `ProviderScope.containerOf(context, listen: false)` when a swipe completes).
+class SwipeToQueueWrapper extends StatefulWidget {
   const SwipeToQueueWrapper({
     super.key,
     required this.track,
@@ -91,10 +91,10 @@ class SwipeToQueueWrapper extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<SwipeToQueueWrapper> createState() => _SwipeToQueueWrapperState();
+  State<SwipeToQueueWrapper> createState() => _SwipeToQueueWrapperState();
 }
 
-class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
+class _SwipeToQueueWrapperState extends State<SwipeToQueueWrapper>
     with SingleTickerProviderStateMixin {
   AnimationController? _animController;
   Animation<double>? _snapAnimation;
@@ -228,7 +228,9 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     if (widget.onPrimaryAction != null) {
       widget.onPrimaryAction!();
     } else {
-      ref.read(playbackProvider.notifier).addToQueue(widget.track);
+      ProviderScope.containerOf(context, listen: false)
+          .read(playbackProvider.notifier)
+          .addToQueue(widget.track);
       PixelHaptics.hifiConfirm();
       if (context.mounted) {
         SwipeToQueueWrapper.showQueuedSnackBar(context, widget.track.title);
@@ -300,8 +302,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     final absOffset = _effectiveOffset.abs();
     final isIdle = absOffset <= 0.001;
 
-    // Fast path when idle (99.9% of rows during vertical scroll):
-    // Do not look up Theme.of(context) or build Stack/ClipRect until an actual horizontal drag occurs.
     final Widget content;
     if (isIdle) {
       content = widget.child;
@@ -462,7 +462,7 @@ class _DirectionalHorizontalDragGestureRecognizer
   void handleEvent(PointerEvent event) {
     if (event is PointerMoveEvent && _startPosition != null) {
       final delta = event.position - _startPosition!;
-      if (delta.dy.abs() > 2.0 && delta.dx.abs() < delta.dy.abs() * 2.0) {
+      if (delta.dy.abs() > 1.8 && delta.dx.abs() < delta.dy.abs() * 2.2) {
         resolve(GestureDisposition.rejected);
         _startPosition = null;
         return;
