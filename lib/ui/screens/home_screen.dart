@@ -414,7 +414,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return CustomScrollView(
       physics: buildSuperSmoothScrollPhysics(),
-      scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+      scrollCacheExtent: const ScrollCacheExtent.pixels(450),
       slivers: [
         // ─────────────────────────────────────────────────────────────────────
         // 1. Collapsing M3 Large Top App Bar with Greeting & Quick Actions

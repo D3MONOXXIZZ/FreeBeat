@@ -730,7 +730,7 @@ class _PlaylistDetailsScreenState
       body: Stack(
         children: [
           CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(2200),
+            scrollCacheExtent: const ScrollCacheExtent.pixels(450),
             physics: buildSuperSmoothScrollPhysics(),
             slivers: [
           // 1. Sleek App Bar
