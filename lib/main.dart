@@ -12,7 +12,6 @@ import 'state/app_providers.dart';
 import 'ui/screens/main_shell.dart';
 import 'ui/theme/pixel_theme.dart';
 import 'ui/widgets/ultra_free_scroll_physics.dart';
-import 'package:super_sliver_list/super_sliver_list.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,9 +67,10 @@ void main() async {
   // Initialize album artwork cache directory ahead of time
   unawaited(ArtworkExtractor.init());
 
-  // Optimize image cache capacity for high-density 120Hz album cover art without OOM risk
-  PaintingBinding.instance.imageCache.maximumSize = 150;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024; // 40 MB
+  // Expanded image cache capacity so 592+ library thumbnails (~49 MB at 144x144 RGBA)
+  // remain resident in memory without eviction or re-decoding during fast scrolling.
+  PaintingBinding.instance.imageCache.maximumSize = 1000;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 120 * 1024 * 1024; // 120 MB
 
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -198,44 +198,41 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
             darkTheme: darkTheme,
             themeMode: themeMode, // Strictly bound to ThemeMode.system by default
             scrollBehavior: const SmoothFreeScrollBehavior(),
-          builder: (context, child) {
-            // Read active effective theme brightness (respects ThemeMode.system / light / dark)
-            final effectiveTheme = Theme.of(context);
-            final isDark = effectiveTheme.brightness == Brightness.dark;
+            builder: (context, child) {
+              // Read active effective theme brightness (respects ThemeMode.system / light / dark)
+              final effectiveTheme = Theme.of(context);
+              final isDark = effectiveTheme.brightness == Brightness.dark;
 
-            return AnnotatedRegion<SystemUiOverlayStyle>(
-              value: SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness:
-                    isDark ? Brightness.light : Brightness.dark,
-                statusBarBrightness: effectiveTheme.brightness,
-                systemNavigationBarColor: Colors.transparent,
-                systemNavigationBarDividerColor: Colors.transparent,
-                systemNavigationBarIconBrightness:
-                    isDark ? Brightness.light : Brightness.dark,
-              ),
-              child: child ?? const SizedBox.shrink(),
-            );
-          },
-          home: const MainShell(),
-        ),
-      );
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: SystemUiOverlayStyle(
+                  statusBarColor: Colors.transparent,
+                  statusBarIconBrightness:
+                      isDark ? Brightness.light : Brightness.dark,
+                  statusBarBrightness: effectiveTheme.brightness,
+                  systemNavigationBarColor: Colors.transparent,
+                  systemNavigationBarDividerColor: Colors.transparent,
+                  systemNavigationBarIconBrightness:
+                      isDark ? Brightness.light : Brightness.dark,
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
+            home: const MainShell(),
+          ),
+        );
       },
     );
   }
 }
 
-/// Provides smooth, frictionless fluid scrolling across the entire app
-/// backed by [SuperRangeMaintainingScrollPhysics] and [UltraFreeScrollPhysics].
+/// Provides smooth, frictionless 120Hz fluid scrolling across the entire app.
 class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
   const SmoothFreeScrollBehavior();
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
-    return const SuperRangeMaintainingScrollPhysics(
-      parent: UltraFreeScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
+    return const UltraFreeScrollPhysics(
+      parent: AlwaysScrollableScrollPhysics(),
     );
   }
 

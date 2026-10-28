@@ -41,6 +41,12 @@ class MaterialYouAlbumCover extends StatelessWidget {
         ? Color(track.dominantColorValue)
         : cs.primary;
 
+    final bool isListThumbnail = size <= 56;
+    final bool hasOverlayElements =
+        size > 52 || showQualityBadge || showSourceBadge || (isPlaying && showPlayingAnimation) || showPlayButton;
+
+    final Widget artworkChild = _buildCoverImage(context, trackColor, cs);
+
     final coverContent = Container(
       width: size.isFinite ? size : null,
       height: size.isFinite ? size : null,
@@ -74,147 +80,145 @@ class MaterialYouAlbumCover extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. Artwork / Procedural Material You Cover
-            // Only isolate raster layer for large hero artwork (> 120dp), NOT list thumbnails (size <= 64)
-            // to prevent 100+ GPU render pass allocations during scrolling
-            size > 120
-                ? RepaintBoundary(
-                    child: _buildCoverImage(context, trackColor, cs),
-                  )
-                : _buildCoverImage(context, trackColor, cs),
+        child: !hasOverlayElements && isListThumbnail
+            ? artworkChild
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 1. Artwork / Procedural Material You Cover
+                  size > 120
+                      ? RepaintBoundary(child: artworkChild)
+                      : artworkChild,
 
-            // 2. Subtle Bottom Gradient Scrim for Contrast (only on larger cards with text/badges)
-            if (size > 52 || showQualityBadge || showSourceBadge)
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.45),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
-
-            // 3. Top-Left: Quality / Codec Badge (FLAC, Hi-Res, 320k)
-            if (showQualityBadge)
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      width: 0.5,
+                  // 2. Subtle Bottom Gradient Scrim for Contrast (only on larger cards with text/badges)
+                  if (size > 52 || showQualityBadge || showSourceBadge)
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.45),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (track.isHiRes)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 3),
-                          child: Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 10,
-                            color: cs.primaryContainer,
+
+                  // 3. Top-Left: Quality / Codec Badge (FLAC, Hi-Res, 320k)
+                  if (showQualityBadge)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            width: 0.5,
                           ),
                         ),
-                      Text(
-                        track.isHiRes
-                            ? 'HI-RES'
-                            : track.isLossless
-                                ? track.codec.toUpperCase()
-                                : '${track.bitrateKbps}K',
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (track.isHiRes)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 3),
+                                child: Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: 10,
+                                  color: cs.primaryContainer,
+                                ),
+                              ),
+                            Text(
+                              track.isHiRes
+                                  ? 'HI-RES'
+                                  : track.isLossless
+                                      ? track.codec.toUpperCase()
+                                      : '${track.bitrateKbps}K',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // 4. Top-Right: Cloud Provider / Source Badge
+                  if (showSourceBadge)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            track.providerType.icon,
+                            size: 12,
+                            color: track.providerType.accentColor,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 5. Centered Playing Animation on Album Art (without dark shadow)
+                  if (isPlaying && showPlayingAnimation)
+                    Center(
+                      child: RepaintBoundary(
+                        child: PixelPlayingEqualizerAnimation(
+                          size: (size * 0.36).clamp(16.0, 32.0),
                           color: Colors.white,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // 4. Top-Right: Cloud Provider / Source Badge
-            if (showSourceBadge)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      track.providerType.icon,
-                      size: 12,
-                      color: track.providerType.accentColor,
-                    ),
-                  ),
-                ),
-              ),
-
-            // 5. Centered Playing Animation on Album Art (without dark shadow)
-            if (isPlaying && showPlayingAnimation)
-              Center(
-                child: RepaintBoundary(
-                  child: PixelPlayingEqualizerAnimation(
-                    size: (size * 0.36).clamp(16.0, 32.0),
-                    color: Colors.white,
-                  ),
-                ),
-              )
-            else if (showPlayButton)
-              Positioned(
-                bottom: 8,
-                right: 8,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onPlayTap,
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
+                    )
+                  else if (showPlayButton)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onPlayTap,
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.black,
+                              size: 22,
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_arrow_rounded,
-                        color: Colors.black,
-                        size: 22,
                       ),
                     ),
-                  ),
-                ),
+                ],
               ),
-          ],
-        ),
       ),
     );
 
@@ -233,7 +237,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
     if (track.artworkUrl != null && track.artworkUrl!.isNotEmpty) {
       final art = track.artworkUrl!;
       final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 3.0;
-      // Target cache ~144-180px for list thumbnails (size <= 56), capped at 512px for hero artwork
+      final bool isListThumbnail = size <= 64;
+      // Target cache ~144px for list thumbnails (size <= 64), capped at 512px for hero artwork
       final int targetCache = size.isFinite
           ? (size * dpr).round().clamp(128, 512)
           : 512;
@@ -242,12 +247,16 @@ class MaterialYouAlbumCover extends StatelessWidget {
         return CachedNetworkImage(
           imageUrl: art,
           fit: BoxFit.cover,
+          // Decode by width only so non-square artwork preserves native aspect ratio
           memCacheWidth: targetCache,
-          memCacheHeight: targetCache,
           maxWidthDiskCache: 512,
           maxHeightDiskCache: 512,
-          fadeInDuration: const Duration(milliseconds: 150),
-          fadeOutDuration: const Duration(milliseconds: 100),
+          useOldImageOnUrlChange: true,
+          // Disable opacity fade-in on small list thumbnails to avoid saveLayer allocations inside ClipRRect
+          fadeInDuration: isListThumbnail
+              ? Duration.zero
+              : const Duration(milliseconds: 150),
+          fadeOutDuration: Duration.zero,
           placeholder: (_, __) => _buildProceduralMaterialYouArt(context, trackColor, cs),
           errorWidget: (_, __, ___) => _buildProceduralMaterialYouArt(context, trackColor, cs),
         );
@@ -255,8 +264,8 @@ class MaterialYouAlbumCover extends StatelessWidget {
         return Image.file(
           File(art),
           fit: BoxFit.cover,
+          // Specify cacheWidth only to avoid aspect distortion & reduce codec overhead
           cacheWidth: targetCache,
-          cacheHeight: targetCache,
           gaplessPlayback: true,
           filterQuality: size > 80 ? FilterQuality.medium : FilterQuality.low,
           errorBuilder: (_, __, ___) =>
@@ -273,7 +282,6 @@ class MaterialYouAlbumCover extends StatelessWidget {
     Color trackColor,
     ColorScheme cs,
   ) {
-    // Generate initials
     final titleInitial = track.title.trim().isNotEmpty
         ? track.title.trim()[0].toUpperCase()
         : '♪';
@@ -282,8 +290,6 @@ class MaterialYouAlbumCover extends StatelessWidget {
         : '';
     final effectiveSize = size.isFinite ? size : 280.0;
 
-    // For list thumbnails (size <= 52), use an ultra-lightweight static representation
-    // with 0 custom paint passes and no multi-stop gradient allocations
     if (size <= 52) {
       return Container(
         color: trackColor.withValues(alpha: 0.22),
@@ -314,14 +320,11 @@ class MaterialYouAlbumCover extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Vinyl record grooves custom painter
           CustomPaint(
             painter: _VinylGroovesPainter(
               color: Colors.white.withValues(alpha: 0.12),
             ),
           ),
-
-          // Central Monogram / Musical Motif
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -451,12 +454,12 @@ class _PixelPlayingEqualizerAnimationState
         height: width,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: List.generate(widget.barCount, (i) {
             final factor = staticFactors[i % staticFactors.length];
             return Container(
               width: barWidth,
-              height: (width * factor).clamp(3.0, width),
+              height: width * factor,
               decoration: BoxDecoration(
                 color: barColor,
                 borderRadius: BorderRadius.circular(100),
@@ -467,33 +470,31 @@ class _PixelPlayingEqualizerAnimationState
       );
     }
 
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          final t = _controller.value * 2 * pi;
-          return SizedBox(
-            width: width,
-            height: width,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: List.generate(widget.barCount, (i) {
-                final phase = i * 1.45;
-                final heightFactor = (0.25 + 0.70 * (0.5 + 0.5 * sin(t + phase))).clamp(0.2, 1.0);
-                return Container(
-                  width: barWidth,
-                  height: (width * heightFactor).clamp(3.0, width),
-                  decoration: BoxDecoration(
-                    color: barColor,
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                );
-              }),
-            ),
-          );
-        },
-      ),
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return SizedBox(
+          width: width,
+          height: width,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(widget.barCount, (i) {
+              final phase = (i * 0.35);
+              final rawVal = sin((_controller.value * 2 * pi) + phase);
+              final factor = 0.25 + (0.75 * ((rawVal + 1) / 2));
+              return Container(
+                width: barWidth,
+                height: width * factor,
+                decoration: BoxDecoration(
+                  color: barColor,
+                  borderRadius: BorderRadius.circular(100),
+                ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }

@@ -1145,7 +1145,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         body: CustomScrollView(
           controller: _scrollController,
           physics: buildSuperSmoothScrollPhysics(),
-          scrollCacheExtent: const ScrollCacheExtent.pixels(450),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(900),
           slivers: [
             // ─────────────────────────────────────────────────────────────────
             // 1. M3 Top App Bar
@@ -2349,7 +2349,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     },
                     childCount: filtered.length,
                     addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: false,
+                    addRepaintBoundaries: true,
                   ),
                 ),
               ),

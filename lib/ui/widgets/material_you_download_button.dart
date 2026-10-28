@@ -6,10 +6,9 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 
 /// Material You Expressive Download Action Button.
-/// Displays clear visual states:
-/// - Not Downloaded: Outline download icon.
-/// - Downloading: Animated circular progress indicator with pulsating download indicator.
-/// - Downloaded: Filled primary checkmark / offline badge.
+/// Optimized for 120Hz scrolling:
+/// - Skips watching download progress/queue providers when a track is already pinned offline.
+/// - Removes per-row [Tooltip] long-press gesture detector overhead inside dense track lists.
 class MaterialYouDownloadButton extends ConsumerWidget {
   const MaterialYouDownloadButton({
     super.key,
@@ -29,24 +28,27 @@ class MaterialYouDownloadButton extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final isPinned = track.isPinnedOffline;
 
-    // Selectively observe download progress and queue state ONLY for this track
-    // Prevents mass-rebuilding all 500+ track tiles during 120Hz library scrolling
-    final progress = ref.watch(cloudAudioCacheServiceProvider.select(
-      (svc) => svc.getProgress(track.id),
-    ));
-    final inQueue = ref.watch(downloadQueueManagerProvider.select(
-      (mgr) => mgr.isTrackInQueue(track.id),
-    ));
+    // Only subscribe to active download progress/queue providers if the track is not already offline
+    bool isDownloading = false;
+    if (!isPinned) {
+      final progress = ref.watch(cloudAudioCacheServiceProvider.select(
+        (svc) => svc.getProgress(track.id),
+      ));
+      final inQueue = ref.watch(downloadQueueManagerProvider.select(
+        (mgr) => mgr.isTrackInQueue(track.id),
+      ));
+      isDownloading = progress.state == CacheState.caching || inQueue;
+    }
 
-    final isDownloading = progress.state == CacheState.caching || inQueue;
-    // Download tick checkmark should strictly represent explicit offline download (pinned offline),
-    // NOT ephemeral streaming playback cache!
     final isDownloadedOffline = isPinned;
 
     Widget iconWidget;
     Color buttonColor = color ?? cs.onSurfaceVariant;
 
     if (isDownloading) {
+      final progress = ref.watch(cloudAudioCacheServiceProvider.select(
+        (svc) => svc.getProgress(track.id),
+      ));
       iconWidget = SizedBox(
         width: size,
         height: size,
@@ -82,7 +84,7 @@ class MaterialYouDownloadButton extends ConsumerWidget {
       );
     }
 
-    final button = GestureDetector(
+    return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
         PixelHaptics.tick();
@@ -128,29 +130,22 @@ class MaterialYouDownloadButton extends ConsumerWidget {
           );
         }
       },
-      child: Tooltip(
-        message: isDownloading
-            ? 'Downloading ${(progress.progress * 100).round()}%'
-            : (isDownloadedOffline ? 'Downloaded Offline' : 'Download Song Locally'),
-        child: showBackground
-            ? Container(
-                width: size + 16,
-                height: size + 16,
-                decoration: BoxDecoration(
-                  color: isDownloadedOffline
-                      ? cs.primaryContainer
-                      : cs.surfaceContainerHighest.withValues(alpha: 0.6),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(child: iconWidget),
-              )
-            : Padding(
-                padding: const EdgeInsets.all(6),
-                child: iconWidget,
+      child: showBackground
+          ? Container(
+              width: size + 16,
+              height: size + 16,
+              decoration: BoxDecoration(
+                color: isDownloadedOffline
+                    ? cs.primaryContainer
+                    : cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                shape: BoxShape.circle,
               ),
-      ),
+              child: Center(child: iconWidget),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(6),
+              child: iconWidget,
+            ),
     );
-
-    return button;
   }
 }

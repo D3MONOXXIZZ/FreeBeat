@@ -125,7 +125,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     super.dispose();
   }
 
-  /// Calculates smooth, direct finger movement offset without rubber-band spring resistance.
   double _computeResistedOffset(double raw) {
     if (raw == 0) return 0;
     return raw;
@@ -141,7 +140,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     final delta = details.primaryDelta ?? 0;
     _dragOffset += delta;
 
-    // Disallow left swipe if secondary action is not configured
     if (!widget.enableSecondaryAction && _dragOffset < 0) {
       _dragOffset = 0;
     }
@@ -150,7 +148,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     final absEffective = newEffective.abs();
     final progress = (absEffective / _kActivationThreshold).clamp(0.0, 1.0);
 
-    // 4 Progressive load-up tactile tension milestones: 0.22, 0.45, 0.70, 0.88
     final milestone = progress >= 0.88
         ? 4
         : progress >= 0.70
@@ -168,7 +165,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
       _lastMilestone = milestone;
     }
 
-    // Crisp mechanical click haptic when fully swiped!
     if (progress >= 1.0 && !_hasTriggeredClick) {
       _hasTriggeredClick = true;
       _lastMilestone = 5;
@@ -296,7 +292,7 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
       return const SizedBox.shrink();
     }
     if (!widget.enabled) {
-      return widget.child;
+      return RepaintBoundary(child: widget.child);
     }
 
     final cs = Theme.of(context).colorScheme;
@@ -304,9 +300,7 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
     final absOffset = _effectiveOffset.abs();
     final progress = (absOffset / _kActivationThreshold).clamp(0.0, 1.0);
 
-    // Dynamic icon load-up scale: expands from 0.75 -> 1.10, popping to 1.20 when armed
     final iconScale = _hasTriggeredClick ? 1.20 : (0.75 + (0.35 * progress));
-
     final isIdle = absOffset <= 0.001;
 
     final content = isIdle
@@ -314,7 +308,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
         : Stack(
             clipBehavior: Clip.none,
             children: [
-              // Background container with load-up visual indicators, clipped strictly to uncovered gap
               if (absOffset > 0.5)
                 Positioned.fill(
                   child: ClipRect(
@@ -419,8 +412,6 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
                     ),
                   ),
                 ),
-
-              // Sliding track tile child
               Transform.translate(
                 offset: Offset(_effectiveOffset, 0),
                 child: widget.child,
@@ -428,33 +419,32 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
             ],
           );
 
-    if (!widget.enabled) {
-      return content;
-    }
-
-    return RawGestureDetector(
-      behavior: HitTestBehavior.translucent,
-      gestures: <Type, GestureRecognizerFactory>{
-        _DirectionalHorizontalDragGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<_DirectionalHorizontalDragGestureRecognizer>(
-          () => _DirectionalHorizontalDragGestureRecognizer(debugOwner: this),
-          (_DirectionalHorizontalDragGestureRecognizer instance) {
-            instance
-              ..onStart = _handleDragStart
-              ..onUpdate = _handleDragUpdate
-              ..onEnd = _handleDragEnd
-              ..onCancel = _handleDragCancel;
-          },
-        ),
-      },
-      child: content,
+    // Isolate each track row inside its own RepaintBoundary so scrolling only translates
+    // pre-rasterized tile layers on the GPU, even if SliverChildBuilderDelegate has addRepaintBoundaries: false.
+    return RepaintBoundary(
+      child: RawGestureDetector(
+        behavior: HitTestBehavior.translucent,
+        gestures: <Type, GestureRecognizerFactory>{
+          _DirectionalHorizontalDragGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<_DirectionalHorizontalDragGestureRecognizer>(
+            () => _DirectionalHorizontalDragGestureRecognizer(debugOwner: this),
+            (_DirectionalHorizontalDragGestureRecognizer instance) {
+              instance
+                ..onStart = _handleDragStart
+                ..onUpdate = _handleDragUpdate
+                ..onEnd = _handleDragEnd
+                ..onCancel = _handleDragCancel;
+            },
+          ),
+        },
+        child: content,
+      ),
     );
   }
 }
 
 /// A specialized [HorizontalDragGestureRecognizer] that immediately yields to vertical
-/// list scrolling if the touch gesture displacement is predominantly vertical.
-/// This completely eliminates gesture arena lag and hesitation during rapid list scrolling.
+/// list scrolling unless the gesture is unmistakably horizontal (nearly 2:1 horizontal-to-vertical ratio).
 class _DirectionalHorizontalDragGestureRecognizer
     extends HorizontalDragGestureRecognizer {
   _DirectionalHorizontalDragGestureRecognizer({super.debugOwner});
@@ -471,9 +461,9 @@ class _DirectionalHorizontalDragGestureRecognizer
   void handleEvent(PointerEvent event) {
     if (event is PointerMoveEvent && _startPosition != null) {
       final delta = event.position - _startPosition!;
-      // If motion is predominantly vertical, instantly forfeit horizontal drag
-      // so vertical scrolling takes over with zero hesitation and zero latency!
-      if (delta.dy.abs() > delta.dx.abs() * 0.70 && delta.dy.abs() > 1.2) {
+      // Immediately forfeit horizontal drag if vertical motion exceeds 2.5px and horizontal motion
+      // is not at least 1.8x the vertical motion, preventing diagonal thumb flicks from stalling vertical scroll.
+      if (delta.dy.abs() > 2.5 && delta.dx.abs() < delta.dy.abs() * 1.8) {
         resolve(GestureDisposition.rejected);
         _startPosition = null;
         return;

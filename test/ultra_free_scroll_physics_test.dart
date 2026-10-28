@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:freebeat/main.dart';
 import 'package:freebeat/ui/widgets/ultra_free_scroll_physics.dart';
-import 'package:super_sliver_list/super_sliver_list.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -31,20 +30,20 @@ void main() {
     test('Balanced velocity cap and responsive min fling speed', () {
       const physics = LenisScrollPhysics();
 
-      // Capped maximum velocity (7,000 px/s) guarantees locked 120Hz/60Hz frame budgets
-      expect(physics.maxFlingVelocity, 7000.0);
+      // Capped maximum velocity (8,000 px/s) guarantees locked 120Hz/60Hz frame budgets
+      expect(physics.maxFlingVelocity, 8000.0);
 
-      // Responsive min fling velocity allows gentle gestures to trigger fluid glide
-      expect(physics.minFlingVelocity, 15.0);
+      // Responsive min fling velocity
+      expect(physics.minFlingVelocity, 50.0);
 
-      // Default smooth velocity damping factor
-      expect(physics.damping, 0.82);
+      // 1:1 continuous velocity handoff on finger release
+      expect(physics.damping, 1.0);
     });
 
-    test('Creates BouncingScrollSimulation with critically damped spring and weighted velocity', () {
+    test('Creates ClampingScrollSimulation in-range and BouncingScrollSimulation out-of-range', () {
       const physics = LenisScrollPhysics();
 
-      final position = FixedScrollMetrics(
+      final inRangePosition = FixedScrollMetrics(
         minScrollExtent: 0,
         maxScrollExtent: 50000,
         pixels: 1000,
@@ -53,15 +52,29 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-      // Simulate a normal fling of 2000 px/s
-      final sim = physics.createBallisticSimulation(position, 2000.0);
+      // Simulate an in-range fling of 2000 px/s -> ClampingScrollSimulation with tuned friction
+      final inRangeSim = physics.createBallisticSimulation(inRangePosition, 2000.0);
+      expect(inRangeSim, isNotNull);
+      expect(inRangeSim, isA<ClampingScrollSimulation>());
 
-      expect(sim, isNotNull);
-      expect(sim, isA<BouncingScrollSimulation>());
+      final outOfRangePosition = FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: 50000,
+        pixels: -50,
+        viewportDimension: 800,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: 1.0,
+      );
 
-      final bouncingSim = sim as BouncingScrollSimulation;
+      // Simulate an out-of-range boundary recovery -> BouncingScrollSimulation with critically damped spring
+      final outOfRangeSim = physics.createBallisticSimulation(outOfRangePosition, -200.0);
+      expect(outOfRangeSim, isNotNull);
+      expect(outOfRangeSim, isA<BouncingScrollSimulation>());
+
+      final bouncingSim = outOfRangeSim as BouncingScrollSimulation;
       // Critically damped spring damping coefficient c = 2 * ratio * sqrt(mass * stiffness)
-      expect(bouncingSim.spring.damping, closeTo(141.42, 0.1));
+      // c = 2 * 1.0 * sqrt(0.8 * 180.0) = 2 * 12 = 24.0
+      expect(bouncingSim.spring.damping, closeTo(24.0, 0.1));
     });
 
     test('Progressive rubber-band easing when pulled past boundaries', () {
@@ -83,7 +96,7 @@ void main() {
   });
 
   group('SmoothFreeScrollBehavior Integration Tests', () {
-    testWidgets('SmoothFreeScrollBehavior provides SuperRangeMaintainingScrollPhysics wrapping LenisScrollPhysics', (tester) async {
+    testWidgets('SmoothFreeScrollBehavior provides UltraFreeScrollPhysics directly', (tester) async {
       await tester.pumpWidget(const Directionality(
         textDirection: TextDirection.ltr,
         child: SizedBox(),
@@ -92,9 +105,8 @@ void main() {
       final element = tester.element(find.byType(SizedBox));
 
       final physics = behavior.getScrollPhysics(element);
-      expect(physics, isA<SuperRangeMaintainingScrollPhysics>());
-      final superPhysics = physics as SuperRangeMaintainingScrollPhysics;
-      expect(superPhysics.parent, isA<LenisScrollPhysics>());
+      expect(physics, isA<UltraFreeScrollPhysics>());
+      expect(physics.parent, isA<AlwaysScrollableScrollPhysics>());
     });
   });
 }
