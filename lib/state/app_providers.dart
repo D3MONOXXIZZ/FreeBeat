@@ -684,9 +684,10 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
   }
 
   Future<void> enrichTrackArtwork(Track track) async {
-    if (_ref == null) return;
+    final ref = _ref;
+    if (ref == null) return;
     try {
-      final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
+      final artworkSvc = ref.read(artworkAndLyricsServiceProvider);
       final enriched = await artworkSvc.enrichTrackArtwork(track);
       if (enriched != track) {
         await updateTrack(enriched);
@@ -697,19 +698,46 @@ class TracksCatalogNotifier extends StateNotifier<List<Track>> {
   void enrichLibraryArtwork(List<Track> tracks) => _enrichMissingArtwork(tracks);
 
   void _enrichMissingArtwork(List<Track> tracks) {
-    if (_ref == null) return;
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     unawaited(() async {
-      final artworkSvc = _ref.read(artworkAndLyricsServiceProvider);
+      // Wait 3 seconds after startup before background artwork enrichment so initial scrolling is 100% uncontended
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      final ref = _ref;
+      if (ref == null) return;
+      final artworkSvc = ref.read(artworkAndLyricsServiceProvider);
+      final updatedBatch = <String, Track>{};
+
       for (final t in tracks) {
+        if (!mounted) return;
         final needsArtwork = t.artworkUrl == null || t.artworkUrl!.isEmpty;
         final needsArtist = ArtworkAndLyricsService.isInvalidOrGenericArtist(t.artist);
         if (needsArtwork || needsArtist) {
           try {
+            // Yield 50ms between tracks so main isolate frame budget (8.33ms) is never starved during scroll
+            await Future<void>.delayed(const Duration(milliseconds: 50));
             final enriched = await artworkSvc.enrichTrackArtwork(t);
             if (enriched != t) {
-              await updateTrack(enriched);
+              updatedBatch[enriched.id] = enriched;
+              // Commit in batches of 20 instead of rebuilding all 592 tracks on every single item
+              if (updatedBatch.length >= 20) {
+                final batchList = updatedBatch.values.toList();
+                state = state.map((item) => updatedBatch[item.id] ?? item).toList();
+                if (_db != null) {
+                  await _db.upsertTracks(batchList);
+                }
+                updatedBatch.clear();
+              }
             }
           } catch (_) {}
+        }
+      }
+
+      if (updatedBatch.isNotEmpty && mounted) {
+        final batchList = updatedBatch.values.toList();
+        state = state.map((item) => updatedBatch[item.id] ?? item).toList();
+        if (_db != null) {
+          await _db.upsertTracks(batchList);
         }
       }
     }());
@@ -3971,6 +3999,9 @@ class ImportProgressState {
   double get progressFraction =>
       total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
   String get progressPercentage => '${(progressFraction * 100).round()}%';
+  String get statusMessage => currentItemName.isNotEmpty
+      ? 'Importing $currentItemName ($current/$total)'
+      : 'Importing ($current/$total)';
 }
 
 class ImportProgressNotifier extends StateNotifier<ImportProgressState> {

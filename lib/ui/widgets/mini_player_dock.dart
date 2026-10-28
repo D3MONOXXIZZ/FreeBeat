@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 import '../screens/now_playing_screen.dart';
-import 'expressive_shapes.dart';
 import 'material_you_album_cover.dart';
 
 /// Floating Material You Mini Player Dock.
-/// Displays active album art, track details, playback controls, and real-time progress.
+/// Optimized for 120Hz scrolling:
+/// - Replaces expensive custom [ClipPath] ([ExpressiveSuperellipseClipper]) with hardware-accelerated
+///   [ClipRRect] and [RoundedRectangleBorder] so Impeller renders the floating dock without stencil path tessellation.
+/// - Isolates the entire dock inside a [RepaintBoundary].
 class MiniPlayerDock extends ConsumerWidget {
   const MiniPlayerDock({
     super.key,
@@ -58,196 +61,156 @@ class MiniPlayerDock extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final track = ref.watch(playbackProvider.select((p) => p.currentTrack));
+    final activeTrack =
+        ref.watch(playbackProvider.select((p) => p.currentTrack));
+    if (activeTrack.id.isEmpty) return const SizedBox.shrink();
+
     final isPlaying = ref.watch(playbackProvider.select((p) => p.isPlaying));
-
-    if (track.id.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final cs = Theme.of(context).colorScheme;
-    final isStaleGreen = track.dominantColorValue == 0xFF3DDC84 ||
-        track.dominantColorValue == 0xFF1DB954;
-    final accentColor = (!isStaleGreen &&
-            track.dominantColorValue != 0 &&
-            track.dominantColorValue != 0xFF1E293B)
-        ? track.dominantColor
-        : cs.primary;
+    final accentColor = cs.primary;
 
     final pillWidget = RepaintBoundary(
-      child: SizedBox(
-        width: fullWidth ? double.infinity : (width ?? 320),
-        height: 50,
-        child: SpringPressScale(
-          scaleDown: 0.98,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           onTap: () => _openNowPlaying(context),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragEnd: (details) {
-              final vx = details.primaryVelocity ?? 0;
-              if (vx < -250) {
-                PixelHaptics.tick();
-                ref.read(playbackProvider.notifier).skipNext();
-              } else if (vx > 250) {
-                PixelHaptics.tick();
-                ref.read(playbackProvider.notifier).skipPrevious();
-              }
-            },
-            child: Container(
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            width: fullWidth ? double.infinity : (width ?? 356),
+            height: 58,
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(100),
+              color: cs.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: accentColor.withValues(alpha: 0.35),
-                width: 1.2,
+                color: cs.outlineVariant.withValues(alpha: 0.25),
+                width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: accentColor.withValues(alpha: 0.16),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
+                  color: Colors.black.withValues(alpha: 0.16),
                   blurRadius: 12,
-                  offset: const Offset(0, 2),
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(100),
+              borderRadius: BorderRadius.circular(28),
               child: Stack(
                 children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    children: [
-                      MaterialYouAlbumCover(
-                        track: track,
-                        size: 34,
-                        borderRadius: 100,
-                        showQualityBadge: false,
-                        showSourceBadge: false,
-                        isPlaying: isPlaying,
-                        showPlayingAnimation: false,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.title.isEmpty ? 'FreeBeat' : track.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              '${track.artist} • ${track.codec}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Backward / Skip Previous Button
-                      IconButton(
-                        icon: const Icon(Icons.skip_previous_rounded),
-                        color: cs.onSurfaceVariant,
-                        iconSize: 20,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 28,
-                          minHeight: 28,
-                        ),
-                        tooltip: 'Previous',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          ref.read(playbackProvider.notifier).skipPrevious();
-                        },
-                      ),
-                      const SizedBox(width: 2),
-
-                      // Play / Pause Circle Button
-                      FilledButton(
-                        onPressed: () {
-                          ref
-                              .read(playbackProvider.notifier)
-                              .togglePlayPause();
-                        },
-                        style: FilledButton.styleFrom(
-                          shape: const CircleBorder(),
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(32, 32),
-                          backgroundColor: cs.primaryContainer,
-                          foregroundColor: cs.onPrimaryContainer,
-                        ),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          transitionBuilder: (child, animation) =>
-                              ScaleTransition(scale: animation, child: child),
-                          child: Icon(
-                            isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            key: ValueKey<bool>(isPlaying),
-                            size: 19,
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Row(
+                        children: [
+                          MaterialYouAlbumCover(
+                            track: activeTrack,
+                            size: 42,
+                            borderRadius: 14,
+                            showQualityBadge: false,
+                            showSourceBadge: false,
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  activeTrack.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: cs.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeTrack.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.skip_previous_rounded),
+                            color: cs.onSurfaceVariant,
+                            iconSize: 20,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                            tooltip: 'Previous',
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              ref.read(playbackProvider.notifier).skipPrevious();
+                            },
+                          ),
+                          const SizedBox(width: 2),
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              minimumSize: const Size(32, 32),
+                              backgroundColor: cs.primaryContainer,
+                              foregroundColor: cs.onPrimaryContainer,
+                            ),
+                            icon: Icon(
+                              isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              size: 19,
+                            ),
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .togglePlayPause();
+                            },
+                          ),
+                          const SizedBox(width: 2),
+                          IconButton(
+                            icon: const Icon(Icons.skip_next_rounded),
+                            color: cs.onSurfaceVariant,
+                            iconSize: 20,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                            onPressed: () {
+                              PixelHaptics.tick();
+                              ref.read(playbackProvider.notifier).skipNext();
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 2),
-
-                      // Forward / Skip Next Button
-                      IconButton(
-                        icon: const Icon(Icons.skip_next_rounded),
-                        color: cs.onSurfaceVariant,
-                        iconSize: 20,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 28,
-                          minHeight: 28,
-                        ),
-                        tooltip: 'Next',
-                        onPressed: () {
-                          PixelHaptics.tick();
-                          ref.read(playbackProvider.notifier).skipNext();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Slim Track Progress Bar at bottom of mini player
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 0,
-                  child: RepaintBoundary(
-                    child: _MiniPlayerProgressBar(
-                      primaryColor: accentColor,
-                      backgroundColor:
-                          cs.onSurfaceVariant.withValues(alpha: 0.12),
                     ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 0,
+                    child: RepaintBoundary(
+                      child: _MiniPlayerProgressBar(
+                        primaryColor: accentColor,
+                        backgroundColor:
+                            cs.onSurfaceVariant.withValues(alpha: 0.12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-      ),
-    ),
-  );
+    );
 
     if (fullWidth) {
       return pillWidget;

@@ -40,7 +40,7 @@ void main() {
       expect(physics.damping, 1.0);
     });
 
-    test('Creates ClampingScrollSimulation in-range and BouncingScrollSimulation out-of-range', () {
+    test('Creates ClampingScrollSimulation in-range and ScrollSpringSimulation out-of-range', () {
       const physics = LenisScrollPhysics();
 
       final inRangePosition = FixedScrollMetrics(
@@ -66,18 +66,13 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-      // Simulate an out-of-range boundary recovery -> BouncingScrollSimulation with critically damped spring
+      // Simulate an out-of-range boundary recovery -> ScrollSpringSimulation with spring
       final outOfRangeSim = physics.createBallisticSimulation(outOfRangePosition, -200.0);
       expect(outOfRangeSim, isNotNull);
-      expect(outOfRangeSim, isA<BouncingScrollSimulation>());
-
-      final bouncingSim = outOfRangeSim as BouncingScrollSimulation;
-      // Critically damped spring damping coefficient c = 2 * ratio * sqrt(mass * stiffness)
-      // c = 2 * 1.0 * sqrt(0.8 * 180.0) = 2 * 12 = 24.0
-      expect(bouncingSim.spring.damping, closeTo(24.0, 0.1));
+      expect(outOfRangeSim, isA<ScrollSpringSimulation>());
     });
 
-    test('Progressive rubber-band easing when pulled past boundaries', () {
+    test('Boundary motion pairs cleanly with Android StretchingOverscrollIndicator', () {
       const physics = LenisScrollPhysics();
 
       final atTopPosition = FixedScrollMetrics(
@@ -89,9 +84,9 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-      // Pulling past boundary dampens offset
-      final easedOffset = physics.applyPhysicsToUserOffset(atTopPosition, -50.0);
-      expect(easedOffset.abs(), lessThan(50.0));
+      // In clamping physics, offset is passed cleanly to stretching indicator
+      final offset = physics.applyPhysicsToUserOffset(atTopPosition, -50.0);
+      expect(offset.abs(), 50.0);
     });
   });
 

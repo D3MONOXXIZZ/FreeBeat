@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/track.dart';
-import '../../services/audio/cloud_audio_cache_service.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 
 /// Material You Expressive Download Action Button.
 /// Optimized for 120Hz scrolling:
-/// - Skips watching download progress/queue providers when a track is already pinned offline.
-/// - Removes per-row [Tooltip] long-press gesture detector overhead inside dense track lists.
+/// - Only subscribes to [cloudAudioCacheServiceProvider] if the track is actually in the active download queue.
+/// - Eliminates [Tooltip] ([OverlayPortal] + [LongPressGestureRecognizer]) on every track row.
 class MaterialYouDownloadButton extends ConsumerWidget {
   const MaterialYouDownloadButton({
     super.key,
@@ -26,26 +25,20 @@ class MaterialYouDownloadButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final isPinned = track.isPinnedOffline;
+    final isDownloadedOffline = track.isPinnedOffline;
 
-    // Only subscribe to active download progress/queue providers if the track is not already offline
-    bool isDownloading = false;
-    if (!isPinned) {
-      final progress = ref.watch(cloudAudioCacheServiceProvider.select(
-        (svc) => svc.getProgress(track.id),
-      ));
-      final inQueue = ref.watch(downloadQueueManagerProvider.select(
-        (mgr) => mgr.isTrackInQueue(track.id),
-      ));
-      isDownloading = progress.state == CacheState.caching || inQueue;
-    }
-
-    final isDownloadedOffline = isPinned;
+    // Fast path: only check if this track is in the active download queue (1 lightweight bool selector).
+    // Do NOT subscribe to cloudAudioCacheServiceProvider on all 592 rows unless inQueue is true!
+    final inQueue = isDownloadedOffline
+        ? false
+        : ref.watch(downloadQueueManagerProvider.select(
+            (mgr) => mgr.isTrackInQueue(track.id),
+          ));
 
     Widget iconWidget;
     Color buttonColor = color ?? cs.onSurfaceVariant;
 
-    if (isDownloading) {
+    if (inQueue) {
       final progress = ref.watch(cloudAudioCacheServiceProvider.select(
         (svc) => svc.getProgress(track.id),
       ));

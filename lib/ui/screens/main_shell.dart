@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/models/track.dart';
 import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
@@ -13,11 +14,11 @@ import 'now_playing_screen.dart';
 import 'poweramp_dsp_screen.dart';
 
 /// Main Google Pixel Material 3 Navigation Shell.
-/// Features:
-/// - Floating Material 3 Expressive Navigation Pill Bar (stadium border, 100px radius).
-/// - Floating docked Mini-Player pill with album art, skip controls, and progress bar.
-/// - Authentic Android Pixel system gesture navigation pill at the bottom edge.
-/// - Edge-to-edge drawing with smooth background page scrolling.
+/// Optimized for 120Hz scrolling:
+/// - Wraps each tab inside [IndexedStack] with [TickerMode] and [RepaintBoundary]
+///   so offscreen tabs never tick animations or dirty layers while scrolling Library.
+/// - Wraps [bottomNavigationBar] in a [RepaintBoundary] so 200ms mini-player progress
+///   updates never force re-composition of the scrolling body behind `extendBody: true`.
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
@@ -28,7 +29,7 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _selectedIndex = 0;
 
-  void _openFullNowPlaying() {
+  void _openNowPlaying() {
     PixelHaptics.sheetExpand();
     Navigator.of(context).push(
       PageRouteBuilder<void>(
@@ -89,7 +90,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return MiniPlayerDock(
       width: width,
       fullWidth: fullWidth,
-      onTap: _openFullNowPlaying,
+      onTap: _openNowPlaying,
       onOpenDspStudio: () => setState(() => _selectedIndex = 2),
     );
   }
@@ -104,14 +105,34 @@ class _MainShellState extends ConsumerState<MainShell> {
     final importProgress = ref.watch(importProgressProvider);
 
     final pages = [
-      HomeScreen(
-        onOpenNowPlaying: _openFullNowPlaying,
-        onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
+      TickerMode(
+        enabled: _selectedIndex == 0,
+        child: RepaintBoundary(
+          child: HomeScreen(
+            onOpenNowPlaying: _openNowPlaying,
+            onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
+          ),
+        ),
       ),
-      const LibraryScreen(showFab: false),
-      PowerampDspScreen(isActive: _selectedIndex == 2),
-      CloudsScreen(
-        onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
+      TickerMode(
+        enabled: _selectedIndex == 1,
+        child: const RepaintBoundary(
+          child: LibraryScreen(showFab: false),
+        ),
+      ),
+      TickerMode(
+        enabled: _selectedIndex == 2,
+        child: RepaintBoundary(
+          child: PowerampDspScreen(isActive: _selectedIndex == 2),
+        ),
+      ),
+      TickerMode(
+        enabled: _selectedIndex == 3,
+        child: RepaintBoundary(
+          child: CloudsScreen(
+            onNavigateToTab: (idx) => setState(() => _selectedIndex = idx),
+          ),
+        ),
       ),
     ];
 
@@ -121,183 +142,180 @@ class _MainShellState extends ConsumerState<MainShell> {
         index: _selectedIndex,
         children: pages,
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        left: false,
-        right: false,
-        child: RepaintBoundary(
+      bottomNavigationBar: RepaintBoundary(
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 8),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Global Real-Time Import Progress Indicator
-              if (importProgress.isImporting) ...[
-                Align(
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 320,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      borderRadius: BorderRadius.circular(100),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.10),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.onPrimaryContainer,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (importProgress.isImporting) ...[
+                  Align(
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: 320,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(100),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.10),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Importing (${importProgress.current}/${importProgress.total})',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: cs.onPrimaryContainer,
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        importProgress.statusMessage,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: cs.onPrimaryContainer,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    importProgress.progressPercentage,
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: cs.onPrimaryContainer,
+                                    Text(
+                                      importProgress.progressPercentage,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: cs.onPrimaryContainer,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(100),
-                                child: LinearProgressIndicator(
-                                  value: importProgress.total > 0
-                                      ? importProgress.progressFraction
-                                      : null,
-                                  minHeight: 3,
-                                  backgroundColor: cs.onPrimaryContainer
-                                      .withValues(alpha: 0.2),
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    cs.onPrimaryContainer,
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(100),
+                                  child: LinearProgressIndicator(
+                                    value: importProgress.total > 0
+                                        ? importProgress.progressFraction
+                                        : null,
+                                    minHeight: 3,
+                                    backgroundColor: cs.onPrimaryContainer
+                                        .withValues(alpha: 0.2),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      cs.onPrimaryContainer,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-              ],
+                  const SizedBox(height: 6),
+                ],
 
-              // Floating Docked Mini-Player Pill & Library Add FAB
-              if (hasActiveQueue && track.id.isNotEmpty) ...[
-                if (_selectedIndex == 1)
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final availableWidth = constraints.maxWidth;
-                      // Keep mini player centered to nav pill with safe clearance for the 50dp right-aligned FAB
-                      final maxHalfWidth = (availableWidth / 2) - 58;
-                      final pillWidth = (maxHalfWidth * 2).clamp(230.0, 268.0);
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Center(
-                            child: _buildMiniPlayerPill(
+                if (hasActiveQueue && track.id.isNotEmpty) ...[
+                  if (_selectedIndex == 1)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final availableWidth = constraints.maxWidth;
+                        final pillWidth =
+                            (availableWidth - 116).clamp(180.0, 310.0);
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            _buildMiniPlayerPill(
                               cs,
                               isPlaying,
                               track,
                               width: pillWidth,
                             ),
-                          ),
-                          Positioned(
-                            right: 0,
-                            child: _buildLibraryAddFab(cs),
-                          ),
-                        ],
-                      );
-                    },
-                  )
-                else
-                  _buildMiniPlayerPill(
-                    cs,
-                    isPlaying,
-                    track,
-                    width: 310,
+                            Positioned(
+                              right: 0,
+                              child: _buildLibraryAddFab(cs),
+                            ),
+                          ],
+                        );
+                      },
+                    )
+                  else
+                    _buildMiniPlayerPill(
+                      cs,
+                      isPlaying,
+                      track,
+                      width: 310,
+                    ),
+                  const SizedBox(height: 8),
+                ] else if (_selectedIndex == 1) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildLibraryAddFab(cs),
                   ),
-                const SizedBox(height: 8),
-              ] else if (_selectedIndex == 1) ...[
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: _buildLibraryAddFab(cs),
-                ),
-                const SizedBox(height: 8),
-              ],
+                  const SizedBox(height: 8),
+                ],
 
-              // Material 3 Expressive Floating Navigation Pill
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 336),
-                  child: MaterialYouNavPill(
-                    selectedIndex: _selectedIndex,
-                    onDestinationSelected: (idx) {
-                      setState(() => _selectedIndex = idx);
-                    },
-                    destinations: const [
-                      NavPillDestination(
-                        icon: Icons.home_outlined,
-                        selectedIcon: Icons.home_rounded,
-                        label: 'Your Mix',
-                      ),
-                      NavPillDestination(
-                        icon: Icons.library_music_outlined,
-                        selectedIcon: Icons.library_music_rounded,
-                        label: 'Library',
-                      ),
-                      NavPillDestination(
-                        icon: Icons.equalizer_rounded,
-                        selectedIcon: Icons.graphic_eq_rounded,
-                        label: 'Smart EQ',
-                      ),
-                      NavPillDestination(
-                        icon: Icons.cloud_outlined,
-                        selectedIcon: Icons.cloud_done_rounded,
-                        label: 'Cloud',
-                      ),
-                    ],
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 336),
+                    child: MaterialYouNavPill(
+                      selectedIndex: _selectedIndex,
+                      onDestinationSelected: (idx) {
+                        setState(() => _selectedIndex = idx);
+                      },
+                      destinations: const [
+                        NavPillDestination(
+                          icon: Icons.home_outlined,
+                          selectedIcon: Icons.home_rounded,
+                          label: 'Your Mix',
+                        ),
+                        NavPillDestination(
+                          icon: Icons.library_music_outlined,
+                          selectedIcon: Icons.library_music_rounded,
+                          label: 'Library',
+                        ),
+                        NavPillDestination(
+                          icon: Icons.equalizer_rounded,
+                          selectedIcon: Icons.graphic_eq_rounded,
+                          label: 'Smart EQ',
+                        ),
+                        NavPillDestination(
+                          icon: Icons.cloud_outlined,
+                          selectedIcon: Icons.cloud_done_rounded,
+                          label: 'Cloud',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }

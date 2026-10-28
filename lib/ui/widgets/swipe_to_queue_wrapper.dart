@@ -6,9 +6,12 @@ import '../../services/haptics/pixel_haptics.dart';
 import '../../state/app_providers.dart';
 
 /// A Material You wrapper that allows swiping horizontally on any track list item
-/// to append the track to the playback queue (or perform custom secondary actions)
-/// with realistic physical spring resistance, progressive tactile load-up ticks,
-/// and a crisp mechanical click haptic when fully swiped.
+/// to append the track to the playback queue (or perform custom secondary actions).
+///
+/// Optimized for 120Hz scrolling:
+/// - Does NOT add a duplicate inner [RepaintBoundary] (since [SliverChildBuilderDelegate]
+///   already wraps each item in a single [RepaintBoundary], avoiding double offscreen texture allocation).
+/// - Yields immediately to vertical scroll gestures unless horizontal movement is >2x vertical movement.
 class SwipeToQueueWrapper extends ConsumerStatefulWidget {
   const SwipeToQueueWrapper({
     super.key,
@@ -43,7 +46,6 @@ class SwipeToQueueWrapper extends ConsumerStatefulWidget {
   final bool dismissOnPrimaryAction;
   final bool enabled;
 
-  /// Shows a unified Material You floating confirmation SnackBar when a track is queued.
   static void showQueuedSnackBar(BuildContext context, String trackTitle) {
     final cs = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -292,159 +294,158 @@ class _SwipeToQueueWrapperState extends ConsumerState<SwipeToQueueWrapper>
       return const SizedBox.shrink();
     }
     if (!widget.enabled) {
-      return RepaintBoundary(child: widget.child);
+      return widget.child;
     }
 
-    final cs = Theme.of(context).colorScheme;
-    final isSwipingRight = _effectiveOffset > 0;
     final absOffset = _effectiveOffset.abs();
-    final progress = (absOffset / _kActivationThreshold).clamp(0.0, 1.0);
-
-    final iconScale = _hasTriggeredClick ? 1.20 : (0.75 + (0.35 * progress));
     final isIdle = absOffset <= 0.001;
 
-    final content = isIdle
-        ? widget.child
-        : Stack(
-            clipBehavior: Clip.none,
-            children: [
-              if (absOffset > 0.5)
-                Positioned.fill(
-                  child: ClipRect(
-                    clipper: _SwipeBackgroundClipper(offset: _effectiveOffset),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSwipingRight
-                            ? cs.primaryContainer.withValues(
-                                alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
-                              )
-                            : cs.errorContainer.withValues(
-                                alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
+    // Fast path when idle (99.9% of rows during vertical scroll):
+    // Do not look up Theme.of(context) or build Stack/ClipRect until an actual horizontal drag occurs.
+    final Widget content;
+    if (isIdle) {
+      content = widget.child;
+    } else {
+      final cs = Theme.of(context).colorScheme;
+      final isSwipingRight = _effectiveOffset > 0;
+      final progress = (absOffset / _kActivationThreshold).clamp(0.0, 1.0);
+      final iconScale = _hasTriggeredClick ? 1.20 : (0.75 + (0.35 * progress));
+
+      content = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (absOffset > 0.5)
+            Positioned.fill(
+              child: ClipRect(
+                clipper: _SwipeBackgroundClipper(offset: _effectiveOffset),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSwipingRight
+                        ? cs.primaryContainer.withValues(
+                            alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
+                          )
+                        : cs.errorContainer.withValues(
+                            alpha: (0.40 + (0.60 * progress)).clamp(0.0, 1.0),
+                          ),
+                    borderRadius: widget.borderRadius,
+                  ),
+                  alignment: isSwipingRight
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: isSwipingRight
+                        ? [
+                            Transform.scale(
+                              scale: iconScale,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: cs.onPrimaryContainer.withValues(
+                                    alpha: _hasTriggeredClick
+                                        ? 0.28
+                                        : (0.10 + (0.15 * progress)),
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  widget.primaryActionIcon,
+                                  color: cs.onPrimaryContainer,
+                                  size: 22,
+                                ),
                               ),
-                        borderRadius: widget.borderRadius,
-                      ),
-                      alignment: isSwipingRight
-                          ? Alignment.centerLeft
-                          : Alignment.centerRight,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: isSwipingRight
-                            ? [
-                                Transform.scale(
-                                  scale: iconScale,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: cs.onPrimaryContainer.withValues(
-                                        alpha: _hasTriggeredClick
-                                            ? 0.28
-                                            : (0.10 + (0.15 * progress)),
-                                      ),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      widget.primaryActionIcon,
-                                      color: cs.onPrimaryContainer,
-                                      size: 22,
-                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Opacity(
+                              opacity:
+                                  ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: Offset((1.0 - progress) * -12.0, 0),
+                                child: Text(
+                                  widget.primaryActionTitle,
+                                  style: TextStyle(
+                                    color: cs.onPrimaryContainer,
+                                    fontWeight: _hasTriggeredClick
+                                        ? FontWeight.w900
+                                        : FontWeight.w800,
+                                    fontSize: 14,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Opacity(
-                                  opacity:
-                                      ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
-                                  child: Transform.translate(
-                                    offset: Offset((1.0 - progress) * -12.0, 0),
-                                    child: Text(
-                                      widget.primaryActionTitle,
-                                      style: TextStyle(
-                                        color: cs.onPrimaryContainer,
-                                        fontWeight: _hasTriggeredClick
-                                            ? FontWeight.w900
-                                            : FontWeight.w800,
-                                        fontSize: 14,
-                                      ),
-                                    ),
+                              ),
+                            ),
+                          ]
+                        : [
+                            Opacity(
+                              opacity:
+                                  ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: Offset((1.0 - progress) * 12.0, 0),
+                                child: Text(
+                                  widget.secondaryActionTitle,
+                                  style: TextStyle(
+                                    color: cs.onErrorContainer,
+                                    fontWeight: _hasTriggeredClick
+                                        ? FontWeight.w900
+                                        : FontWeight.w800,
+                                    fontSize: 14,
                                   ),
                                 ),
-                              ]
-                            : [
-                                Opacity(
-                                  opacity:
-                                      ((progress - 0.20) / 0.70).clamp(0.0, 1.0),
-                                  child: Transform.translate(
-                                    offset: Offset((1.0 - progress) * 12.0, 0),
-                                    child: Text(
-                                      widget.secondaryActionTitle,
-                                      style: TextStyle(
-                                        color: cs.onErrorContainer,
-                                        fontWeight: _hasTriggeredClick
-                                            ? FontWeight.w900
-                                            : FontWeight.w800,
-                                        fontSize: 14,
-                                      ),
-                                    ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Transform.scale(
+                              scale: iconScale,
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: cs.onErrorContainer.withValues(
+                                    alpha: _hasTriggeredClick
+                                        ? 0.28
+                                        : (0.10 + (0.15 * progress)),
                                   ),
+                                  shape: BoxShape.circle,
                                 ),
-                                const SizedBox(width: 12),
-                                Transform.scale(
-                                  scale: iconScale,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: cs.onErrorContainer.withValues(
-                                        alpha: _hasTriggeredClick
-                                            ? 0.28
-                                            : (0.10 + (0.15 * progress)),
-                                      ),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      widget.secondaryActionIcon,
-                                      color: cs.onErrorContainer,
-                                      size: 22,
-                                    ),
-                                  ),
+                                child: Icon(
+                                  widget.secondaryActionIcon,
+                                  color: cs.onErrorContainer,
+                                  size: 22,
                                 ),
-                              ],
-                      ),
-                    ),
+                              ),
+                            ),
+                          ],
                   ),
                 ),
-              Transform.translate(
-                offset: Offset(_effectiveOffset, 0),
-                child: widget.child,
               ),
-            ],
-          );
-
-    // Isolate each track row inside its own RepaintBoundary so scrolling only translates
-    // pre-rasterized tile layers on the GPU, even if SliverChildBuilderDelegate has addRepaintBoundaries: false.
-    return RepaintBoundary(
-      child: RawGestureDetector(
-        behavior: HitTestBehavior.translucent,
-        gestures: <Type, GestureRecognizerFactory>{
-          _DirectionalHorizontalDragGestureRecognizer:
-              GestureRecognizerFactoryWithHandlers<_DirectionalHorizontalDragGestureRecognizer>(
-            () => _DirectionalHorizontalDragGestureRecognizer(debugOwner: this),
-            (_DirectionalHorizontalDragGestureRecognizer instance) {
-              instance
-                ..onStart = _handleDragStart
-                ..onUpdate = _handleDragUpdate
-                ..onEnd = _handleDragEnd
-                ..onCancel = _handleDragCancel;
-            },
+            ),
+          Transform.translate(
+            offset: Offset(_effectiveOffset, 0),
+            child: widget.child,
           ),
-        },
-        child: content,
-      ),
+        ],
+      );
+    }
+
+    return RawGestureDetector(
+      behavior: HitTestBehavior.translucent,
+      gestures: <Type, GestureRecognizerFactory>{
+        _DirectionalHorizontalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<_DirectionalHorizontalDragGestureRecognizer>(
+          () => _DirectionalHorizontalDragGestureRecognizer(debugOwner: this),
+          (_DirectionalHorizontalDragGestureRecognizer instance) {
+            instance
+              ..onStart = _handleDragStart
+              ..onUpdate = _handleDragUpdate
+              ..onEnd = _handleDragEnd
+              ..onCancel = _handleDragCancel;
+          },
+        ),
+      },
+      child: content,
     );
   }
 }
 
-/// A specialized [HorizontalDragGestureRecognizer] that immediately yields to vertical
-/// list scrolling unless the gesture is unmistakably horizontal (nearly 2:1 horizontal-to-vertical ratio).
 class _DirectionalHorizontalDragGestureRecognizer
     extends HorizontalDragGestureRecognizer {
   _DirectionalHorizontalDragGestureRecognizer({super.debugOwner});
@@ -461,9 +462,7 @@ class _DirectionalHorizontalDragGestureRecognizer
   void handleEvent(PointerEvent event) {
     if (event is PointerMoveEvent && _startPosition != null) {
       final delta = event.position - _startPosition!;
-      // Immediately forfeit horizontal drag if vertical motion exceeds 2.5px and horizontal motion
-      // is not at least 1.8x the vertical motion, preventing diagonal thumb flicks from stalling vertical scroll.
-      if (delta.dy.abs() > 2.5 && delta.dx.abs() < delta.dy.abs() * 1.8) {
+      if (delta.dy.abs() > 2.0 && delta.dx.abs() < delta.dy.abs() * 2.0) {
         resolve(GestureDisposition.rejected);
         _startPosition = null;
         return;

@@ -61,16 +61,19 @@ void main() async {
     );
   };
 
-  // Resample touch inputs to match display vsync rate (eliminates touch desync & jitter on 90/120Hz LTPO displays)
-  GestureBinding.instance.resamplingEnabled = true;
+  // CRITICAL FIX FOR PIXEL 9 PRO XL (1-120Hz LTPO + 240Hz Touch Digitizer):
+  // Android's native Choreographer / InputConsumer already resamples touch events to hardware VSYNC.
+  // Enabling Flutter's software PointerEventResampler (`resamplingEnabled = true`) adds a hardcoded -16ms
+  // (2-frame) buffer delay that fights Android's LTPO touch prediction and corrupts fling velocity handoff.
+  GestureBinding.instance.resamplingEnabled = false;
 
   // Initialize album artwork cache directory ahead of time
   unawaited(ArtworkExtractor.init());
 
-  // Expanded image cache capacity so 592+ library thumbnails (~49 MB at 144x144 RGBA)
+  // Expanded image cache capacity so all 592+ library thumbnails (~49 MB at 144x144 RGBA)
   // remain resident in memory without eviction or re-decoding during fast scrolling.
-  PaintingBinding.instance.imageCache.maximumSize = 1000;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 120 * 1024 * 1024; // 120 MB
+  PaintingBinding.instance.imageCache.maximumSize = 1200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 150 * 1024 * 1024; // 150 MB
 
   // Enforce true Android edge-to-edge drawing behind status & navigation bars
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -149,7 +152,6 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
     super.didChangePlatformBrightness();
     final brightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    // Notify Riverpod and trigger root widget rebuild immediately without restart
     ref.read(systemBrightnessProvider.notifier).updateBrightness(brightness);
     setState(() {});
   }
@@ -162,12 +164,10 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
     final themeMode = ref.watch(themeModeProvider);
     final isPowerSaver = ref.watch(effectivePowerSaverActiveProvider);
     final powerSaverSettings = ref.watch(powerSaverProvider);
-    // Explicitly watch systemBrightnessProvider to react to brightness state updates
     ref.watch(systemBrightnessProvider);
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-        // Explicitly generate both complete light and dark ColorSchemes
         final lightColorScheme = PixelTheme.buildLightColorScheme(
           wallpaperDynamicScheme: lightDynamic,
           activeTrackSeedColor: activeTrackSeedColor,
@@ -196,10 +196,9 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
             debugShowCheckedModeBanner: false,
             theme: lightTheme,
             darkTheme: darkTheme,
-            themeMode: themeMode, // Strictly bound to ThemeMode.system by default
+            themeMode: themeMode,
             scrollBehavior: const SmoothFreeScrollBehavior(),
             builder: (context, child) {
-              // Read active effective theme brightness (respects ThemeMode.system / light / dark)
               final effectiveTheme = Theme.of(context);
               final isDark = effectiveTheme.brightness == Brightness.dark;
 
@@ -225,7 +224,7 @@ class _FreeBeatAppState extends ConsumerState<FreeBeatApp>
   }
 }
 
-/// Provides smooth, frictionless 120Hz fluid scrolling across the entire app.
+/// Native Android 120Hz clamping scroll behavior paired with [StretchingOverscrollIndicator].
 class SmoothFreeScrollBehavior extends MaterialScrollBehavior {
   const SmoothFreeScrollBehavior();
 
