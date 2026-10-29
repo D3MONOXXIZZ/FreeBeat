@@ -30,7 +30,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         opaque: false,
         barrierColor: Colors.transparent,
         transitionDuration: const Duration(milliseconds: 320),
-        reverseTransitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 420),
         pageBuilder: (context, animation, secondaryAnimation) =>
             NowPlayingScreen(
           onOpenDspStudio: () {

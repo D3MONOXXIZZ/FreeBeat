@@ -179,7 +179,7 @@ void main() {
       expect(state.queue[2].id, 'track_3');
     });
 
-    test('addToQueue appends track to the end of queue', () {
+    test('addToQueue inserts user queued track at top of Up Next queue ahead of remaining playlist', () {
       final notifier = container.read(playbackProvider.notifier);
       notifier.state = PlaybackViewState(
         currentTrack: track1,
@@ -191,7 +191,9 @@ void main() {
 
       final state = container.read(playbackProvider);
       expect(state.queue.length, 3);
-      expect(state.queue.last.id, 'track_4');
+      expect(state.upNextQueue.first.id, 'track_4');
+      expect(state.hasUserQueuedTracks, isTrue);
+      expect(state.userQueueCount, 1);
     });
 
     test('reorderUpNext changes relative order of future items without disturbing current track', () {

@@ -69,7 +69,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     );
     _springResetController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 340),
     );
     _springResetController.addListener(() {
       if (_springResetAnim != null) {
@@ -82,7 +82,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
     _dismissController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 440),
     );
     _dismissController.addListener(() {
       if (_dismissAnim != null) {
@@ -105,7 +105,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     PixelHaptics.tick();
     final screenHeight = MediaQuery.of(context).size.height;
     final remaining = (screenHeight - _dragOffsetY).clamp(0.0, screenHeight);
-    final durationMs = (remaining / screenHeight * 240).round().clamp(150, 260);
+    final durationMs = (remaining / screenHeight * 460).round().clamp(360, 480);
 
     _dismissController.duration = Duration(milliseconds: durationMs);
     _dismissAnim = Tween<double>(
@@ -254,7 +254,10 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     final bassGain = ref.watch(powerampDspProvider.select((p) => p.bassGain));
     final isShuffle = ref.watch(playbackProvider.select((p) => p.isShuffle));
     final repeatMode = ref.watch(playbackProvider.select((p) => p.repeatMode));
-    final queueLength = ref.watch(playbackProvider.select((p) => p.upNextQueue.length));
+    final hasUserQueuedTracks =
+        ref.watch(playbackProvider.select((p) => p.hasUserQueuedTracks));
+    final userQueueCount =
+        ref.watch(playbackProvider.select((p) => p.userQueueCount));
     final hasActiveOptions = ref.watch(playbackProvider.select((p) =>
         p.isSleepTimerActive ||
         p.playbackSpeed != 1.0 ||
@@ -831,10 +834,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         child: _buildActionPill(
                           context: context,
                           icon: Icons.queue_music_rounded,
-                          label: queueLength > 0
-                              ? 'Queue ($queueLength)'
-                              : 'Queue',
-                          isActive: queueLength > 0,
+                          label: hasUserQueuedTracks
+                              ? (userQueueCount > 0
+                                  ? 'Queue ($userQueueCount)'
+                                  : 'Queue')
+                              : 'Up Next',
+                          isActive: hasUserQueuedTracks,
                           onTap: () => showQueueBottomSheet(context),
                         ),
                       ),

@@ -139,7 +139,8 @@ void main() {
       // Perform a downward swipe gesture
       await tester.drag(find.byIcon(Icons.keyboard_arrow_down_rounded), const Offset(0, 300));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
 
       // Card should smoothly slide down and pop the route
       expect(popped, isTrue);

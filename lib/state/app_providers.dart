@@ -1706,6 +1706,7 @@ class PlaybackViewState {
   const PlaybackViewState({
     required this.currentTrack,
     required this.queue,
+    this.userQueuedTrackIds = const [],
     this.sessionHistory = const [],
     this.isPlaying = false,
     this.positionMs = 42000,
@@ -1726,6 +1727,7 @@ class PlaybackViewState {
 
   final Track currentTrack;
   final List<Track> queue;
+  final List<String> userQueuedTrackIds;
   final List<Track> sessionHistory;
   final bool isPlaying;
   final int positionMs;
@@ -1764,6 +1766,16 @@ class PlaybackViewState {
     return queue.sublist(idx + 1);
   }
 
+  List<Track> get userQueuedTracks {
+    if (userQueuedTrackIds.isEmpty) return const [];
+    final idSet = userQueuedTrackIds.toSet();
+    return upNextQueue.where((t) => idSet.contains(t.id)).toList();
+  }
+
+  bool get hasUserQueuedTracks => userQueuedTracks.isNotEmpty;
+
+  int get userQueueCount => userQueuedTracks.length;
+
   int get activeLyricIndex {
     final lyrics = currentTrack.syncedLyrics;
     if (lyrics.isEmpty) return -1;
@@ -1800,6 +1812,7 @@ class PlaybackViewState {
   PlaybackViewState copyWith({
     Track? currentTrack,
     List<Track>? queue,
+    List<String>? userQueuedTrackIds,
     List<Track>? sessionHistory,
     bool? isPlaying,
     int? positionMs,
@@ -1822,6 +1835,7 @@ class PlaybackViewState {
     return PlaybackViewState(
       currentTrack: currentTrack ?? this.currentTrack,
       queue: queue ?? this.queue,
+      userQueuedTrackIds: userQueuedTrackIds ?? this.userQueuedTrackIds,
       sessionHistory: sessionHistory ?? this.sessionHistory,
       isPlaying: isPlaying ?? this.isPlaying,
       positionMs: positionMs ?? this.positionMs,
@@ -1931,6 +1945,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           final queueIds = state.queue.map((t) => t.id).take(100).toList();
           await prefs.setStringList('playback_last_queue_ids', queueIds);
         }
+        await prefs.setStringList(
+            'playback_user_queued_ids', state.userQueuedTrackIds);
       } catch (_) {}
     }());
   }
@@ -1978,6 +1994,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       final savedTrackId = prefs.getString('playback_last_track_id');
       final savedPosMs = prefs.getInt('playback_last_pos_ms') ?? state.positionMs;
       final savedQueueIds = prefs.getStringList('playback_last_queue_ids') ?? [];
+      final savedUserQueuedIds = prefs.getStringList('playback_user_queued_ids') ?? [];
 
       Track? targetTrack;
       // Prioritize currently active/paused track in memory
@@ -2033,6 +2050,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           currentTrack: current,
           queue: restoredQueue,
           positionMs: finalPos,
+          userQueuedTrackIds: state.userQueuedTrackIds.isNotEmpty
+              ? state.userQueuedTrackIds
+              : savedUserQueuedIds,
         );
         _syncForegroundNotification(track: current, isPlaying: false);
       } else {
@@ -2043,6 +2063,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         state = state.copyWith(
           queue: restoredQueue,
           currentTrack: updatedCurrent,
+          userQueuedTrackIds: state.userQueuedTrackIds.isNotEmpty
+              ? state.userQueuedTrackIds
+              : savedUserQueuedIds,
         );
       }
     } catch (e) {
@@ -2377,9 +2400,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           return;
         }
         if (newTrack.id != state.currentTrack.id) {
+          final updatedQueuedIds = state.userQueuedTrackIds
+              .where((id) => id != newTrack.id)
+              .toList();
           state = state.copyWith(
             currentTrack: newTrack,
             positionMs: 0,
+            userQueuedTrackIds: updatedQueuedIds,
           );
           _syncForegroundNotification(track: newTrack, isPlaying: true);
           _savePlaybackState();
@@ -2406,9 +2433,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             (t) => t.id == playingTrack.id,
             orElse: () => playingTrack,
           );
+          final updatedQueuedIds = state.userQueuedTrackIds
+              .where((id) => id != foundTrack.id)
+              .toList();
           state = state.copyWith(
             currentTrack: foundTrack,
             positionMs: 0,
+            userQueuedTrackIds: updatedQueuedIds,
           );
           _syncForegroundNotification(track: foundTrack, isPlaying: true);
           _savePlaybackState();
@@ -2511,9 +2542,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
       // Update state to the new track so that NowPlayingScreen, MiniPlayer,
       // and Android notification immediately show the new track and progress from 0:00:
+      final updatedQueuedIds = state.userQueuedTrackIds
+          .where((id) => id != freshNextTrack.id)
+          .toList();
       state = state.copyWith(
         currentTrack: freshNextTrack,
         positionMs: 0,
+        userQueuedTrackIds: updatedQueuedIds,
       );
       _syncForegroundNotification(track: freshNextTrack, isPlaying: true);
       _savePlaybackState();
@@ -3111,7 +3146,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             : sanitizedTracks.first);
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
-    state = state.copyWith(queue: sanitizedTracks, currentTrack: current);
+    state = state.copyWith(
+      queue: sanitizedTracks,
+      currentTrack: current,
+      userQueuedTrackIds: const [],
+    );
     _savePlaybackState();
   }
 
@@ -3209,9 +3248,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     _isTransitioningTrack = true;
     _isPlayPending = true;
 
+    final updatedQueuedIds = newQueue != null
+        ? const <String>[]
+        : state.userQueuedTrackIds
+            .where((id) => id != effectiveTrack.id)
+            .toList();
+
     state = state.copyWith(
       currentTrack: effectiveTrack,
       queue: queueToUse,
+      userQueuedTrackIds: updatedQueuedIds,
       sessionHistory: updatedHistory,
       positionMs: 0,
       bufferedPositionMs: (effectiveTrack.durationMs * 0.35).round(),
@@ -3238,6 +3284,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
       state = state.copyWith(
         currentTrack: effectiveTrack,
         queue: queueToUse,
+        userQueuedTrackIds: updatedQueuedIds,
         isPlaying: true,
         isShuffle: targetShuffle,
       );
@@ -3330,7 +3377,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         final nextIdx = _activePlayer!.nextIndex;
         if (nextIdx != null && nextIdx >= 0 && nextIdx < state.queue.length) {
           final nextTrack = state.queue[nextIdx];
-          state = state.copyWith(currentTrack: nextTrack, positionMs: 0);
+          final updatedQueuedIds = state.userQueuedTrackIds
+              .where((id) => id != nextTrack.id)
+              .toList();
+          state = state.copyWith(
+            currentTrack: nextTrack,
+            positionMs: 0,
+            userQueuedTrackIds: updatedQueuedIds,
+          );
           _syncForegroundNotification(track: nextTrack, isPlaying: true);
           _savePlaybackState();
         }
@@ -3514,14 +3568,19 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
-    state = state.copyWith(queue: newQueue);
+    final updatedQueuedIds =
+        state.userQueuedTrackIds.where((id) => id != trackId).toList();
+    state = state.copyWith(
+      queue: newQueue,
+      userQueuedTrackIds: updatedQueuedIds,
+    );
   }
 
   void playNext(Track track) {
     PixelHaptics.tick();
-    final currentIdx =
-        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
     final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
+    final currentIdx =
+        withoutTrack.indexWhere((t) => t.id == state.currentTrack.id);
     final insertIdx = currentIdx == -1
         ? 0
         : (currentIdx + 1).clamp(0, withoutTrack.length);
@@ -3531,28 +3590,58 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
-    state = state.copyWith(queue: newQueue);
+    final updatedQueuedIds = [
+      track.id,
+      ...state.userQueuedTrackIds.where((id) => id != track.id),
+    ];
+    state = state.copyWith(
+      queue: newQueue,
+      userQueuedTrackIds: updatedQueuedIds,
+    );
   }
 
   void addToQueue(Track track) {
     PixelHaptics.tick();
     final withoutTrack = state.queue.where((t) => t.id != track.id).toList();
+    final currentIdx =
+        withoutTrack.indexWhere((t) => t.id == state.currentTrack.id);
+    int userQueueCount = 0;
+    if (currentIdx != -1) {
+      for (final t in withoutTrack.sublist(currentIdx + 1)) {
+        if (state.userQueuedTrackIds.contains(t.id)) {
+          userQueueCount++;
+        } else {
+          break;
+        }
+      }
+    }
+    final insertIdx = currentIdx == -1
+        ? 0
+        : (currentIdx + 1 + userQueueCount).clamp(0, withoutTrack.length);
+    final newQueue = List<Track>.from(withoutTrack)..insert(insertIdx, track);
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
     if (_unshuffledQueue != null) {
       _unshuffledQueue = [..._unshuffledQueue!.where((t) => t.id != track.id), track];
     }
-    state = state.copyWith(queue: [...withoutTrack, track]);
+    final updatedQueuedIds = [
+      ...state.userQueuedTrackIds.where((id) => id != track.id),
+      track.id,
+    ];
+    state = state.copyWith(
+      queue: newQueue,
+      userQueuedTrackIds: updatedQueuedIds,
+    );
   }
 
   void playNextMultiple(List<Track> tracks) {
     if (tracks.isEmpty) return;
     PixelHaptics.tick();
     final trackIds = tracks.map((t) => t.id).toSet();
-    final currentIdx =
-        state.queue.indexWhere((t) => t.id == state.currentTrack.id);
     final withoutTracks =
         state.queue.where((t) => !trackIds.contains(t.id)).toList();
+    final currentIdx =
+        withoutTracks.indexWhere((t) => t.id == state.currentTrack.id);
     final insertIdx = currentIdx == -1
         ? 0
         : (currentIdx + 1).clamp(0, withoutTracks.length);
@@ -3562,7 +3651,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     }
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
-    state = state.copyWith(queue: newQueue);
+    final updatedQueuedIds = [
+      ...tracks.map((t) => t.id),
+      ...state.userQueuedTrackIds.where((id) => !trackIds.contains(id)),
+    ];
+    state = state.copyWith(
+      queue: newQueue,
+      userQueuedTrackIds: updatedQueuedIds,
+    );
   }
 
   void addToQueueMultiple(List<Track> tracks) {
@@ -3571,12 +3667,35 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final trackIds = tracks.map((t) => t.id).toSet();
     final withoutTracks =
         state.queue.where((t) => !trackIds.contains(t.id)).toList();
+    final currentIdx =
+        withoutTracks.indexWhere((t) => t.id == state.currentTrack.id);
+    int userQueueCount = 0;
+    if (currentIdx != -1) {
+      for (final t in withoutTracks.sublist(currentIdx + 1)) {
+        if (state.userQueuedTrackIds.contains(t.id)) {
+          userQueueCount++;
+        } else {
+          break;
+        }
+      }
+    }
+    final insertIdx = currentIdx == -1
+        ? 0
+        : (currentIdx + 1 + userQueueCount).clamp(0, withoutTracks.length);
+    final newQueue = List<Track>.from(withoutTracks)..insertAll(insertIdx, tracks);
     _loadedQueueSignature = null;
     _preloadedTrackId = null;
     if (_unshuffledQueue != null) {
       _unshuffledQueue = [..._unshuffledQueue!.where((t) => !trackIds.contains(t.id)), ...tracks];
     }
-    state = state.copyWith(queue: [...withoutTracks, ...tracks]);
+    final updatedQueuedIds = [
+      ...state.userQueuedTrackIds.where((id) => !trackIds.contains(id)),
+      ...tracks.map((t) => t.id),
+    ];
+    state = state.copyWith(
+      queue: newQueue,
+      userQueuedTrackIds: updatedQueuedIds,
+    );
   }
 
   void clearUpNext() {
@@ -3588,7 +3707,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     if (_unshuffledQueue != null) {
       _unshuffledQueue = [state.currentTrack];
     }
-    state = state.copyWith(queue: [state.currentTrack]);
+    state = state.copyWith(
+      queue: [state.currentTrack],
+      userQueuedTrackIds: const [],
+    );
   }
 
   void shuffleRemaining() {
@@ -3607,6 +3729,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
 
   Future<void> handleTracksRemoved(List<String> trackIds) async {
     final idSet = trackIds.toSet();
+    final updatedQueuedIds =
+        state.userQueuedTrackIds.where((id) => !idSet.contains(id)).toList();
     final newQueue = state.queue.where((t) => !idSet.contains(t.id)).toList();
     if (idSet.contains(state.currentTrack.id)) {
       if (newQueue.isNotEmpty) {
@@ -3620,6 +3744,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
             queue: newQueue,
             positionMs: 0,
             bufferedPositionMs: 0,
+            userQueuedTrackIds: updatedQueuedIds,
           );
           _savePlaybackState();
         }
@@ -3635,12 +3760,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           queue: const [],
           positionMs: 0,
           bufferedPositionMs: 0,
+          userQueuedTrackIds: const [],
         );
         _syncForegroundNotification(isPlaying: false);
         _savePlaybackState();
       }
     } else {
-      state = state.copyWith(queue: newQueue);
+      state = state.copyWith(
+        queue: newQueue,
+        userQueuedTrackIds: updatedQueuedIds,
+      );
       _savePlaybackState();
     }
   }
