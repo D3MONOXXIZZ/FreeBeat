@@ -2669,7 +2669,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     });
   }
 
+  void _syncActiveSessionDsp() {
+    final sessionId = _activePlayer?.androidAudioSessionId;
+    if (sessionId != null && sessionId > 0) {
+      final dsp = _ref.read(powerampDspServiceProvider);
+      dsp.attachAudioSession(sessionId);
+      dsp.applyDspState(_ref.read(powerampDspProvider));
+    }
+  }
+
   void _syncForegroundNotification({Track? track, bool? isPlaying}) {
+    _syncActiveSessionDsp();
     final t = track ?? state.currentTrack;
     if (t.id.isEmpty) return;
     final playing = isPlaying ?? state.isPlaying;
