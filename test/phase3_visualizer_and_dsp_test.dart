@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:freebeat/core/models/audio_quality_settings.dart';
 import 'package:freebeat/core/models/cloud_account.dart';
 import 'package:freebeat/core/models/poweramp_dsp_state.dart';
@@ -41,6 +42,7 @@ void main() {
     late PowerampDspNotifier notifier;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({});
       mockDspService = MockDspService();
       memoryDb = LibraryDatabase();
       notifier = PowerampDspNotifier(mockDspService, memoryDb);

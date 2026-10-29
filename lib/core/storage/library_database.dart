@@ -15,12 +15,7 @@ class LibraryDatabase {
   final List<Track> _memoryTracks = [];
   final List<Playlist> _memoryPlaylists = [];
   final List<DspPreset> _memoryCustomPresets = [];
-  final Map<String, String> _memoryDeviceProfiles = {
-    'BLUETOOTH': 'harman_target',
-    'USB_DAC': 'flat',
-    'WIRED_HEADPHONES': 'hifi_warm_tube',
-    'BUILTIN_SPEAKER': 'vocal',
-  };
+  final Map<String, String> _memoryDeviceProfiles = {};
 
   Completer<void>? _initCompleter;
 

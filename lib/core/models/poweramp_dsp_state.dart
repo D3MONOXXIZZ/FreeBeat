@@ -317,12 +317,7 @@ class PowerampDspState {
     this.bs2bCrossfeedMode = Bs2bCrossfeedMode.off,
     this.dvcHeadroomDb = -3.0,
     this.bitPerfectDirectMode = false,
-    this.deviceProfiles = const {
-      'BLUETOOTH': 'harman_target',
-      'USB_DAC': 'flat',
-      'WIRED_HEADPHONES': 'hifi_warm_tube',
-      'BUILTIN_SPEAKER': 'vocal',
-    },
+    this.deviceProfiles = const {},
   });
 
   final bool eqEnabled;
@@ -529,12 +524,7 @@ class PowerampDspState {
             return MapEntry(k, val);
           },
         ) ??
-        const {
-          'BLUETOOTH': 'harman_target',
-          'USB_DAC': 'flat',
-          'WIRED_HEADPHONES': 'hifi_warm_tube',
-          'BUILTIN_SPEAKER': 'vocal',
-        };
+        const {};
 
     String activePreset = map['activePresetId'] as String? ?? 'custom';
     if (activePreset == 'vocal_clarity') activePreset = 'vocal';

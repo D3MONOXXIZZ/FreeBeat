@@ -1249,15 +1249,32 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     _loadPersistedState();
   }
 
+  static const String _dspPrefsKey = 'freebeat_persisted_dsp_state';
   final PowerampDspService _dspService;
   final LibraryDatabase? _db;
   final Ref? _ref;
   final List<DspPreset> _customPresets = [];
+  Timer? _dspSaveThrottleTimer;
 
   List<DspPreset> get allPresets => [...kBuiltInDspPresets, ..._customPresets];
   List<DspPreset> get customPresets => List.unmodifiable(_customPresets);
 
   Future<void> _loadPersistedState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedDspJson = prefs.getString(_dspPrefsKey);
+      if (savedDspJson != null && savedDspJson.isNotEmpty) {
+        final restored = PowerampDspState.fromJsonString(savedDspJson);
+        state = restored.copyWith(
+          deviceProfiles: {
+            ...restored.deviceProfiles,
+            ...state.deviceProfiles,
+          },
+        );
+        _dspService.applyDspState(state);
+      }
+    } catch (_) {}
+
     if (_db == null) return;
     try {
       final savedPresets = await _db.loadCustomPresets();
@@ -1267,8 +1284,27 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
       }
       final savedProfiles = await _db.loadDeviceProfiles();
       if (savedProfiles.isNotEmpty) {
-        state = state.copyWith(deviceProfiles: savedProfiles);
+        state = state.copyWith(
+          deviceProfiles: {
+            ...state.deviceProfiles,
+            ...savedProfiles,
+          },
+        );
       }
+    } catch (_) {}
+  }
+
+  void _scheduleSaveToPrefs() {
+    _dspSaveThrottleTimer?.cancel();
+    _dspSaveThrottleTimer = Timer(const Duration(milliseconds: 250), () {
+      _saveToPrefs();
+    });
+  }
+
+  Future<void> _saveToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_dspPrefsKey, state.toJsonString());
     } catch (_) {}
   }
 
@@ -1276,6 +1312,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   bool _dspSyncPending = false;
 
   void _syncToHardware({bool immediate = false}) {
+    _scheduleSaveToPrefs();
     if (immediate) {
       _dspThrottleTimer?.cancel();
       _dspThrottleTimer = null;
@@ -1301,6 +1338,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   void setVisualizerMode(VisualizerMode mode) {
     PixelHaptics.tick();
     state = state.copyWith(visualizerMode: mode);
+    _scheduleSaveToPrefs();
   }
 
   void setBs2bCrossfeedMode(Bs2bCrossfeedMode mode) {
@@ -1351,6 +1389,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
   void toggleParametricMode(bool isParametric) {
     PixelHaptics.tick();
     state = state.copyWith(isParametricMode: isParametric);
+    _scheduleSaveToPrefs();
   }
 
   void setPreampDb(double newDb) {
@@ -1646,6 +1685,7 @@ class PowerampDspNotifier extends StateNotifier<PowerampDspState> {
     final updated = Map<String, String>.from(state.deviceProfiles);
     updated[routeKey] = presetId;
     state = state.copyWith(deviceProfiles: updated);
+    _scheduleSaveToPrefs();
     await _db?.saveDeviceProfile(routeKey, presetId);
     PixelHaptics.tick();
   }
@@ -1681,7 +1721,9 @@ final powerampDspProvider =
         prev?.routeType != next.routeType ||
         prev?.isUsbDac != next.isUsbDac ||
         prev?.isBluetooth != next.isBluetooth) {
-      notifier.handleAudioRouteChanged(next);
+      if (prev != null) {
+        notifier.handleAudioRouteChanged(next);
+      }
       try {
         ref.read(powerampDspServiceProvider).updatePlaybackNotification(
               outputDevice: next.deviceName,
