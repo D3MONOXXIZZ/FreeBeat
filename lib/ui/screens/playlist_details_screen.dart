@@ -6,6 +6,7 @@ import '../../core/models/playlist.dart';
 import '../../core/models/track.dart';
 import '../../services/audio/download_queue_manager.dart';
 import '../../services/haptics/pixel_haptics.dart';
+import '../../services/metadata/artist_helper.dart';
 import '../../services/playlist/playlist_missing_tracks_sync_service.dart';
 import '../../services/playlist/playlist_sync_service.dart';
 import '../../state/app_providers.dart';
@@ -42,6 +43,53 @@ class PlaylistDetailsScreen extends ConsumerStatefulWidget {
 class _PlaylistDetailsScreenState
     extends ConsumerState<PlaylistDetailsScreen> {
   bool _isSyncing = false;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _startSearch() {
+    PixelHaptics.tick();
+    setState(() {
+      _isSearching = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _stopSearch() {
+    PixelHaptics.tick();
+    _searchFocusNode.unfocus();
+    _searchController.clear();
+    setState(() {
+      _isSearching = false;
+      _searchQuery = '';
+    });
+  }
+
+  bool _matchesQuery(Track track, String query) {
+    if (query.isEmpty) return true;
+    final q = query.toLowerCase();
+    if (track.title.toLowerCase().contains(q)) return true;
+    if (track.artist.toLowerCase().contains(q)) return true;
+    if (ArtistHelper.trackBelongsToArtist(track, q)) return true;
+    if (track.album.toLowerCase().contains(q)) return true;
+    if (track.genre != null && track.genre!.toLowerCase().contains(q)) return true;
+    if (track.year != null && track.year.toString().contains(q)) return true;
+    if (track.codec.toLowerCase().contains(q)) return true;
+    if ((q == 'hires' || q == 'hi-res' || q == '24-bit') && track.isHiRes) return true;
+    return false;
+  }
 
   String _formatLastSynced(DateTime? dt) {
     if (dt == null) return 'Never synced';
@@ -724,42 +772,142 @@ class _PlaylistDetailsScreenState
         .whereType<Track>()
         .toList();
 
+    final query = _searchQuery.trim().toLowerCase();
+    final isFiltering = _isSearching && query.isNotEmpty;
+    final displayedTracks = isFiltering
+        ? playlistTracks.where((t) => _matchesQuery(t, query)).toList()
+        : playlistTracks;
+
     final hasActiveTrack = currentTrackId.isNotEmpty;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          CustomScrollView(
-            scrollCacheExtent: const ScrollCacheExtent.pixels(450),
-            physics: buildSuperSmoothScrollPhysics(),
-            slivers: [
-          // 1. Sleek App Bar
-          SliverAppBar(
-            pinned: true,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: () {
-                PixelHaptics.tick();
-                Navigator.of(context).pop();
-              },
-            ),
-            actions: [
-              Theme(
-                data: Theme.of(context).copyWith(
-                  popupMenuTheme: PopupMenuThemeData(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    elevation: 6,
-                    color: cs.surfaceContainerHigh,
+    return PopScope(
+      canPop: !_isSearching,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isSearching) {
+          _stopSearch();
+        }
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            CustomScrollView(
+              scrollCacheExtent: const ScrollCacheExtent.pixels(450),
+              physics: buildSuperSmoothScrollPhysics(),
+              slivers: [
+            // 1. Sleek App Bar
+            SliverAppBar(
+              pinned: true,
+              automaticallyImplyLeading: false,
+              titleSpacing: _isSearching ? 0 : NavigationToolbar.kMiddleSpacing,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: _isSearching ? 'Close search' : 'Back',
+                onPressed: () {
+                  PixelHaptics.tick();
+                  if (_isSearching) {
+                    _stopSearch();
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),
+              title: _isSearching
+                  ? Container(
+                      height: 44,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.70),
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(
+                          color: cs.primary.withValues(alpha: 0.5),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        autofocus: true,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (val) {
+                          setState(() {
+                            _searchQuery = val;
+                          });
+                        },
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          hintText: 'Search in "${livePlaylist.title}"...',
+                          hintStyle: TextStyle(
+                            fontSize: 13.5,
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w400,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 20,
+                            color: cs.primary,
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, size: 18),
+                                  color: cs.onSurfaceVariant,
+                                  tooltip: 'Clear query',
+                                  onPressed: () {
+                                    PixelHaptics.tick();
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                        ),
+                      ),
+                    )
+                  : null,
+              actions: [
+                if (_isSearching)
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: 'Cancel search',
+                    onPressed: _stopSearch,
+                  )
+                else ...[
+                  IconButton(
+                    icon: const Icon(Icons.search_rounded),
+                    tooltip: 'Search in Playlist',
+                    onPressed: playlistTracks.isNotEmpty ? _startSearch : null,
                   ),
-                ),
-                child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.menu_rounded, size: 26),
-                  tooltip: 'Playlist Options',
-                  onSelected: (value) {
-                    PixelHaptics.tick();
-                    switch (value) {
+                  Theme(
+                    data: Theme.of(context).copyWith(
+                      popupMenuTheme: PopupMenuThemeData(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        elevation: 6,
+                        color: cs.surfaceContainerHigh,
+                      ),
+                    ),
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(Icons.menu_rounded, size: 26),
+                      tooltip: 'Playlist Options',
+                      onSelected: (value) {
+                        PixelHaptics.tick();
+                        switch (value) {
+                          case 'search':
+                            _startSearch();
+                            break;
                       case 'sync':
                         _handleSyncPlaylist(livePlaylist);
                         break;
@@ -795,6 +943,22 @@ class _PlaylistDetailsScreenState
                     }
                   },
                   itemBuilder: (ctx) => [
+                    if (playlistTracks.isNotEmpty)
+                      PopupMenuItem(
+                        value: 'search',
+                        child: Row(
+                          children: [
+                            Icon(Icons.search_rounded, color: cs.primary, size: 20),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Find in Playlist',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     if (!livePlaylist.isSmart) ...[
                       PopupMenuItem(
                         value: 'sync',
@@ -916,131 +1080,224 @@ class _PlaylistDetailsScreenState
               ),
               const SizedBox(width: 8),
             ],
-          ),
+          ],
+        ),
 
           // Cloud Sync Progress Banner (when actively syncing this playlist)
-          SliverToBoxAdapter(
-            child: CloudSyncProgressBanner(playlistId: livePlaylist.id),
-          ),
+          if (!_isSearching)
+            SliverToBoxAdapter(
+              child: CloudSyncProgressBanner(playlistId: livePlaylist.id),
+            ),
 
           // 2. Playlist Header & Cover Art
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-              child: Column(
-                children: [
-                  GenerativePlaylistCover(
-                    playlist: livePlaylist,
-                    tracks: playlistTracks,
-                    size: 170,
-                    borderRadius: 28,
-                    showBadge: true,
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    livePlaylist.title,
-                    textAlign: TextAlign.center,
-                    style: textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
+          if (!_isSearching)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                child: Column(
+                  children: [
+                    GenerativePlaylistCover(
+                      playlist: livePlaylist,
+                      tracks: playlistTracks,
+                      size: 170,
+                      borderRadius: 28,
+                      showBadge: true,
                     ),
-                  ),
-                  if (livePlaylist.description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 18),
                     Text(
-                      livePlaylist.description,
+                      livePlaylist.title,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
+                      style: textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 6),
-                  Text(
-                    '${playlistTracks.length} tracks • ${_formatTotalDuration(playlistTracks)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: cs.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // 3. Play & Shuffle Buttons Row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: playlistTracks.isNotEmpty
-                              ? () {
-                                  PixelHaptics.playPauseToggle();
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(
-                                        playlistTracks.first,
-                                        newQueue: playlistTracks,
-                                      );
-                                }
-                              : null,
-                          icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text(
-                            'Play All',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: playlistTracks.isNotEmpty
-                              ? () {
-                                  PixelHaptics.playPauseToggle();
-                                  final shuffled =
-                                      List<Track>.from(playlistTracks)
-                                        ..shuffle();
-                                  ref
-                                      .read(playbackProvider.notifier)
-                                      .playTrack(
-                                        shuffled.first,
-                                        newQueue: shuffled,
-                                        isShuffle: true,
-                                      );
-                                }
-                              : null,
-                          icon: const Icon(Icons.shuffle_rounded, size: 20),
-                          label: const Text(
-                            'Shuffle',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
+                    if (livePlaylist.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        livePlaylist.description,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
-                  ),
-                  // 4. Download, Import, and Sync Small Action Pills
-                  _buildActionPillsRow(context, cs, livePlaylist, playlistTracks),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      '${playlistTracks.length} tracks • ${_formatTotalDuration(playlistTracks)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // 3. Play & Shuffle Buttons Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: playlistTracks.isNotEmpty
+                                ? () {
+                                    PixelHaptics.playPauseToggle();
+                                    ref
+                                        .read(playbackProvider.notifier)
+                                        .playTrack(
+                                          playlistTracks.first,
+                                          newQueue: playlistTracks,
+                                        );
+                                  }
+                                : null,
+                            icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                            label: const Text(
+                              'Play All',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            onPressed: playlistTracks.isNotEmpty
+                                ? () {
+                                    PixelHaptics.playPauseToggle();
+                                    final shuffled =
+                                        List<Track>.from(playlistTracks)
+                                          ..shuffle();
+                                    ref
+                                        .read(playbackProvider.notifier)
+                                        .playTrack(
+                                          shuffled.first,
+                                          newQueue: shuffled,
+                                          isShuffle: true,
+                                        );
+                                  }
+                                : null,
+                            icon: const Icon(Icons.shuffle_rounded, size: 20),
+                            label: const Text(
+                              'Shuffle',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // 4. Download, Import, and Sync Small Action Pills
+                    _buildActionPillsRow(context, cs, livePlaylist, playlistTracks),
+
+                    // 5. Quick Track Search Bar Trigger
+                    if (playlistTracks.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(100),
+                            onTap: _startSearch,
+                            child: Container(
+                              height: 44,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHigh.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(
+                                  color: cs.outlineVariant.withValues(alpha: 0.35),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.search_rounded,
+                                      size: 20, color: cs.primary),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Find in playlist...',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.tune_rounded,
+                                    size: 16,
+                                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
+
+          // Search Status / Count Header
+          if (_isSearching)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.filter_list_rounded,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _searchQuery.trim().isEmpty
+                            ? 'Showing all ${playlistTracks.length} tracks in "${livePlaylist.title}"'
+                            : 'Found ${displayedTracks.length} of ${playlistTracks.length} tracks',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (_searchQuery.trim().isNotEmpty)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        child: const Text('Reset'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
 
           // 4. Track List
           if (playlistTracks.isEmpty)
@@ -1130,13 +1387,56 @@ class _PlaylistDetailsScreenState
                 ),
               ),
             )
+          else if (_isSearching && displayedTracks.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.search_off_rounded,
+                          size: 48, color: cs.outlineVariant),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No matches found',
+                        style: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'No songs in "${livePlaylist.title}" match "$_searchQuery"',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.tonalIcon(
+                        onPressed: () {
+                          PixelHaptics.tick();
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        label: const Text('Clear Query'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           else
             SuperSliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final track = playlistTracks[index];
+                  final track = displayedTracks[index];
                   final isCurrent = currentTrackId == track.id;
                   final isPlaying = isCurrent && isPlaybackPlaying;
+                  final originalIndex = playlistTracks.indexOf(track);
+                  final displayIndex =
+                      originalIndex != -1 ? originalIndex + 1 : index + 1;
 
                   return SwipeToQueueWrapper(
                     key: Key('pl_${livePlaylist.id}_${track.id}_$index'),
@@ -1149,7 +1449,9 @@ class _PlaylistDetailsScreenState
                           PixelHaptics.tick();
                           ref.read(playbackProvider.notifier).playTrack(
                                 track,
-                                newQueue: playlistTracks,
+                                newQueue: _isSearching && _searchQuery.trim().isNotEmpty
+                                    ? displayedTracks
+                                    : playlistTracks,
                               );
                         },
                         child: Padding(
@@ -1163,7 +1465,7 @@ class _PlaylistDetailsScreenState
                               SizedBox(
                                 width: 28,
                                 child: Text(
-                                  '${index + 1}',
+                                  '$displayIndex',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -1227,7 +1529,7 @@ class _PlaylistDetailsScreenState
                     ),
                   );
                 },
-                childCount: playlistTracks.length,
+                childCount: displayedTracks.length,
               ),
             ),
 
@@ -1236,7 +1538,7 @@ class _PlaylistDetailsScreenState
           ),
         ],
       ),
-      if (hasActiveTrack)
+      if (hasActiveTrack && MediaQuery.of(context).viewInsets.bottom == 0)
         Positioned(
           left: 0,
           right: 0,
@@ -1247,6 +1549,7 @@ class _PlaylistDetailsScreenState
         ),
     ],
   ),
+),
 );
   }
 }
