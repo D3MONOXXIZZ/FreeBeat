@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="28dp"
+    android:viewportWidth="200"
+    android:viewportHeight="28">
+    <path android:fillColor="@color/widget_primary" android:pathData="M2,12 A2,2 0 0,1 6,12 V26 A2,2 0 0,1 2,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M12,16 A2,2 0 0,1 16,16 V26 A2,2 0 0,1 12,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M22,22 A2,2 0 0,1 26,22 V26 A2,2 0 0,1 22,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M32,18 A2,2 0 0,1 36,18 V26 A2,2 0 0,1 32,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M42,10 A2,2 0 0,1 46,10 V26 A2,2 0 0,1 42,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M52,4 A2,2 0 0,1 56,4 V26 A2,2 0 0,1 52,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M62,8 A2,2 0 0,1 66,8 V26 A2,2 0 0,1 62,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M72,16 A2,2 0 0,1 76,16 V26 A2,2 0 0,1 72,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M82,22 A2,2 0 0,1 86,22 V26 A2,2 0 0,1 82,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M92,14 A2,2 0 0,1 96,14 V26 A2,2 0 0,1 92,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M102,6 A2,2 0 0,1 106,6 V26 A2,2 0 0,1 102,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M112,4 A2,2 0 0,1 116,4 V26 A2,2 0 0,1 112,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M122,12 A2,2 0 0,1 126,12 V26 A2,2 0 0,1 122,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M132,20 A2,2 0 0,1 136,20 V26 A2,2 0 0,1 132,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M142,24 A2,2 0 0,1 146,24 V26 A2,2 0 0,1 142,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M152,16 A2,2 0 0,1 156,16 V26 A2,2 0 0,1 152,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M162,10 A2,2 0 0,1 166,10 V26 A2,2 0 0,1 162,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M172,6 A2,2 0 0,1 176,6 V26 A2,2 0 0,1 172,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M182,12 A2,2 0 0,1 186,12 V26 A2,2 0 0,1 182,26 Z" />
+    <path android:fillColor="@color/widget_primary" android:pathData="M192,18 A2,2 0 0,1 196,18 V26 A2,2 0 0,1 192,26 Z" />
+</vector>

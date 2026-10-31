@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pre-API 31 Dark Mode Fallback (Rich Warm Espresso / Terracotta Theme) -->
+    <color name="widget_surface">#18120F</color>
+    <color name="widget_surface_container">#211A16</color>
+    <color name="widget_surface_container_high">#2A201B</color>
+    <color name="widget_surface_container_highest">#382B24</color>
+
+    <color name="widget_primary">#FFB596</color>
+    <color name="widget_on_primary">#552200</color>
+    <color name="widget_primary_container">#554138</color>
+    <color name="widget_on_primary_container">#FFDBCA</color>
+
+    <color name="widget_on_surface">#FBEAE3</color>
+    <color name="widget_on_surface_variant">#D8C2B8</color>
+    <color name="widget_on_surface_muted">#9E8C84</color>
+    <color name="widget_outline">#554138</color>
+    <color name="widget_outline_variant">#3A2B24</color>
+    <color name="widget_card_stroke">#26FFFFFF</color>
+
+    <color name="widget_badge_bg">#443229</color>
+    <color name="widget_badge_text">#FFDBCA</color>
+
+    <!-- VU Meter Dial & Needle Theming (Dark Mode) -->
+    <color name="widget_vu_dial_glow">#4A3528</color>
+    <color name="widget_vu_needle">#FFB596</color>
+    <color name="widget_vu_needle_tip">#FF8D5D</color>
+
+    <color name="widget_progress_track">#33251E</color>
+    <color name="widget_progress_indicator">#FFB596</color>
+    <color name="widget_icon_active">#FFB596</color>
+    <color name="widget_icon_inactive">#A89891</color>
+</resources>

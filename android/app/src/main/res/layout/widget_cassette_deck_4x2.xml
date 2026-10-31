@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_expressive_card"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- CASSETTE SHELL (EXPANDED TO MATCH REFERENCE IMAGE 5) -->
+    <LinearLayout
+        android:id="@+id/cassette_shell"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_cassette_shell"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <!-- Top Label Sticker in Authentic Vintage Ivory / Accent Parchment -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_cassette_label"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="72dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.08"
+                    android:text="TYPE II • HIGH BIAS (CrO2)"
+                    android:textColor="#593D31"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="marquee"
+                    android:fontFamily="monospace"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:singleLine="true"
+                    android:text="SIDE A • THOUSAND FACES"
+                    android:textColor="#261812"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 90 MIN Badge -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="#2E1C15"
+                android:fontFamily="monospace"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="90 MIN"
+                android:textColor="#FBE5D8"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <!-- Expanded Tape Window with Prominent Dual Rotating Spools -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="62dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_cassette_window"
+            android:paddingHorizontal="20dp">
+
+            <!-- Left Spool Assembly -->
+            <RelativeLayout
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true">
+
+                <ImageView
+                    android:id="@+id/spool_left"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="Left Spool"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cassette_spool"
+                    android:visibility="visible" />
+            </RelativeLayout>
+
+            <!-- Center Tape Bridge with Monospace Digital Tape Counter -->
+            <TextView
+                android:id="@+id/widget_time_current"
+                android:layout_width="80dp"
+                android:layout_height="24dp"
+                android:layout_centerInParent="true"
+                android:background="#261A14"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:letterSpacing="0.12"
+                android:text="00:00"
+                android:textColor="#A89891"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <!-- Right Spool Assembly -->
+            <RelativeLayout
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true">
+
+                <ImageView
+                    android:id="@+id/spool_right"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="Right Spool"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cassette_spool"
+                    android:visibility="visible" />
+            </RelativeLayout>
+        </RelativeLayout>
+    </LinearLayout>
+
+    <!-- BOTTOM SECTION: HARDWARE TRANSPORT CONTROLS (EXACT TO REFERENCE IMAGE 5) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- Shell Label on Left -->
+        <TextView
+            android:id="@+id/widget_artist"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="FreeBeat Cassette Deck"
+            android:textColor="@color/widget_on_surface_variant"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <!-- Tactile Deck Buttons Matching Reference Image 5 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Rewind Button [◀◀] RW -->
+            <LinearLayout
+                android:id="@+id/widget_btn_prev"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_cassette_btn"
+                android:gravity="center"
+                android:paddingHorizontal="12dp">
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="Rewind"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cassette_rew"
+                    android:tint="@color/widget_primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:fontFamily="monospace"
+                    android:text="RW"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Large Play/Pause Tactile Button in Glowing Accent -->
+            <LinearLayout
+                android:id="@+id/widget_btn_play_pause"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_cassette_play_btn"
+                android:gravity="center"
+                android:paddingHorizontal="16dp">
+
+                <ImageView
+                    android:id="@+id/widget_btn_play_pause_icon"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="Play/Pause"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cassette_pause"
+                    android:tint="@color/widget_on_primary" />
+
+                <TextView
+                    android:id="@+id/widget_btn_play_pause_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:fontFamily="monospace"
+                    android:text="PAUSE"
+                    android:textColor="@color/widget_on_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Fast Forward Button FF [▶▶] -->
+            <LinearLayout
+                android:id="@+id/widget_btn_next"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_cassette_btn"
+                android:gravity="center"
+                android:paddingHorizontal="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="5dp"
+                    android:fontFamily="monospace"
+                    android:text="FF"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="Fast Forward"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_cassette_fwd"
+                    android:tint="@color/widget_primary" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

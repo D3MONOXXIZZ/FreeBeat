@@ -273,6 +273,10 @@ class MainActivity : FlutterActivity() {
                             val repeatMode = (call.argument<Number>("repeatMode") ?: 0).toInt()
                             val isPowerSaver = call.argument<Boolean>("isPowerSaver") ?: false
                             val isCurrentTrackLocal = call.argument<Boolean>("isCurrentTrackLocal") ?: false
+                            val trackId = call.argument<String>("trackId") ?: ""
+                            val codec = call.argument<String>("codec") ?: "FLAC"
+                            val bitDepth = (call.argument<Number>("bitDepth") ?: 24).toInt()
+                            val sampleRateHz = (call.argument<Number>("sampleRateHz") ?: 96000).toInt()
 
                             val serviceIntent = android.content.Intent(this, FreeBeatPlaybackService::class.java).apply {
                                 action = FreeBeatPlaybackService.ACTION_UPDATE
@@ -280,6 +284,7 @@ class MainActivity : FlutterActivity() {
                                 putExtra("artist", artist)
                                 putExtra("album", album)
                                 putExtra("artworkPath", artworkPath)
+                                call.argument<String>("audioPath")?.let { putExtra("audioPath", it) }
                                 putExtra("durationMs", durationMs)
                                 putExtra("positionMs", positionMs)
                                 putExtra("isPlaying", isPlaying)
@@ -290,6 +295,10 @@ class MainActivity : FlutterActivity() {
                                 putExtra("repeatMode", repeatMode)
                                 putExtra("isPowerSaver", isPowerSaver)
                                 putExtra("isCurrentTrackLocal", isCurrentTrackLocal)
+                                putExtra("trackId", trackId)
+                                putExtra("codec", codec)
+                                putExtra("bitDepth", bitDepth)
+                                putExtra("sampleRateHz", sampleRateHz)
                             }
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)
@@ -315,11 +324,16 @@ class MainActivity : FlutterActivity() {
                                 call.argument<String>("artist")?.let { putExtra("artist", it) }
                                 call.argument<String>("album")?.let { putExtra("album", it) }
                                 call.argument<String>("artworkPath")?.let { putExtra("artworkPath", it) }
+                                call.argument<String>("audioPath")?.let { putExtra("audioPath", it) }
                                 call.argument<String>("outputDevice")?.let { putExtra("outputDevice", it) }
                                 call.argument<Boolean>("isShuffle")?.let { putExtra("isShuffle", it) }
                                 call.argument<Number>("repeatMode")?.let { putExtra("repeatMode", it.toInt()) }
                                 call.argument<Boolean>("isPowerSaver")?.let { putExtra("isPowerSaver", it) }
                                 call.argument<Boolean>("isCurrentTrackLocal")?.let { putExtra("isCurrentTrackLocal", it) }
+                                call.argument<String>("trackId")?.let { putExtra("trackId", it) }
+                                call.argument<String>("codec")?.let { putExtra("codec", it) }
+                                call.argument<Number>("bitDepth")?.let { putExtra("bitDepth", it.toInt()) }
+                                call.argument<Number>("sampleRateHz")?.let { putExtra("sampleRateHz", it.toInt()) }
                             }
                             if (FreeBeatPlaybackService.isServiceRunning) {
                                 startService(serviceIntent)

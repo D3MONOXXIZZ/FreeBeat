@@ -1928,6 +1928,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
   AudioPlayer? get _inactivePlayer => _isPlayerAActive ? _playerB : _playerA;
   AudioPlayer? get _audioPlayer => _activePlayer;
   bool _isCrossfading = false;
+  int _lastSyncedServicePosMs = -2000;
   Timer? _crossfadeTimer;
   int? _crossfadeStartTimeMs;
   int? _crossfadeFadeMs;
@@ -2206,6 +2207,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
           case 'onRepeat':
             cycleRepeatMode();
             break;
+          case 'onFavorite':
+            if (state.currentTrack.id.isNotEmpty) {
+              _ref.read(tracksCatalogProvider.notifier).toggleFavorite(state.currentTrack.id);
+            }
+            break;
         }
       });
 
@@ -2393,6 +2399,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         lastEmittedPosMs = posMs;
         state = state.copyWith(positionMs: posMs);
         _savePlaybackPosition();
+
+        if ((posMs - _lastSyncedServicePosMs).abs() >= 1000) {
+          _lastSyncedServicePosMs = posMs;
+          try {
+            _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+                  positionMs: posMs,
+                  isPlaying: state.isPlaying,
+                );
+          } catch (_) {}
+        }
       }
     });
 
@@ -2734,11 +2750,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         : ArtworkExtractor.getCachedArtworkPath(t.id);
     try {
       final dspSvc = _ref.read(powerampDspServiceProvider);
+      final effectiveAudio = (t.localCachePath != null && t.localCachePath!.isNotEmpty)
+          ? t.localCachePath
+          : t.streamUrl;
       dspSvc.startForegroundPlayback(
         title: t.title,
         artist: t.artist,
         album: t.album,
         artworkPath: effectiveArtwork,
+        audioPath: effectiveAudio,
         durationMs: t.durationMs,
         positionMs: state.positionMs,
         isPlaying: playing,
@@ -2749,6 +2769,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         repeatMode: state.repeatMode,
         isPowerSaver: isPowerSaver,
         isCurrentTrackLocal: isLocal,
+        trackId: t.id,
+        codec: t.codec,
+        bitDepth: t.bitDepth,
+        sampleRateHz: t.sampleRateHz,
       );
     } catch (_) {}
   }
@@ -3211,12 +3235,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
         state.queue.map((t) => t.id == updated.id ? updated : t).toList();
     if (state.currentTrack.id == updated.id) {
       state = state.copyWith(currentTrack: updated, queue: newQueue);
+      final effectiveArtwork = (updated.artworkUrl != null && updated.artworkUrl!.isNotEmpty)
+          ? updated.artworkUrl
+          : ArtworkExtractor.getCachedArtworkPath(updated.id);
+      final effectiveAudio = (updated.localCachePath != null && updated.localCachePath!.isNotEmpty)
+          ? updated.localCachePath
+          : updated.streamUrl;
       try {
         _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
               title: updated.title,
               artist: updated.artist,
-              artworkPath: updated.artworkUrl,
+              artworkPath: effectiveArtwork,
+              audioPath: effectiveAudio,
               dominantColor: updated.dominantColorValue,
+              trackId: updated.id,
+              codec: updated.codec,
+              bitDepth: updated.bitDepth,
+              sampleRateHz: updated.sampleRateHz,
             );
       } catch (_) {}
     } else {
@@ -3372,6 +3407,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackViewState> {
     final clamped = targetMs.clamp(0, state.currentTrack.durationMs);
     state = state.copyWith(positionMs: clamped);
     _savePlaybackPosition(force: true);
+    _lastSyncedServicePosMs = clamped;
+    try {
+      _ref.read(powerampDspServiceProvider).updatePlaybackNotification(
+            positionMs: clamped,
+            isPlaying: state.isPlaying,
+          );
+    } catch (_) {}
     try {
       unawaited(_activePlayer?.seek(Duration(milliseconds: clamped)));
     } catch (_) {}

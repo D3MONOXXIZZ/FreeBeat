@@ -68,6 +68,7 @@ class PowerampDspService {
     required String artist,
     required String album,
     String? artworkPath,
+    String? audioPath,
     required int durationMs,
     required int positionMs,
     required bool isPlaying,
@@ -78,6 +79,10 @@ class PowerampDspService {
     int repeatMode = 0,
     bool isPowerSaver = false,
     bool isCurrentTrackLocal = false,
+    String? trackId,
+    String? codec,
+    int? bitDepth,
+    int? sampleRateHz,
   }) async {
     try {
       await _channel.invokeMethod('startForegroundPlayback', {
@@ -85,6 +90,7 @@ class PowerampDspService {
         'artist': artist,
         'album': album,
         'artworkPath': artworkPath,
+        if (audioPath != null) 'audioPath': audioPath,
         'durationMs': durationMs,
         'positionMs': positionMs,
         'isPlaying': isPlaying,
@@ -95,6 +101,10 @@ class PowerampDspService {
         'repeatMode': repeatMode,
         'isPowerSaver': isPowerSaver,
         'isCurrentTrackLocal': isCurrentTrackLocal,
+        if (trackId != null) 'trackId': trackId,
+        if (codec != null) 'codec': codec,
+        if (bitDepth != null) 'bitDepth': bitDepth,
+        if (sampleRateHz != null) 'sampleRateHz': sampleRateHz,
       });
     } catch (_) {}
   }
@@ -108,11 +118,16 @@ class PowerampDspService {
     String? title,
     String? artist,
     String? artworkPath,
+    String? audioPath,
     String? outputDevice,
     bool? isShuffle,
     int? repeatMode,
     bool? isPowerSaver,
     bool? isCurrentTrackLocal,
+    String? trackId,
+    String? codec,
+    int? bitDepth,
+    int? sampleRateHz,
   }) async {
     try {
       await _channel.invokeMethod('updatePlaybackNotification', {
@@ -124,11 +139,16 @@ class PowerampDspService {
         if (title != null) 'title': title,
         if (artist != null) 'artist': artist,
         if (artworkPath != null) 'artworkPath': artworkPath,
+        if (audioPath != null) 'audioPath': audioPath,
         if (outputDevice != null) 'outputDevice': outputDevice,
         if (isShuffle != null) 'isShuffle': isShuffle,
         if (repeatMode != null) 'repeatMode': repeatMode,
         if (isPowerSaver != null) 'isPowerSaver': isPowerSaver,
         if (isCurrentTrackLocal != null) 'isCurrentTrackLocal': isCurrentTrackLocal,
+        if (trackId != null) 'trackId': trackId,
+        if (codec != null) 'codec': codec,
+        if (bitDepth != null) 'bitDepth': bitDepth,
+        if (sampleRateHz != null) 'sampleRateHz': sampleRateHz,
       });
     } catch (_) {}
   }

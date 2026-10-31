@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_vinyl_card"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <!-- TOP SECTION: ALBUM JACKET + VINYL DISC PEEK + METADATA -->
+    <LinearLayout
+        android:id="@+id/widget_top_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- Vinyl Turntable Assembly (Vinyl disc peeks out from BEHIND Jacket in front) -->
+        <RelativeLayout
+            android:id="@+id/widget_vinyl_assembly"
+            android:layout_width="138dp"
+            android:layout_height="94dp">
+
+            <!-- 1. Grooved Vinyl Record Peeking Out Behind (Declared First = Lower Z-Index) -->
+            <RelativeLayout
+                android:layout_width="88dp"
+                android:layout_height="88dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true">
+
+                <!-- Static Vinyl Disc Peeking Out Behind Jacket -->
+                <ImageView
+                    android:id="@+id/widget_vinyl_disc"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="Vinyl Record"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_vinyl_disc"
+                    android:visibility="visible" />
+            </RelativeLayout>
+
+            <!-- 2. Album Jacket in Front (Declared Second = Higher Z-Index) -->
+            <ImageView
+                android:id="@+id/widget_art"
+                android:layout_width="90dp"
+                android:layout_height="90dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/bg_widget_art_rounded"
+                android:contentDescription="Album Jacket"
+                android:scaleType="fitXY" />
+        </RelativeLayout>
+
+        <!-- Right Side Track Details -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <!-- Studio Badge -->
+            <LinearLayout
+                android:id="@+id/widget_badge_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_widget_pill_badge"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="3dp">
+
+                <ImageView
+                    android:id="@+id/widget_badge_icon"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:contentDescription="Studio Badge"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_waveform"
+                    android:tint="@color/widget_badge_text" />
+
+                <TextView
+                    android:id="@+id/widget_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="AUDIOPHILE VINYL"
+                    android:textColor="@color/widget_badge_text"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Title -->
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:singleLine="true"
+                android:text="Starboy"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Artist -->
+            <TextView
+                android:id="@+id/widget_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="The Weeknd, Daft Punk"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="12sp" />
+
+            <!-- Output Signal Device -->
+            <TextView
+                android:id="@+id/widget_device"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="32-bit Float • Direct Volume Control"
+                android:textColor="@color/widget_primary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- MIDDLE SECTION: LIVE SPECTRUM WAVEFORM EQ + PROGRESS -->
+    <!-- widget_progress_container has its own touch handler so it does NOT open the app -->
+    <LinearLayout
+        android:id="@+id/widget_progress_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical">
+
+        <!-- Static 20-Bar Audio Spectrum Waveform Visualizer -->
+        <ImageView
+            android:id="@+id/widget_spectrum_view"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:layout_marginBottom="6dp"
+            android:contentDescription="Live Spectrum Waveform"
+            android:scaleType="fitXY"
+            android:src="@drawable/ic_spectrum_idle"
+            android:visibility="visible" />
+
+        <!-- Seekbar Progress -->
+        <ProgressBar
+            android:id="@+id/widget_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="7dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressDrawable="@drawable/widget_progress_drawable" />
+
+        <!-- Timestamps -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp">
+
+            <TextView
+                android:id="@+id/widget_time_current"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:text="0:00"
+                android:textColor="@color/widget_on_surface_muted"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_time_total"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="0:00"
+                android:textColor="@color/widget_on_surface_muted"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+    </LinearLayout>
+
+    <!-- BOTTOM SECTION: 5-BUTTON AUDIOPHILE TRANSPORT BAR (SYMMETRIC 5-COLUMN GRID) -->
+    <LinearLayout
+        android:id="@+id/widget_controls_container"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- Column 1: Shuffle -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageView
+                android:id="@+id/widget_btn_shuffle"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Shuffle"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_shuffle"
+                android:tint="@color/widget_icon_inactive" />
+        </LinearLayout>
+
+        <!-- Column 2: Previous Track -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageView
+                android:id="@+id/widget_btn_prev"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Previous Track"
+                android:padding="7dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_previous"
+                android:tint="@color/widget_on_surface" />
+        </LinearLayout>
+
+        <!-- Column 3: DEAD CENTER HERO PLAY / PAUSE FAB (48dp Circle) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <RelativeLayout
+                android:id="@+id/widget_play_fab_container"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_widget_play_fab">
+
+                <ImageView
+                    android:id="@+id/widget_btn_play_pause"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Play or Pause"
+                    android:padding="11dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_play_arrow"
+                    android:tint="@color/widget_on_primary" />
+            </RelativeLayout>
+        </LinearLayout>
+
+        <!-- Column 4: Next Track -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageView
+                android:id="@+id/widget_btn_next"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Next Track"
+                android:padding="7dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_next"
+                android:tint="@color/widget_on_surface" />
+        </LinearLayout>
+
+        <!-- Column 5: Repeat -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageView
+                android:id="@+id/widget_btn_repeat"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Repeat Mode"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_repeat"
+                android:tint="@color/widget_icon_inactive" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FreeBeat</string>
+    <string name="widget_expressive_name">FreeBeat Expressive Player (4×2)</string>
+    <string name="widget_expressive_description">Full-featured Material You player widget with album art, progress bar, and complete playback controls.</string>
+    <string name="widget_compact_pill_name">FreeBeat Compact Stadium Pill (4×1)</string>
+    <string name="widget_compact_pill_description">Sleek horizontal pill widget with track title and essential playback controls.</string>
+    <string name="widget_vinyl_name">FreeBeat Audiophile Vinyl (4×3)</string>
+    <string name="widget_vinyl_description">Turntable vinyl showcase with groove animation, time stamps, and studio controls.</string>
+    <string name="widget_vu_name">FreeBeat Dual Analog VU Meter (4×2)</string>
+    <string name="widget_vu_description">Stereo analog VU meters with responsive mechanical needles reacting to track dynamics.</string>
+    <string name="widget_cassette_name">FreeBeat Retro Cassette Deck (4×2)</string>
+    <string name="widget_cassette_description">Vintage dual-spool cassette tape player with tactile hardware vector controls.</string>
+</resources>

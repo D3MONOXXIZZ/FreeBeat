@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <path
+        android:fillColor="#242426"
+        android:strokeColor="#525257"
+        android:strokeWidth="1.5"
+        android:pathData="M20,2 A18,18 0 1,0 20,38 A18,18 0 1,0 20,2 Z" />
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M20,13 A7,7 0 1,0 20,27 A7,7 0 1,0 20,13 Z" />
+    <!-- Center hole -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M20,17 A3,3 0 1,0 20,23 A3,3 0 1,0 20,17 Z" />
+    <!-- 3 Spoke teeth -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M19,13 h2 v3 h-2 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M19,24 h2 v3 h-2 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M13,19 h3 v2 h-3 z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M24,19 h3 v2 h-2 z" />
+</vector>

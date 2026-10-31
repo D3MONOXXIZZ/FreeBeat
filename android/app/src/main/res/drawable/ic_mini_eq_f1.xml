@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp"
+    android:height="14dp"
+    android:viewportWidth="14"
+    android:viewportHeight="14">
+    <!-- Frame 1: Short Left, Tall Center, Medium Right -->
+    <path
+        android:fillColor="@color/widget_badge_text"
+        android:pathData="M1,8 H3 V13 H1 Z M5,1 H7 V13 H5 Z M9,4 H11 V13 H9 Z" />
+</vector>

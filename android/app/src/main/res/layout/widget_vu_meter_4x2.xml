@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_expressive_card"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- TOP SECTION: DUAL ILLUMINATED ANALOG VU METERS -->
+    <LinearLayout
+        android:id="@+id/widget_meters_container"
+        android:layout_width="match_parent"
+        android:layout_height="78dp"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <!-- LEFT CHANNEL VU METER -->
+        <RelativeLayout
+            android:id="@+id/vu_meter_left"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_vu_meter_dial"
+            android:paddingHorizontal="6dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp">
+
+            <!-- Scale Markings -->
+            <RelativeLayout
+                android:id="@+id/vu_scale_left"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:text="-20"
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerHorizontal="true"
+                    android:text="0 dB"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:text="+3"
+                    android:textColor="#FF4545"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </RelativeLayout>
+
+            <!-- Channel Label -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/vu_scale_left"
+                android:layout_centerHorizontal="true"
+                android:letterSpacing="0.12"
+                android:text="CH 1 • LEFT VU"
+                android:textColor="@color/widget_primary"
+                android:textSize="8sp"
+                android:textStyle="bold" />
+
+            <!-- Precision Analog Needle Left -->
+            <ImageView
+                android:id="@+id/vu_needle_left"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_centerInParent="true"
+                android:contentDescription="VU Left Needle"
+                android:rotation="4"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_vu_needle"
+                android:visibility="visible" />
+        </RelativeLayout>
+
+        <!-- RIGHT CHANNEL VU METER -->
+        <RelativeLayout
+            android:id="@+id/vu_meter_right"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_vu_meter_dial"
+            android:paddingHorizontal="6dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp">
+
+            <!-- Scale Markings -->
+            <RelativeLayout
+                android:id="@+id/vu_scale_right"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:text="-20"
+                    android:textColor="@color/widget_on_surface_variant"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerHorizontal="true"
+                    android:text="0 dB"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:text="+3"
+                    android:textColor="#FF4545"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </RelativeLayout>
+
+            <!-- Channel Label -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/vu_scale_right"
+                android:layout_centerHorizontal="true"
+                android:letterSpacing="0.12"
+                android:text="CH 2 • RIGHT VU"
+                android:textColor="@color/widget_primary"
+                android:textSize="8sp"
+                android:textStyle="bold" />
+
+            <!-- Precision Analog Needle Right -->
+            <ImageView
+                android:id="@+id/vu_needle_right"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_centerInParent="true"
+                android:contentDescription="VU Right Needle"
+                android:rotation="8"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_vu_needle"
+                android:visibility="visible" />
+        </RelativeLayout>
+    </LinearLayout>
+
+    <!-- BOTTOM SECTION: TRACK INFO + TRANSPORT CONTROLS -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/widget_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="marquee"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:maxWidth="160dp"
+                    android:singleLine="true"
+                    android:text="Thousand Faces"
+                    android:textColor="@color/widget_on_surface"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- Tape Out Badge -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_widget_pill_badge"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="1.5dp"
+                    android:text="Tape Out"
+                    android:textColor="@color/widget_badge_text"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_artist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="Talha Anjum, Umair • Master 96kHz"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Transport Controls -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_btn_prev"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Previous"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_previous"
+                android:tint="@color/widget_on_surface" />
+
+            <RelativeLayout
+                android:id="@+id/widget_play_fab_container"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_widget_play_fab">
+
+                <ImageView
+                    android:id="@+id/widget_btn_play_pause"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Play/Pause"
+                    android:padding="9dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_play_arrow"
+                    android:tint="@color/widget_on_primary" />
+            </RelativeLayout>
+
+            <ImageView
+                android:id="@+id/widget_btn_next"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Next"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_next"
+                android:tint="@color/widget_on_surface" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

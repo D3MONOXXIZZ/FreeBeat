@@ -46,6 +46,8 @@ class FreeBeatPlaybackService : Service() {
         const val ACTION_PREV = "com.freebeat.ACTION_PREV"
         const val ACTION_SHUFFLE = "com.freebeat.ACTION_SHUFFLE"
         const val ACTION_REPEAT = "com.freebeat.ACTION_REPEAT"
+        const val ACTION_FAVORITE = "com.freebeat.ACTION_FAVORITE"
+        const val ACTION_SEEK_RELATIVE = "com.freebeat.ACTION_SEEK_RELATIVE"
         const val ACTION_STOP = "com.freebeat.ACTION_STOP"
         const val ACTION_UPDATE = "com.freebeat.ACTION_UPDATE"
 
@@ -56,6 +58,7 @@ class FreeBeatPlaybackService : Service() {
         var currentArtist: String = "Unknown Artist"
         var currentAlbum: String = "Library"
         var currentArtworkPath: String? = null
+        var currentAudioPath: String? = null
         var currentDurationMs: Long = 0L
         var currentPositionMs: Long = 0L
         var isPlaying: Boolean = false
@@ -66,6 +69,10 @@ class FreeBeatPlaybackService : Service() {
         var currentOutputDevice: String = "Phone Speaker"
         var isPowerSaver: Boolean = false
         var isCurrentTrackLocal: Boolean = false
+        var currentTrackId: String = ""
+        var currentCodec: String = "FLAC"
+        var currentBitDepth: Int = 24
+        var currentSampleRateHz: Int = 96000
 
         private var cachedArtworkPath: String? = null
         private var cachedDominantColor: Int = 0
@@ -140,6 +147,7 @@ class FreeBeatPlaybackService : Service() {
         acquireWakeLock()
         acquireWifiLock()
         updateNotification()
+        syncWidgets()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -166,33 +174,50 @@ class FreeBeatPlaybackService : Service() {
                 }
                 dispatchPlayerAction("onPlayPause", mapOf("isPlaying" to isPlaying))
                 updateNotification()
+                syncWidgets()
             }
             ACTION_NEXT -> {
                 acquireWakeLock()
                 acquireWifiLock()
                 dispatchPlayerAction("onNext", emptyMap())
                 updateNotification()
+                syncWidgets()
             }
             ACTION_PREV -> {
                 acquireWakeLock()
                 acquireWifiLock()
                 dispatchPlayerAction("onPrevious", emptyMap())
                 updateNotification()
+                syncWidgets()
             }
             ACTION_SHUFFLE -> {
                 acquireWakeLock()
                 isShuffle = !isShuffle
                 dispatchPlayerAction("onShuffle", mapOf("isShuffle" to isShuffle))
                 updateNotification()
+                syncWidgets()
             }
             ACTION_REPEAT -> {
                 acquireWakeLock()
                 repeatMode = (repeatMode + 1) % 3
                 dispatchPlayerAction("onRepeat", mapOf("repeatMode" to repeatMode))
                 updateNotification()
+                syncWidgets()
+            }
+            ACTION_FAVORITE -> {
+                acquireWakeLock()
+                dispatchPlayerAction("onFavorite", emptyMap())
+            }
+            ACTION_SEEK_RELATIVE -> {
+                acquireWakeLock()
+                val offset = intent.getLongExtra("offsetMs", 10000L)
+                currentPositionMs = (currentPositionMs + offset).coerceIn(0L, currentDurationMs.coerceAtLeast(1L))
+                dispatchPlayerAction("onSeek", mapOf("positionMs" to currentPositionMs))
+                FreeBeatWidgetUpdater.updatePositionAndAnim(this, currentPositionMs, currentDurationMs, isPlaying)
             }
             ACTION_STOP -> {
                 stopPlaybackService()
+                syncWidgets()
                 return START_NOT_STICKY
             }
             ACTION_UPDATE -> {
@@ -217,6 +242,9 @@ class FreeBeatPlaybackService : Service() {
                 } else if (isTrackTransition) {
                     currentArtworkPath = null
                 }
+                if (intent.hasExtra("audioPath")) {
+                    currentAudioPath = intent.getStringExtra("audioPath")
+                }
 
                 if (isTrackTransition) {
                     // Track changed: clear previous track's cached art bitmap so it never leaks
@@ -231,6 +259,8 @@ class FreeBeatPlaybackService : Service() {
                 }
                 if (intent.hasExtra("positionMs")) {
                     currentPositionMs = intent.getLongExtra("positionMs", currentPositionMs)
+                    lastSyncPositionMs = currentPositionMs
+                    lastSyncElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
                 }
                 if (intent.hasExtra("isPlaying")) {
                     isPlaying = intent.getBooleanExtra("isPlaying", isPlaying)
@@ -248,6 +278,10 @@ class FreeBeatPlaybackService : Service() {
                 if (intent.hasExtra("repeatMode")) repeatMode = intent.getIntExtra("repeatMode", repeatMode)
                 if (intent.hasExtra("isPowerSaver")) isPowerSaver = intent.getBooleanExtra("isPowerSaver", isPowerSaver)
                 if (intent.hasExtra("isCurrentTrackLocal")) isCurrentTrackLocal = intent.getBooleanExtra("isCurrentTrackLocal", isCurrentTrackLocal)
+                if (intent.hasExtra("trackId")) currentTrackId = intent.getStringExtra("trackId") ?: ""
+                if (intent.hasExtra("codec")) currentCodec = intent.getStringExtra("codec") ?: "FLAC"
+                if (intent.hasExtra("bitDepth")) currentBitDepth = intent.getIntExtra("bitDepth", 24)
+                if (intent.hasExtra("sampleRateHz")) currentSampleRateHz = intent.getIntExtra("sampleRateHz", 96000)
 
                 if (isPlaying) {
                     acquireWakeLock()
@@ -270,6 +304,7 @@ class FreeBeatPlaybackService : Service() {
                 // NEVER call notificationManager.notify() periodically: it wakes SystemUI and locks 120Hz!
                 if (metadataChanged) {
                     updateNotification()
+                    syncWidgets()
                 } else {
                     updatePlaybackStateOnly()
                 }
@@ -277,6 +312,67 @@ class FreeBeatPlaybackService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private var lastSyncElapsedRealtimeMs = 0L
+    private var lastSyncPositionMs = 0L
+
+    private val widgetTickerHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val widgetTickerRunnable = object : Runnable {
+        override fun run() {
+            if (isPlaying && currentDurationMs > 0) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                val delta = if (lastSyncElapsedRealtimeMs > 0L) (now - lastSyncElapsedRealtimeMs) else 0L
+                val calculatedPosMs = (lastSyncPositionMs + delta).coerceIn(0L, currentDurationMs)
+                currentPositionMs = calculatedPosMs
+                FreeBeatWidgetUpdater.updatePositionAndAnim(this@FreeBeatPlaybackService, currentPositionMs, currentDurationMs, isPlaying)
+                widgetTickerHandler.postDelayed(this, 1000L)
+            }
+        }
+    }
+
+    private fun startWidgetTicker() {
+        widgetTickerHandler.removeCallbacks(widgetTickerRunnable)
+        if (isPlaying) {
+            lastSyncElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime()
+            lastSyncPositionMs = currentPositionMs
+            widgetTickerHandler.postDelayed(widgetTickerRunnable, 1000L)
+        }
+    }
+
+    private fun stopWidgetTicker() {
+        widgetTickerHandler.removeCallbacks(widgetTickerRunnable)
+    }
+
+    private fun syncWidgets() {
+        try {
+            val formatBadge = "$currentCodec • ${currentBitDepth}-bit / ${(currentSampleRateHz / 1000).coerceAtLeast(44)}kHz"
+            FreeBeatWidgetUpdater.syncFromService(
+                context = this,
+                trackId = currentTrackId,
+                title = currentTitle,
+                artist = currentArtist,
+                album = currentAlbum,
+                artworkPath = currentArtworkPath,
+                audioPath = currentAudioPath,
+                artBitmap = cachedArtBitmap,
+                durationMs = currentDurationMs,
+                positionMs = currentPositionMs,
+                isPlaying = isPlaying,
+                isShuffle = isShuffle,
+                repeatMode = repeatMode,
+                volume = currentVolume,
+                dominantColor = currentDominantColor,
+                outputDevice = currentOutputDevice,
+                audioFormatBadge = formatBadge
+            )
+            FreeBeatWidgetUpdater.updateAllWidgets(this)
+            if (isPlaying) {
+                startWidgetTicker()
+            } else {
+                stopWidgetTicker()
+            }
+        } catch (_: Throwable) {}
     }
 
     private fun acquireWakeLock() {
@@ -774,6 +870,7 @@ class FreeBeatPlaybackService : Service() {
                                 cachedTitle = currentTitle
                                 isCachedBitmapFallback = false
                                 updateNotification()
+                                syncWidgets()
                             }
                         }
                     }
@@ -781,18 +878,47 @@ class FreeBeatPlaybackService : Service() {
             }
         }
 
+        // Direct extraction from audio file/URI via MediaMetadataRetriever
+        val audioPath = currentAudioPath
+        if (!audioPath.isNullOrEmpty()) {
+            try {
+                val mmr = android.media.MediaMetadataRetriever()
+                if (audioPath.startsWith("content://")) {
+                    mmr.setDataSource(this, Uri.parse(audioPath))
+                } else {
+                    val f = File(audioPath)
+                    if (f.exists() && f.length() > 500) mmr.setDataSource(f.absolutePath)
+                }
+                val pic = mmr.embeddedPicture
+                mmr.release()
+                if (pic != null && pic.isNotEmpty()) {
+                    val bmp = BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                    if (bmp != null) return scaleToSafeDimensions(bmp) to false
+                }
+            } catch (_: Throwable) {}
+        }
+
         // 4. Check app's album art directory in filesDir or app_flutter as fallback
         try {
+            val sanitizedId = currentTrackId.replace(Regex("[^a-zA-Z0-9_-]"), "_")
             val sanitizedTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_")
             val artDirs = listOf(
                 File(filesDir.parentFile, "app_flutter/album_art"),
-                File(filesDir, "album_art")
+                File(filesDir, "album_art"),
+                File(cacheDir, "album_art")
             )
             for (artDir in artDirs) {
                 if (artDir.exists()) {
-                    val artFile = File(artDir, "$sanitizedTitle.jpg")
-                    if (artFile.exists() && artFile.length() > 200) {
-                        val bmp = BitmapFactory.decodeFile(artFile.absolutePath)
+                    if (sanitizedId.isNotEmpty()) {
+                        val idFile = File(artDir, "$sanitizedId.jpg")
+                        if (idFile.exists() && idFile.length() > 100) {
+                            val bmp = BitmapFactory.decodeFile(idFile.absolutePath)
+                            if (bmp != null) return scaleToSafeDimensions(bmp) to false
+                        }
+                    }
+                    val titleFile = File(artDir, "$sanitizedTitle.jpg")
+                    if (titleFile.exists() && titleFile.length() > 100) {
+                        val bmp = BitmapFactory.decodeFile(titleFile.absolutePath)
                         if (bmp != null) return scaleToSafeDimensions(bmp) to false
                     }
                 }
@@ -862,6 +988,7 @@ class FreeBeatPlaybackService : Service() {
     }
 
     private fun stopPlaybackService() {
+        stopWidgetTicker()
         releaseWakeLock()
         releaseWifiLock()
         mediaSession?.isActive = false
@@ -870,6 +997,7 @@ class FreeBeatPlaybackService : Service() {
         isServiceRunning = false
         stopForeground(true)
         stopSelf()
+        syncWidgets()
     }
 
     override fun onDestroy() {
